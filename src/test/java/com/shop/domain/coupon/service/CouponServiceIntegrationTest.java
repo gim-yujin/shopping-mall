@@ -1,11 +1,14 @@
 package com.shop.domain.coupon.service;
 
+import com.shop.domain.coupon.entity.Coupon;
 import com.shop.domain.coupon.entity.UserCoupon;
 import com.shop.global.exception.BusinessException;
 import com.shop.global.exception.ResourceNotFoundException;
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.TestPropertySource;
 
@@ -284,6 +287,56 @@ class CouponServiceIntegrationTest {
         }
 
         System.out.println("  [PASS] 사용 가능 쿠폰 조회: " + available.size() + "개");
+    }
+
+
+
+    @Test
+    @DisplayName("getActiveCoupons — 활성 + 유효 기간 내 쿠폰만 반환")
+    void getActiveCoupons_returnsOnlyActiveAndValidCoupons() {
+        // Given
+        String activeCode = "TEST_ACTIVE_" + System.currentTimeMillis();
+        String inactiveCode = "TEST_INACTIVE_" + System.currentTimeMillis();
+        String expiredCode = "TEST_EXPIRED_" + System.currentTimeMillis();
+
+        Integer activeId = createTestCoupon(activeCode, "활성 쿠폰", "FIXED", 1000, 100, true, false);
+        Integer inactiveId = createTestCoupon(inactiveCode, "비활성 쿠폰", "FIXED", 1000, 100, false, false);
+        Integer expiredId = createTestCoupon(expiredCode, "만료 쿠폰", "FIXED", 1000, 100, true, true);
+
+        // When
+        Page<Coupon> page = couponService.getActiveCoupons(PageRequest.of(0, 100));
+
+        // Then
+        Set<Integer> ids = new HashSet<>();
+        page.getContent().forEach(coupon -> ids.add(coupon.getCouponId()));
+
+        assertThat(ids)
+                .as("활성 + 유효한 쿠폰은 조회되어야 함")
+                .contains(activeId);
+        assertThat(ids)
+                .as("비활성/만료 쿠폰은 활성 쿠폰 조회에서 제외되어야 함")
+                .doesNotContain(inactiveId, expiredId);
+
+        System.out.println("  [PASS] 활성 쿠폰 조회 필터 검증 완료");
+    }
+
+    @Test
+    @DisplayName("getUserCoupons — 사용자 발급 쿠폰 페이지 조회")
+    void getUserCoupons_returnsIssuedCouponsForUser() {
+        // Given
+        String code = "TEST_USER_PAGE_" + System.currentTimeMillis();
+        Integer couponId = createTestCoupon(code, "사용자 페이지 쿠폰", "FIXED", 1500, 100, true, false);
+        couponService.issueCoupon(testUserId, code);
+
+        // When
+        Page<UserCoupon> page = couponService.getUserCoupons(testUserId, PageRequest.of(0, 20));
+
+        // Then
+        assertThat(page.getContent())
+                .as("사용자 쿠폰 페이지에 방금 발급한 쿠폰이 포함되어야 함")
+                .anyMatch(uc -> uc.getCoupon().getCouponId().equals(couponId));
+
+        System.out.println("  [PASS] 사용자 쿠폰 페이지 조회 성공: total=" + page.getTotalElements());
     }
 
     // ==================== usedQuantity 정합성 ====================
