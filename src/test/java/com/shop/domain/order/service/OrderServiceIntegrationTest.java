@@ -7,6 +7,8 @@ import com.shop.global.exception.InsufficientStockException;
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.TestPropertySource;
 
@@ -387,6 +389,70 @@ class OrderServiceIntegrationTest {
                 .hasMessageContaining("취소할 수 없는");
 
         System.out.println("  [PASS] 배송완료 주문 취소 시 BusinessException 발생");
+    }
+
+
+
+    // ==================== 조회 ====================
+
+    @Test
+    @DisplayName("getOrdersByUser — 사용자 주문 페이징 조회")
+    void getOrdersByUser_returnsUserOrders() {
+        // Given
+        addCartItem(testUserId, testProductId, 1);
+        Order order = orderService.createOrder(testUserId, defaultRequest());
+        createdOrderIds.add(order.getOrderId());
+
+        // When
+        Page<Order> page = orderService.getOrdersByUser(testUserId, PageRequest.of(0, 20));
+
+        // Then
+        assertThat(page.getContent())
+                .as("사용자 주문 목록에 생성한 주문이 포함되어야 함")
+                .anyMatch(o -> o.getOrderId().equals(order.getOrderId()));
+
+        System.out.println("  [PASS] 사용자 주문 조회: total=" + page.getTotalElements());
+    }
+
+    @Test
+    @DisplayName("getAllOrders — 전체 주문 페이징 조회")
+    void getAllOrders_returnsAllOrders() {
+        // Given
+        addCartItem(testUserId, testProductId, 1);
+        Order order = orderService.createOrder(testUserId, defaultRequest());
+        createdOrderIds.add(order.getOrderId());
+
+        // When
+        Page<Order> page = orderService.getAllOrders(PageRequest.of(0, 50));
+
+        // Then
+        assertThat(page.getContent())
+                .as("전체 주문 조회에 생성한 주문이 포함되어야 함")
+                .anyMatch(o -> o.getOrderId().equals(order.getOrderId()));
+
+        System.out.println("  [PASS] 전체 주문 조회: total=" + page.getTotalElements());
+    }
+
+    @Test
+    @DisplayName("getOrdersByStatus — 상태별 주문 페이징 조회")
+    void getOrdersByStatus_returnsFilteredOrders() {
+        // Given: createOrder 직후 상태는 PAID
+        addCartItem(testUserId, testProductId, 1);
+        Order order = orderService.createOrder(testUserId, defaultRequest());
+        createdOrderIds.add(order.getOrderId());
+
+        // When
+        Page<Order> paidPage = orderService.getOrdersByStatus("PAID", PageRequest.of(0, 50));
+
+        // Then
+        assertThat(paidPage.getContent())
+                .as("PAID 상태 조회에 생성한 주문이 포함되어야 함")
+                .anyMatch(o -> o.getOrderId().equals(order.getOrderId()));
+        assertThat(paidPage.getContent())
+                .as("상태별 조회 결과는 요청한 상태와 일치해야 함")
+                .allMatch(o -> "PAID".equals(o.getOrderStatus()));
+
+        System.out.println("  [PASS] 상태별 주문 조회(PAID): total=" + paidPage.getTotalElements());
     }
 
     // ==================== updateOrderStatus ====================
