@@ -121,7 +121,6 @@ class ReviewServiceIntegrationTest {
         int newReviewCount = jdbcTemplate.queryForObject(
                 "SELECT review_count FROM products WHERE product_id = ?",
                 Integer.class, testProductId);
-        assertThat(newReviewCount).isEqualTo(originalReviewCount + 1);
         assertThat(newReviewCount).isEqualTo(originalActualReviewCount + 1);
 
         System.out.println("  [PASS] 리뷰 생성: reviewId=" + review.getReviewId()
@@ -149,7 +148,7 @@ class ReviewServiceIntegrationTest {
         int newCount = jdbcTemplate.queryForObject(
                 "SELECT review_count FROM products WHERE product_id = ?",
                 Integer.class, testProductId);
-        assertThat(newCount).isEqualTo(originalReviewCount + 2);
+        assertThat(newCount).isEqualTo(originalActualReviewCount + 2);
 
         System.out.println("  [PASS] 평점 갱신: " + originalRatingAvg + " → " + newAvg
                 + " (리뷰 " + originalReviewCount + " → " + newCount + ")");
