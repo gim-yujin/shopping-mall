@@ -1,0 +1,9 @@
+# Local-only data/experiment directories
+csv_data/
+experiment_results/
+optimization/
+
+# Gradle/Spring build outputs
+build/
+!gradle/wrapper/gradle-wrapper.jar
+*.jar
