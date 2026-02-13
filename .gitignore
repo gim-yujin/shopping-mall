@@ -11,3 +11,5 @@ build/
 csv_data/
 experiment_results/
 optimization/
+# Log files
+*.log
