@@ -271,10 +271,15 @@ class CartServiceIntegrationTest {
     @Test
     @DisplayName("addToCart 실패 — 존재하지 않는 상품")
     void addToCart_nonExistentProduct_throwsException() {
-        assertThatThrownBy(() -> cartService.addToCart(testUserId, 999999L, 1))
+        // DB에서 존재하지 않는 product_id를 동적으로 결정
+        Long maxProductId = jdbcTemplate.queryForObject(
+                "SELECT COALESCE(MAX(product_id), 0) FROM products", Long.class);
+        Long nonExistentId = maxProductId + 9999;
+
+        assertThatThrownBy(() -> cartService.addToCart(testUserId, nonExistentId, 1))
                 .isInstanceOf(ResourceNotFoundException.class);
 
-        System.out.println("  [PASS] 존재하지 않는 상품 → ResourceNotFoundException");
+        System.out.println("  [PASS] 존재하지 않는 상품 (ID=" + nonExistentId + ") → ResourceNotFoundException");
     }
 
     // ==================== updateQuantity ====================

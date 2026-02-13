@@ -118,6 +118,12 @@ class OrderServiceIntegrationTest {
                 originalUserState.get("point_balance"),
                 originalUserState.get("tier_id"),
                 testUserId);
+
+        // 테스트용 쿠폰 정리
+        jdbcTemplate.update(
+                "DELETE FROM user_coupons WHERE coupon_id IN (SELECT coupon_id FROM coupons WHERE coupon_code IN ('TEST_ORDER_COUPON', 'TEST_CANCEL_COUPON'))");
+        jdbcTemplate.update(
+                "DELETE FROM coupons WHERE coupon_code IN ('TEST_ORDER_COUPON', 'TEST_CANCEL_COUPON')");
     }
 
     // ==================== 장바구니에 상품 추가 (공통 헬퍼) ====================
@@ -232,23 +238,40 @@ class OrderServiceIntegrationTest {
         addCartItem(testUserId, testProductId, 1);
 
         // 사용자에게 발급된 미사용 쿠폰 찾기
-        List<Map<String, Object>> coupons = jdbcTemplate.queryForList(
+        // 테스트용 쿠폰을 직접 생성하여 확실히 사용 가능한 상태 보장
+        jdbcTemplate.update(
                 """
-                SELECT uc.user_coupon_id, c.discount_type, c.discount_value
-                FROM user_coupons uc
-                JOIN coupons c ON uc.coupon_id = c.coupon_id
-                WHERE uc.user_id = ? AND uc.is_used = false
-                  AND uc.expires_at > NOW() AND c.is_active = true
-                LIMIT 1
-                """,
-                testUserId);
+                INSERT INTO coupons (coupon_code, coupon_name, discount_type, discount_value,
+                    min_order_amount, max_discount, total_quantity, used_quantity,
+                    valid_from, valid_until, is_active, created_at)
+                VALUES ('TEST_ORDER_COUPON', '주문테스트쿠폰', 'FIXED', 1000,
+                    0, NULL, 100, 0,
+                    '2024-01-01'::timestamp, '2027-12-31'::timestamp, true, NOW())
+                ON CONFLICT (coupon_code) DO NOTHING
+                """);
 
-        if (coupons.isEmpty()) {
-            System.out.println("  [SKIP] 사용 가능한 쿠폰이 없어 테스트를 건너뜁니다.");
+        Integer testCouponId = jdbcTemplate.queryForObject(
+                "SELECT coupon_id FROM coupons WHERE coupon_code = 'TEST_ORDER_COUPON'",
+                Integer.class);
+
+        // 사용자에게 쿠폰 발급
+        jdbcTemplate.update(
+                """
+                INSERT INTO user_coupons (user_id, coupon_id, is_used, issued_at, expires_at)
+                VALUES (?, ?, false, NOW(), '2027-12-31'::timestamp)
+                ON CONFLICT DO NOTHING
+                """,
+                testUserId, testCouponId);
+
+        Long userCouponId = jdbcTemplate.queryForObject(
+                "SELECT user_coupon_id FROM user_coupons WHERE user_id = ? AND coupon_id = ? AND is_used = false",
+                Long.class, testUserId, testCouponId);
+
+        if (userCouponId == null) {
+            System.out.println("  [SKIP] 테스트 쿠폰 발급 실패, 건너뜁니다.");
             return;
         }
 
-        Long userCouponId = ((Number) coupons.get(0).get("user_coupon_id")).longValue();
         OrderCreateRequest request = new OrderCreateRequest(
                 "서울시 강남구 테스트로 123", "테스트수령인", "010-0000-0000",
                 "CARD", BigDecimal.ZERO, userCouponId);
@@ -259,7 +282,11 @@ class OrderServiceIntegrationTest {
 
         // Then: 할인 적용 확인
         assertThat(order.getDiscountAmount()).isGreaterThan(BigDecimal.ZERO);
-        assertThat(order.getFinalAmount()).isLessThan(order.getTotalAmount());
+
+        // finalAmount = totalAmount - discountAmount + shippingFee 이므로
+        // 할인이 적용되었다면: finalAmount < totalAmount + shippingFee
+        BigDecimal withoutDiscount = order.getTotalAmount().add(order.getShippingFee());
+        assertThat(order.getFinalAmount()).isLessThan(withoutDiscount);
 
         // 쿠폰 사용 처리 확인
         Boolean isUsed = jdbcTemplate.queryForObject(
@@ -413,23 +440,39 @@ class OrderServiceIntegrationTest {
         // Given: 쿠폰이 있는 주문 생성
         addCartItem(testUserId, testProductId, 1);
 
-        List<Map<String, Object>> coupons = jdbcTemplate.queryForList(
+        // 테스트용 쿠폰을 직접 생성하여 확실히 사용 가능한 상태 보장
+        jdbcTemplate.update(
                 """
-                SELECT uc.user_coupon_id
-                FROM user_coupons uc
-                JOIN coupons c ON uc.coupon_id = c.coupon_id
-                WHERE uc.user_id = ? AND uc.is_used = false
-                  AND uc.expires_at > NOW() AND c.is_active = true
-                LIMIT 1
-                """,
-                testUserId);
+                INSERT INTO coupons (coupon_code, coupon_name, discount_type, discount_value,
+                    min_order_amount, max_discount, total_quantity, used_quantity,
+                    valid_from, valid_until, is_active, created_at)
+                VALUES ('TEST_CANCEL_COUPON', '취소테스트쿠폰', 'FIXED', 1000,
+                    0, NULL, 100, 0,
+                    '2024-01-01'::timestamp, '2027-12-31'::timestamp, true, NOW())
+                ON CONFLICT (coupon_code) DO NOTHING
+                """);
 
-        if (coupons.isEmpty()) {
-            System.out.println("  [SKIP] 사용 가능한 쿠폰이 없어 테스트를 건너뜁니다.");
+        Integer testCouponId = jdbcTemplate.queryForObject(
+                "SELECT coupon_id FROM coupons WHERE coupon_code = 'TEST_CANCEL_COUPON'",
+                Integer.class);
+
+        jdbcTemplate.update(
+                """
+                INSERT INTO user_coupons (user_id, coupon_id, is_used, issued_at, expires_at)
+                VALUES (?, ?, false, NOW(), '2027-12-31'::timestamp)
+                ON CONFLICT DO NOTHING
+                """,
+                testUserId, testCouponId);
+
+        Long userCouponId = jdbcTemplate.queryForObject(
+                "SELECT user_coupon_id FROM user_coupons WHERE user_id = ? AND coupon_id = ? AND is_used = false",
+                Long.class, testUserId, testCouponId);
+
+        if (userCouponId == null) {
+            System.out.println("  [SKIP] 테스트 쿠폰 발급 실패, 건너뜁니다.");
             return;
         }
 
-        Long userCouponId = ((Number) coupons.get(0).get("user_coupon_id")).longValue();
         OrderCreateRequest request = new OrderCreateRequest(
                 "서울시 강남구 테스트로 123", "테스트수령인", "010-0000-0000",
                 "CARD", BigDecimal.ZERO, userCouponId);
