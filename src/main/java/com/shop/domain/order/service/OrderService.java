@@ -28,6 +28,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
 
@@ -80,6 +81,7 @@ public class OrderService {
         BigDecimal totalAmount = BigDecimal.ZERO;
         BigDecimal tierDiscountTotal = BigDecimal.ZERO;
         String orderNumber = generateOrderNumber();
+        List<OrderLine> orderLines = new ArrayList<>();
 
         // 1) 재고 차감 & 주문 금액 계산
         for (Cart cart : cartItems) {
@@ -100,6 +102,14 @@ public class OrderService {
 
             BigDecimal subtotal = product.getPrice().multiply(BigDecimal.valueOf(cart.getQuantity()));
             totalAmount = totalAmount.add(subtotal);
+
+            orderLines.add(new OrderLine(
+                    product.getProductId(),
+                    product.getProductName(),
+                    cart.getQuantity(),
+                    product.getPrice(),
+                    subtotal
+            ));
 
             // 등급 할인 계산 (아이템별)
             BigDecimal itemTierDiscount = subtotal.multiply(tierDiscountRate)
@@ -153,11 +163,9 @@ public class OrderService {
                 shippingFee, finalAmount, request.paymentMethod(),
                 request.shippingAddress(), request.recipientName(), request.recipientPhone());
 
-        for (Cart cart : cartItems) {
-            Product product = cart.getProduct();
-            BigDecimal subtotal = product.getPrice().multiply(BigDecimal.valueOf(cart.getQuantity()));
-            OrderItem item = new OrderItem(product.getProductId(), product.getProductName(),
-                    cart.getQuantity(), product.getPrice(), tierDiscountRate, subtotal);
+        for (OrderLine orderLine : orderLines) {
+            OrderItem item = new OrderItem(orderLine.productId(), orderLine.productName(),
+                    orderLine.quantity(), orderLine.unitPrice(), tierDiscountRate, orderLine.subtotal());
             order.addItem(item);
         }
 
@@ -267,5 +275,9 @@ public class OrderService {
         String datePart = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
         int randomPart = ThreadLocalRandom.current().nextInt(10000, 99999);
         return datePart + "-" + randomPart;
+    }
+
+    private record OrderLine(Long productId, String productName, int quantity,
+                             BigDecimal unitPrice, BigDecimal subtotal) {
     }
 }

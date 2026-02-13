@@ -32,14 +32,15 @@ public class CartService {
 
     @Transactional
     public void addToCart(Long userId, Long productId, int quantity) {
+        if (quantity <= 0) {
+            throw new BusinessException("INVALID_QUANTITY", "수량은 1개 이상이어야 합니다.");
+        }
+
         Product product = productRepository.findById(productId)
                 .orElseThrow(() -> new ResourceNotFoundException("상품", productId));
 
         if (!product.getIsActive()) {
             throw new BusinessException("INACTIVE", "판매 중지된 상품입니다.");
-        }
-        if (product.getStockQuantity() < quantity) {
-            throw new BusinessException("STOCK", "재고가 부족합니다.");
         }
 
         // 사용자별 Advisory Lock → 같은 사용자의 동시 장바구니 작업을 직렬화
@@ -47,9 +48,13 @@ public class CartService {
         cartRepository.acquireUserCartLock(userId);
 
         Optional<Cart> existing = cartRepository.findByUserIdAndProduct_ProductId(userId, productId);
+        int requestedQuantity = existing.map(cart -> cart.getQuantity() + quantity).orElse(quantity);
+        if (product.getStockQuantity() < requestedQuantity) {
+            throw new BusinessException("STOCK", "재고가 부족합니다.");
+        }
+
         if (existing.isPresent()) {
-            Cart cart = existing.get();
-            cart.updateQuantity(cart.getQuantity() + quantity);
+            existing.get().updateQuantity(requestedQuantity);
         } else {
             if (cartRepository.countByUserId(userId) >= MAX_CART_ITEMS) {
                 throw new BusinessException("CART_LIMIT",
