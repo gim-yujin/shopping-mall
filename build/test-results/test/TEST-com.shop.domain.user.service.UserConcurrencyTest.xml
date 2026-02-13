@@ -1,0 +1,413 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuite name="com.shop.domain.user.service.UserConcurrencyTest" tests="3" skipped="0" failures="3" errors="0" timestamp="2026-02-13T00:08:12" hostname="admin0-ThinkPad-T14s-Gen-4" time="0.782">
+  <properties/>
+  <testcase name="시나리오 1: 같은 username 5회 동시 가입 → 1명만 성공, 에러 없이 처리" classname="com.shop.domain.user.service.UserConcurrencyTest" time="0.61">
+    <failure message="org.opentest4j.AssertionFailedError: [500 에러가 아닌 비즈니스 예외로 처리되어야 합니다: [시도#2: DataIntegrityViolationException - could not execute statement [ERROR: duplicate key value violates unique constraint &quot;users_username_key&quot;&#10;  Detail: Key (username)=(conctest_1770941287666_user) already exists.] [insert into users (created_at,email,is_active,last_login_at,name,password_hash,phone,point_balance,role,tier_id,total_spent,updated_at,username) values (?,?,?,?,?,?,?,?,?,?,?,?,?)]; SQL [insert into users (created_at,email,is_active,last_login_at,name,password_hash,phone,point_balance,role,tier_id,total_spent,updated_at,username) values (?,?,?,?,?,?,?,?,?,?,?,?,?)]; constraint [users_username_key], 시도#1: DataIntegrityViolationException - could not execute statement [ERROR: duplicate key value violates unique constraint &quot;users_username_key&quot;&#10;  Detail: Key (username)=(conctest_1770941287666_user) already exists.] [insert into users (created_at,email,is_active,last_login_at,name,password_hash,phone,point_balance,role,tier_id,total_spent,updated_at,username) values (?,?,?,?,?,?,?,?,?,?,?,?,?)]; SQL [insert into users (created_at,email,is_active,last_login_at,name,password_hash,phone,point_balance,role,tier_id,total_spent,updated_at,username) values (?,?,?,?,?,?,?,?,?,?,?,?,?)]; constraint [users_username_key], 시도#5: DataIntegrityViolationException - could not execute statement [ERROR: duplicate key value violates unique constraint &quot;users_username_key&quot;&#10;  Detail: Key (username)=(conctest_1770941287666_user) already exists.] [insert into users (created_at,email,is_active,last_login_at,name,password_hash,phone,point_balance,role,tier_id,total_spent,updated_at,username) values (?,?,?,?,?,?,?,?,?,?,?,?,?)]; SQL [insert into users (created_at,email,is_active,last_login_at,name,password_hash,phone,point_balance,role,tier_id,total_spent,updated_at,username) values (?,?,?,?,?,?,?,?,?,?,?,?,?)]; constraint [users_username_key], 시도#4: DataIntegrityViolationException - could not execute statement [ERROR: duplicate key value violates unique constraint &quot;users_username_key&quot;&#10;  Detail: Key (username)=(conctest_1770941287666_user) already exists.] [insert into users (created_at,email,is_active,last_login_at,name,password_hash,phone,point_balance,role,tier_id,total_spent,updated_at,username) values (?,?,?,?,?,?,?,?,?,?,?,?,?)]; SQL [insert into users (created_at,email,is_active,last_login_at,name,password_hash,phone,point_balance,role,tier_id,total_spent,updated_at,username) values (?,?,?,?,?,?,?,?,?,?,?,?,?)]; constraint [users_username_key]]] &#10;expected: 0&#10; but was: 4" type="org.opentest4j.AssertionFailedError">org.opentest4j.AssertionFailedError: [500 에러가 아닌 비즈니스 예외로 처리되어야 합니다: [시도#2: DataIntegrityViolationException - could not execute statement [ERROR: duplicate key value violates unique constraint &quot;users_username_key&quot;
+  Detail: Key (username)=(conctest_1770941287666_user) already exists.] [insert into users (created_at,email,is_active,last_login_at,name,password_hash,phone,point_balance,role,tier_id,total_spent,updated_at,username) values (?,?,?,?,?,?,?,?,?,?,?,?,?)]; SQL [insert into users (created_at,email,is_active,last_login_at,name,password_hash,phone,point_balance,role,tier_id,total_spent,updated_at,username) values (?,?,?,?,?,?,?,?,?,?,?,?,?)]; constraint [users_username_key], 시도#1: DataIntegrityViolationException - could not execute statement [ERROR: duplicate key value violates unique constraint &quot;users_username_key&quot;
+  Detail: Key (username)=(conctest_1770941287666_user) already exists.] [insert into users (created_at,email,is_active,last_login_at,name,password_hash,phone,point_balance,role,tier_id,total_spent,updated_at,username) values (?,?,?,?,?,?,?,?,?,?,?,?,?)]; SQL [insert into users (created_at,email,is_active,last_login_at,name,password_hash,phone,point_balance,role,tier_id,total_spent,updated_at,username) values (?,?,?,?,?,?,?,?,?,?,?,?,?)]; constraint [users_username_key], 시도#5: DataIntegrityViolationException - could not execute statement [ERROR: duplicate key value violates unique constraint &quot;users_username_key&quot;
+  Detail: Key (username)=(conctest_1770941287666_user) already exists.] [insert into users (created_at,email,is_active,last_login_at,name,password_hash,phone,point_balance,role,tier_id,total_spent,updated_at,username) values (?,?,?,?,?,?,?,?,?,?,?,?,?)]; SQL [insert into users (created_at,email,is_active,last_login_at,name,password_hash,phone,point_balance,role,tier_id,total_spent,updated_at,username) values (?,?,?,?,?,?,?,?,?,?,?,?,?)]; constraint [users_username_key], 시도#4: DataIntegrityViolationException - could not execute statement [ERROR: duplicate key value violates unique constraint &quot;users_username_key&quot;
+  Detail: Key (username)=(conctest_1770941287666_user) already exists.] [insert into users (created_at,email,is_active,last_login_at,name,password_hash,phone,point_balance,role,tier_id,total_spent,updated_at,username) values (?,?,?,?,?,?,?,?,?,?,?,?,?)]; SQL [insert into users (created_at,email,is_active,last_login_at,name,password_hash,phone,point_balance,role,tier_id,total_spent,updated_at,username) values (?,?,?,?,?,?,?,?,?,?,?,?,?)]; constraint [users_username_key]]] 
+expected: 0
+ but was: 4
+	at app//com.shop.domain.user.service.UserConcurrencyTest.duplicateUsername_signup(UserConcurrencyTest.java:139)
+	at java.base@17.0.18/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
+	at java.base@17.0.18/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:77)
+	at java.base@17.0.18/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+	at java.base@17.0.18/java.lang.reflect.Method.invoke(Method.java:569)
+	at app//org.junit.platform.commons.util.ReflectionUtils.invokeMethod(ReflectionUtils.java:767)
+	at app//org.junit.jupiter.engine.execution.MethodInvocation.proceed(MethodInvocation.java:60)
+	at app//org.junit.jupiter.engine.execution.InvocationInterceptorChain$ValidatingInvocation.proceed(InvocationInterceptorChain.java:131)
+	at app//org.junit.jupiter.engine.extension.TimeoutExtension.intercept(TimeoutExtension.java:156)
+	at app//org.junit.jupiter.engine.extension.TimeoutExtension.interceptTestableMethod(TimeoutExtension.java:147)
+	at app//org.junit.jupiter.engine.extension.TimeoutExtension.interceptTestMethod(TimeoutExtension.java:86)
+	at app//org.junit.jupiter.engine.execution.InterceptingExecutableInvoker$ReflectiveInterceptorCall.lambda$ofVoidMethod$0(InterceptingExecutableInvoker.java:103)
+	at app//org.junit.jupiter.engine.execution.InterceptingExecutableInvoker.lambda$invoke$0(InterceptingExecutableInvoker.java:93)
+	at app//org.junit.jupiter.engine.execution.InvocationInterceptorChain$InterceptedInvocation.proceed(InvocationInterceptorChain.java:106)
+	at app//org.junit.jupiter.engine.execution.InvocationInterceptorChain.proceed(InvocationInterceptorChain.java:64)
+	at app//org.junit.jupiter.engine.execution.InvocationInterceptorChain.chainAndInvoke(InvocationInterceptorChain.java:45)
+	at app//org.junit.jupiter.engine.execution.InvocationInterceptorChain.invoke(InvocationInterceptorChain.java:37)
+	at app//org.junit.jupiter.engine.execution.InterceptingExecutableInvoker.invoke(InterceptingExecutableInvoker.java:92)
+	at app//org.junit.jupiter.engine.execution.InterceptingExecutableInvoker.invoke(InterceptingExecutableInvoker.java:86)
+	at app//org.junit.jupiter.engine.descriptor.TestMethodTestDescriptor.lambda$invokeTestMethod$8(TestMethodTestDescriptor.java:217)
+	at app//org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
+	at app//org.junit.jupiter.engine.descriptor.TestMethodTestDescriptor.invokeTestMethod(TestMethodTestDescriptor.java:213)
+	at app//org.junit.jupiter.engine.descriptor.TestMethodTestDescriptor.execute(TestMethodTestDescriptor.java:138)
+	at app//org.junit.jupiter.engine.descriptor.TestMethodTestDescriptor.execute(TestMethodTestDescriptor.java:68)
+	at app//org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$6(NodeTestTask.java:156)
+	at app//org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
+	at app//org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$8(NodeTestTask.java:146)
+	at app//org.junit.platform.engine.support.hierarchical.Node.around(Node.java:137)
+	at app//org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$9(NodeTestTask.java:144)
+	at app//org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
+	at app//org.junit.platform.engine.support.hierarchical.NodeTestTask.executeRecursively(NodeTestTask.java:143)
+	at app//org.junit.platform.engine.support.hierarchical.NodeTestTask.execute(NodeTestTask.java:100)
+	at java.base@17.0.18/java.util.ArrayList.forEach(ArrayList.java:1511)
+	at app//org.junit.platform.engine.support.hierarchical.SameThreadHierarchicalTestExecutorService.invokeAll(SameThreadHierarchicalTestExecutorService.java:41)
+	at app//org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$6(NodeTestTask.java:160)
+	at app//org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
+	at app//org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$8(NodeTestTask.java:146)
+	at app//org.junit.platform.engine.support.hierarchical.Node.around(Node.java:137)
+	at app//org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$9(NodeTestTask.java:144)
+	at app//org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
+	at app//org.junit.platform.engine.support.hierarchical.NodeTestTask.executeRecursively(NodeTestTask.java:143)
+	at app//org.junit.platform.engine.support.hierarchical.NodeTestTask.execute(NodeTestTask.java:100)
+	at java.base@17.0.18/java.util.ArrayList.forEach(ArrayList.java:1511)
+	at app//org.junit.platform.engine.support.hierarchical.SameThreadHierarchicalTestExecutorService.invokeAll(SameThreadHierarchicalTestExecutorService.java:41)
+	at app//org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$6(NodeTestTask.java:160)
+	at app//org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
+	at app//org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$8(NodeTestTask.java:146)
+	at app//org.junit.platform.engine.support.hierarchical.Node.around(Node.java:137)
+	at app//org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$9(NodeTestTask.java:144)
+	at app//org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
+	at app//org.junit.platform.engine.support.hierarchical.NodeTestTask.executeRecursively(NodeTestTask.java:143)
+	at app//org.junit.platform.engine.support.hierarchical.NodeTestTask.execute(NodeTestTask.java:100)
+	at app//org.junit.platform.engine.support.hierarchical.SameThreadHierarchicalTestExecutorService.submit(SameThreadHierarchicalTestExecutorService.java:35)
+	at app//org.junit.platform.engine.support.hierarchical.HierarchicalTestExecutor.execute(HierarchicalTestExecutor.java:57)
+	at app//org.junit.platform.engine.support.hierarchical.HierarchicalTestEngine.execute(HierarchicalTestEngine.java:54)
+	at app//org.junit.platform.launcher.core.EngineExecutionOrchestrator.execute(EngineExecutionOrchestrator.java:107)
+	at app//org.junit.platform.launcher.core.EngineExecutionOrchestrator.execute(EngineExecutionOrchestrator.java:88)
+	at app//org.junit.platform.launcher.core.EngineExecutionOrchestrator.lambda$execute$0(EngineExecutionOrchestrator.java:54)
+	at app//org.junit.platform.launcher.core.EngineExecutionOrchestrator.withInterceptedStreams(EngineExecutionOrchestrator.java:67)
+	at app//org.junit.platform.launcher.core.EngineExecutionOrchestrator.execute(EngineExecutionOrchestrator.java:52)
+	at app//org.junit.platform.launcher.core.DefaultLauncher.execute(DefaultLauncher.java:114)
+	at app//org.junit.platform.launcher.core.DefaultLauncher.execute(DefaultLauncher.java:86)
+	at app//org.junit.platform.launcher.core.DefaultLauncherSession$DelegatingLauncher.execute(DefaultLauncherSession.java:86)
+	at org.gradle.api.internal.tasks.testing.junitplatform.JUnitPlatformTestClassProcessor$CollectAllTestClassesExecutor.processAllTestClasses(JUnitPlatformTestClassProcessor.java:124)
+	at org.gradle.api.internal.tasks.testing.junitplatform.JUnitPlatformTestClassProcessor$CollectAllTestClassesExecutor.access$000(JUnitPlatformTestClassProcessor.java:99)
+	at org.gradle.api.internal.tasks.testing.junitplatform.JUnitPlatformTestClassProcessor.stop(JUnitPlatformTestClassProcessor.java:94)
+	at org.gradle.api.internal.tasks.testing.SuiteTestClassProcessor.stop(SuiteTestClassProcessor.java:63)
+	at java.base@17.0.18/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
+	at java.base@17.0.18/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:77)
+	at java.base@17.0.18/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+	at java.base@17.0.18/java.lang.reflect.Method.invoke(Method.java:569)
+	at org.gradle.internal.dispatch.ReflectionDispatch.dispatch(ReflectionDispatch.java:36)
+	at org.gradle.internal.dispatch.ReflectionDispatch.dispatch(ReflectionDispatch.java:24)
+	at org.gradle.internal.dispatch.ContextClassLoaderDispatch.dispatch(ContextClassLoaderDispatch.java:33)
+	at org.gradle.internal.dispatch.ProxyDispatchAdapter$DispatchingInvocationHandler.invoke(ProxyDispatchAdapter.java:92)
+	at jdk.proxy1/jdk.proxy1.$Proxy4.stop(Unknown Source)
+	at org.gradle.api.internal.tasks.testing.worker.TestWorker$3.run(TestWorker.java:200)
+	at org.gradle.api.internal.tasks.testing.worker.TestWorker.executeAndMaintainThreadName(TestWorker.java:132)
+	at org.gradle.api.internal.tasks.testing.worker.TestWorker.execute(TestWorker.java:103)
+	at org.gradle.api.internal.tasks.testing.worker.TestWorker.execute(TestWorker.java:63)
+	at org.gradle.process.internal.worker.child.ActionExecutionWorker.execute(ActionExecutionWorker.java:56)
+	at org.gradle.process.internal.worker.child.SystemApplicationClassLoaderWorker.call(SystemApplicationClassLoaderWorker.java:121)
+	at org.gradle.process.internal.worker.child.SystemApplicationClassLoaderWorker.call(SystemApplicationClassLoaderWorker.java:71)
+	at app//worker.org.gradle.process.internal.worker.GradleWorkerMain.run(GradleWorkerMain.java:69)
+	at app//worker.org.gradle.process.internal.worker.GradleWorkerMain.main(GradleWorkerMain.java:74)
+</failure>
+  </testcase>
+  <testcase name="시나리오 2: 같은 email 5회 동시 가입 → 1명만 성공, 에러 없이 처리" classname="com.shop.domain.user.service.UserConcurrencyTest" time="0.111">
+    <failure message="org.opentest4j.AssertionFailedError: [500 에러가 아닌 비즈니스 예외로 처리되어야 합니다: [시도#3: DataIntegrityViolationException - could not execute statement [ERROR: duplicate key value violates unique constraint &quot;users_email_key&quot;&#10;  Detail: Key (email)=(conctest_1770941287666_dup@test.com) already exists.] [insert into users (created_at,email,is_active,last_login_at,name,password_hash,phone,point_balance,role,tier_id,total_spent,updated_at,username) values (?,?,?,?,?,?,?,?,?,?,?,?,?)]; SQL [insert into users (created_at,email,is_active,last_login_at,name,password_hash,phone,point_balance,role,tier_id,total_spent,updated_at,username) values (?,?,?,?,?,?,?,?,?,?,?,?,?)]; constraint [users_email_key], 시도#5: DataIntegrityViolationException - could not execute statement [ERROR: duplicate key value violates unique constraint &quot;users_email_key&quot;&#10;  Detail: Key (email)=(conctest_1770941287666_dup@test.com) already exists.] [insert into users (created_at,email,is_active,last_login_at,name,password_hash,phone,point_balance,role,tier_id,total_spent,updated_at,username) values (?,?,?,?,?,?,?,?,?,?,?,?,?)]; SQL [insert into users (created_at,email,is_active,last_login_at,name,password_hash,phone,point_balance,role,tier_id,total_spent,updated_at,username) values (?,?,?,?,?,?,?,?,?,?,?,?,?)]; constraint [users_email_key], 시도#4: DataIntegrityViolationException - could not execute statement [ERROR: duplicate key value violates unique constraint &quot;users_email_key&quot;&#10;  Detail: Key (email)=(conctest_1770941287666_dup@test.com) already exists.] [insert into users (created_at,email,is_active,last_login_at,name,password_hash,phone,point_balance,role,tier_id,total_spent,updated_at,username) values (?,?,?,?,?,?,?,?,?,?,?,?,?)]; SQL [insert into users (created_at,email,is_active,last_login_at,name,password_hash,phone,point_balance,role,tier_id,total_spent,updated_at,username) values (?,?,?,?,?,?,?,?,?,?,?,?,?)]; constraint [users_email_key], 시도#2: DataIntegrityViolationException - could not execute statement [ERROR: duplicate key value violates unique constraint &quot;users_email_key&quot;&#10;  Detail: Key (email)=(conctest_1770941287666_dup@test.com) already exists.] [insert into users (created_at,email,is_active,last_login_at,name,password_hash,phone,point_balance,role,tier_id,total_spent,updated_at,username) values (?,?,?,?,?,?,?,?,?,?,?,?,?)]; SQL [insert into users (created_at,email,is_active,last_login_at,name,password_hash,phone,point_balance,role,tier_id,total_spent,updated_at,username) values (?,?,?,?,?,?,?,?,?,?,?,?,?)]; constraint [users_email_key]]] &#10;expected: 0&#10; but was: 4" type="org.opentest4j.AssertionFailedError">org.opentest4j.AssertionFailedError: [500 에러가 아닌 비즈니스 예외로 처리되어야 합니다: [시도#3: DataIntegrityViolationException - could not execute statement [ERROR: duplicate key value violates unique constraint &quot;users_email_key&quot;
+  Detail: Key (email)=(conctest_1770941287666_dup@test.com) already exists.] [insert into users (created_at,email,is_active,last_login_at,name,password_hash,phone,point_balance,role,tier_id,total_spent,updated_at,username) values (?,?,?,?,?,?,?,?,?,?,?,?,?)]; SQL [insert into users (created_at,email,is_active,last_login_at,name,password_hash,phone,point_balance,role,tier_id,total_spent,updated_at,username) values (?,?,?,?,?,?,?,?,?,?,?,?,?)]; constraint [users_email_key], 시도#5: DataIntegrityViolationException - could not execute statement [ERROR: duplicate key value violates unique constraint &quot;users_email_key&quot;
+  Detail: Key (email)=(conctest_1770941287666_dup@test.com) already exists.] [insert into users (created_at,email,is_active,last_login_at,name,password_hash,phone,point_balance,role,tier_id,total_spent,updated_at,username) values (?,?,?,?,?,?,?,?,?,?,?,?,?)]; SQL [insert into users (created_at,email,is_active,last_login_at,name,password_hash,phone,point_balance,role,tier_id,total_spent,updated_at,username) values (?,?,?,?,?,?,?,?,?,?,?,?,?)]; constraint [users_email_key], 시도#4: DataIntegrityViolationException - could not execute statement [ERROR: duplicate key value violates unique constraint &quot;users_email_key&quot;
+  Detail: Key (email)=(conctest_1770941287666_dup@test.com) already exists.] [insert into users (created_at,email,is_active,last_login_at,name,password_hash,phone,point_balance,role,tier_id,total_spent,updated_at,username) values (?,?,?,?,?,?,?,?,?,?,?,?,?)]; SQL [insert into users (created_at,email,is_active,last_login_at,name,password_hash,phone,point_balance,role,tier_id,total_spent,updated_at,username) values (?,?,?,?,?,?,?,?,?,?,?,?,?)]; constraint [users_email_key], 시도#2: DataIntegrityViolationException - could not execute statement [ERROR: duplicate key value violates unique constraint &quot;users_email_key&quot;
+  Detail: Key (email)=(conctest_1770941287666_dup@test.com) already exists.] [insert into users (created_at,email,is_active,last_login_at,name,password_hash,phone,point_balance,role,tier_id,total_spent,updated_at,username) values (?,?,?,?,?,?,?,?,?,?,?,?,?)]; SQL [insert into users (created_at,email,is_active,last_login_at,name,password_hash,phone,point_balance,role,tier_id,total_spent,updated_at,username) values (?,?,?,?,?,?,?,?,?,?,?,?,?)]; constraint [users_email_key]]] 
+expected: 0
+ but was: 4
+	at app//com.shop.domain.user.service.UserConcurrencyTest.duplicateEmail_signup(UserConcurrencyTest.java:239)
+	at java.base@17.0.18/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
+	at java.base@17.0.18/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:77)
+	at java.base@17.0.18/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+	at java.base@17.0.18/java.lang.reflect.Method.invoke(Method.java:569)
+	at app//org.junit.platform.commons.util.ReflectionUtils.invokeMethod(ReflectionUtils.java:767)
+	at app//org.junit.jupiter.engine.execution.MethodInvocation.proceed(MethodInvocation.java:60)
+	at app//org.junit.jupiter.engine.execution.InvocationInterceptorChain$ValidatingInvocation.proceed(InvocationInterceptorChain.java:131)
+	at app//org.junit.jupiter.engine.extension.TimeoutExtension.intercept(TimeoutExtension.java:156)
+	at app//org.junit.jupiter.engine.extension.TimeoutExtension.interceptTestableMethod(TimeoutExtension.java:147)
+	at app//org.junit.jupiter.engine.extension.TimeoutExtension.interceptTestMethod(TimeoutExtension.java:86)
+	at app//org.junit.jupiter.engine.execution.InterceptingExecutableInvoker$ReflectiveInterceptorCall.lambda$ofVoidMethod$0(InterceptingExecutableInvoker.java:103)
+	at app//org.junit.jupiter.engine.execution.InterceptingExecutableInvoker.lambda$invoke$0(InterceptingExecutableInvoker.java:93)
+	at app//org.junit.jupiter.engine.execution.InvocationInterceptorChain$InterceptedInvocation.proceed(InvocationInterceptorChain.java:106)
+	at app//org.junit.jupiter.engine.execution.InvocationInterceptorChain.proceed(InvocationInterceptorChain.java:64)
+	at app//org.junit.jupiter.engine.execution.InvocationInterceptorChain.chainAndInvoke(InvocationInterceptorChain.java:45)
+	at app//org.junit.jupiter.engine.execution.InvocationInterceptorChain.invoke(InvocationInterceptorChain.java:37)
+	at app//org.junit.jupiter.engine.execution.InterceptingExecutableInvoker.invoke(InterceptingExecutableInvoker.java:92)
+	at app//org.junit.jupiter.engine.execution.InterceptingExecutableInvoker.invoke(InterceptingExecutableInvoker.java:86)
+	at app//org.junit.jupiter.engine.descriptor.TestMethodTestDescriptor.lambda$invokeTestMethod$8(TestMethodTestDescriptor.java:217)
+	at app//org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
+	at app//org.junit.jupiter.engine.descriptor.TestMethodTestDescriptor.invokeTestMethod(TestMethodTestDescriptor.java:213)
+	at app//org.junit.jupiter.engine.descriptor.TestMethodTestDescriptor.execute(TestMethodTestDescriptor.java:138)
+	at app//org.junit.jupiter.engine.descriptor.TestMethodTestDescriptor.execute(TestMethodTestDescriptor.java:68)
+	at app//org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$6(NodeTestTask.java:156)
+	at app//org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
+	at app//org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$8(NodeTestTask.java:146)
+	at app//org.junit.platform.engine.support.hierarchical.Node.around(Node.java:137)
+	at app//org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$9(NodeTestTask.java:144)
+	at app//org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
+	at app//org.junit.platform.engine.support.hierarchical.NodeTestTask.executeRecursively(NodeTestTask.java:143)
+	at app//org.junit.platform.engine.support.hierarchical.NodeTestTask.execute(NodeTestTask.java:100)
+	at java.base@17.0.18/java.util.ArrayList.forEach(ArrayList.java:1511)
+	at app//org.junit.platform.engine.support.hierarchical.SameThreadHierarchicalTestExecutorService.invokeAll(SameThreadHierarchicalTestExecutorService.java:41)
+	at app//org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$6(NodeTestTask.java:160)
+	at app//org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
+	at app//org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$8(NodeTestTask.java:146)
+	at app//org.junit.platform.engine.support.hierarchical.Node.around(Node.java:137)
+	at app//org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$9(NodeTestTask.java:144)
+	at app//org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
+	at app//org.junit.platform.engine.support.hierarchical.NodeTestTask.executeRecursively(NodeTestTask.java:143)
+	at app//org.junit.platform.engine.support.hierarchical.NodeTestTask.execute(NodeTestTask.java:100)
+	at java.base@17.0.18/java.util.ArrayList.forEach(ArrayList.java:1511)
+	at app//org.junit.platform.engine.support.hierarchical.SameThreadHierarchicalTestExecutorService.invokeAll(SameThreadHierarchicalTestExecutorService.java:41)
+	at app//org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$6(NodeTestTask.java:160)
+	at app//org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
+	at app//org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$8(NodeTestTask.java:146)
+	at app//org.junit.platform.engine.support.hierarchical.Node.around(Node.java:137)
+	at app//org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$9(NodeTestTask.java:144)
+	at app//org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
+	at app//org.junit.platform.engine.support.hierarchical.NodeTestTask.executeRecursively(NodeTestTask.java:143)
+	at app//org.junit.platform.engine.support.hierarchical.NodeTestTask.execute(NodeTestTask.java:100)
+	at app//org.junit.platform.engine.support.hierarchical.SameThreadHierarchicalTestExecutorService.submit(SameThreadHierarchicalTestExecutorService.java:35)
+	at app//org.junit.platform.engine.support.hierarchical.HierarchicalTestExecutor.execute(HierarchicalTestExecutor.java:57)
+	at app//org.junit.platform.engine.support.hierarchical.HierarchicalTestEngine.execute(HierarchicalTestEngine.java:54)
+	at app//org.junit.platform.launcher.core.EngineExecutionOrchestrator.execute(EngineExecutionOrchestrator.java:107)
+	at app//org.junit.platform.launcher.core.EngineExecutionOrchestrator.execute(EngineExecutionOrchestrator.java:88)
+	at app//org.junit.platform.launcher.core.EngineExecutionOrchestrator.lambda$execute$0(EngineExecutionOrchestrator.java:54)
+	at app//org.junit.platform.launcher.core.EngineExecutionOrchestrator.withInterceptedStreams(EngineExecutionOrchestrator.java:67)
+	at app//org.junit.platform.launcher.core.EngineExecutionOrchestrator.execute(EngineExecutionOrchestrator.java:52)
+	at app//org.junit.platform.launcher.core.DefaultLauncher.execute(DefaultLauncher.java:114)
+	at app//org.junit.platform.launcher.core.DefaultLauncher.execute(DefaultLauncher.java:86)
+	at app//org.junit.platform.launcher.core.DefaultLauncherSession$DelegatingLauncher.execute(DefaultLauncherSession.java:86)
+	at org.gradle.api.internal.tasks.testing.junitplatform.JUnitPlatformTestClassProcessor$CollectAllTestClassesExecutor.processAllTestClasses(JUnitPlatformTestClassProcessor.java:124)
+	at org.gradle.api.internal.tasks.testing.junitplatform.JUnitPlatformTestClassProcessor$CollectAllTestClassesExecutor.access$000(JUnitPlatformTestClassProcessor.java:99)
+	at org.gradle.api.internal.tasks.testing.junitplatform.JUnitPlatformTestClassProcessor.stop(JUnitPlatformTestClassProcessor.java:94)
+	at org.gradle.api.internal.tasks.testing.SuiteTestClassProcessor.stop(SuiteTestClassProcessor.java:63)
+	at java.base@17.0.18/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
+	at java.base@17.0.18/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:77)
+	at java.base@17.0.18/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+	at java.base@17.0.18/java.lang.reflect.Method.invoke(Method.java:569)
+	at org.gradle.internal.dispatch.ReflectionDispatch.dispatch(ReflectionDispatch.java:36)
+	at org.gradle.internal.dispatch.ReflectionDispatch.dispatch(ReflectionDispatch.java:24)
+	at org.gradle.internal.dispatch.ContextClassLoaderDispatch.dispatch(ContextClassLoaderDispatch.java:33)
+	at org.gradle.internal.dispatch.ProxyDispatchAdapter$DispatchingInvocationHandler.invoke(ProxyDispatchAdapter.java:92)
+	at jdk.proxy1/jdk.proxy1.$Proxy4.stop(Unknown Source)
+	at org.gradle.api.internal.tasks.testing.worker.TestWorker$3.run(TestWorker.java:200)
+	at org.gradle.api.internal.tasks.testing.worker.TestWorker.executeAndMaintainThreadName(TestWorker.java:132)
+	at org.gradle.api.internal.tasks.testing.worker.TestWorker.execute(TestWorker.java:103)
+	at org.gradle.api.internal.tasks.testing.worker.TestWorker.execute(TestWorker.java:63)
+	at org.gradle.process.internal.worker.child.ActionExecutionWorker.execute(ActionExecutionWorker.java:56)
+	at org.gradle.process.internal.worker.child.SystemApplicationClassLoaderWorker.call(SystemApplicationClassLoaderWorker.java:121)
+	at org.gradle.process.internal.worker.child.SystemApplicationClassLoaderWorker.call(SystemApplicationClassLoaderWorker.java:71)
+	at app//worker.org.gradle.process.internal.worker.GradleWorkerMain.run(GradleWorkerMain.java:69)
+	at app//worker.org.gradle.process.internal.worker.GradleWorkerMain.main(GradleWorkerMain.java:74)
+</failure>
+  </testcase>
+  <testcase name="시나리오 3: 2명이 동시에 같은 이메일로 프로필 변경 → 1명만 성공" classname="com.shop.domain.user.service.UserConcurrencyTest" time="0.058">
+    <failure message="org.opentest4j.AssertionFailedError: [500 에러가 아닌 비즈니스 예외로 처리되어야 합니다: [UserB: DataIntegrityViolationException - could not execute batch [Batch entry 0 update users set created_at=('2026-02-13 09:08:12.762657+09'),email=('conctest_1770941287666_target@test.com'),is_active=('TRUE'::boolean),last_login_at=(NULL),name=('유저B'),password_hash=('hash'),phone=('010-0000-0002'),point_balance=('0'::int4),role=('ROLE_USER'),tier_id=('1'::int4),total_spent=('0.00'::numeric),updated_at=('2026-02-13 09:08:12.785572+09'),username=('conctest_1770941287666_profB') where user_id=('1000030'::int8) was aborted: ERROR: duplicate key value violates unique constraint &quot;users_email_key&quot;&#10;  Detail: Key (email)=(conctest_1770941287666_target@test.com) already exists.  Call getNextException to see other errors in the batch.] [update users set created_at=?,email=?,is_active=?,last_login_at=?,name=?,password_hash=?,phone=?,point_balance=?,role=?,tier_id=?,total_spent=?,updated_at=?,username=? where user_id=?]; SQL [update users set created_at=?,email=?,is_active=?,last_login_at=?,name=?,password_hash=?,phone=?,point_balance=?,role=?,tier_id=?,total_spent=?,updated_at=?,username=? where user_id=?]; constraint [users_email_key]]] &#10;expected: 0&#10; but was: 1" type="org.opentest4j.AssertionFailedError">org.opentest4j.AssertionFailedError: [500 에러가 아닌 비즈니스 예외로 처리되어야 합니다: [UserB: DataIntegrityViolationException - could not execute batch [Batch entry 0 update users set created_at=('2026-02-13 09:08:12.762657+09'),email=('conctest_1770941287666_target@test.com'),is_active=('TRUE'::boolean),last_login_at=(NULL),name=('유저B'),password_hash=('hash'),phone=('010-0000-0002'),point_balance=('0'::int4),role=('ROLE_USER'),tier_id=('1'::int4),total_spent=('0.00'::numeric),updated_at=('2026-02-13 09:08:12.785572+09'),username=('conctest_1770941287666_profB') where user_id=('1000030'::int8) was aborted: ERROR: duplicate key value violates unique constraint &quot;users_email_key&quot;
+  Detail: Key (email)=(conctest_1770941287666_target@test.com) already exists.  Call getNextException to see other errors in the batch.] [update users set created_at=?,email=?,is_active=?,last_login_at=?,name=?,password_hash=?,phone=?,point_balance=?,role=?,tier_id=?,total_spent=?,updated_at=?,username=? where user_id=?]; SQL [update users set created_at=?,email=?,is_active=?,last_login_at=?,name=?,password_hash=?,phone=?,point_balance=?,role=?,tier_id=?,total_spent=?,updated_at=?,username=? where user_id=?]; constraint [users_email_key]]] 
+expected: 0
+ but was: 1
+	at app//com.shop.domain.user.service.UserConcurrencyTest.emailRace_updateProfile(UserConcurrencyTest.java:364)
+	at java.base@17.0.18/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
+	at java.base@17.0.18/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:77)
+	at java.base@17.0.18/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+	at java.base@17.0.18/java.lang.reflect.Method.invoke(Method.java:569)
+	at app//org.junit.platform.commons.util.ReflectionUtils.invokeMethod(ReflectionUtils.java:767)
+	at app//org.junit.jupiter.engine.execution.MethodInvocation.proceed(MethodInvocation.java:60)
+	at app//org.junit.jupiter.engine.execution.InvocationInterceptorChain$ValidatingInvocation.proceed(InvocationInterceptorChain.java:131)
+	at app//org.junit.jupiter.engine.extension.TimeoutExtension.intercept(TimeoutExtension.java:156)
+	at app//org.junit.jupiter.engine.extension.TimeoutExtension.interceptTestableMethod(TimeoutExtension.java:147)
+	at app//org.junit.jupiter.engine.extension.TimeoutExtension.interceptTestMethod(TimeoutExtension.java:86)
+	at app//org.junit.jupiter.engine.execution.InterceptingExecutableInvoker$ReflectiveInterceptorCall.lambda$ofVoidMethod$0(InterceptingExecutableInvoker.java:103)
+	at app//org.junit.jupiter.engine.execution.InterceptingExecutableInvoker.lambda$invoke$0(InterceptingExecutableInvoker.java:93)
+	at app//org.junit.jupiter.engine.execution.InvocationInterceptorChain$InterceptedInvocation.proceed(InvocationInterceptorChain.java:106)
+	at app//org.junit.jupiter.engine.execution.InvocationInterceptorChain.proceed(InvocationInterceptorChain.java:64)
+	at app//org.junit.jupiter.engine.execution.InvocationInterceptorChain.chainAndInvoke(InvocationInterceptorChain.java:45)
+	at app//org.junit.jupiter.engine.execution.InvocationInterceptorChain.invoke(InvocationInterceptorChain.java:37)
+	at app//org.junit.jupiter.engine.execution.InterceptingExecutableInvoker.invoke(InterceptingExecutableInvoker.java:92)
+	at app//org.junit.jupiter.engine.execution.InterceptingExecutableInvoker.invoke(InterceptingExecutableInvoker.java:86)
+	at app//org.junit.jupiter.engine.descriptor.TestMethodTestDescriptor.lambda$invokeTestMethod$8(TestMethodTestDescriptor.java:217)
+	at app//org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
+	at app//org.junit.jupiter.engine.descriptor.TestMethodTestDescriptor.invokeTestMethod(TestMethodTestDescriptor.java:213)
+	at app//org.junit.jupiter.engine.descriptor.TestMethodTestDescriptor.execute(TestMethodTestDescriptor.java:138)
+	at app//org.junit.jupiter.engine.descriptor.TestMethodTestDescriptor.execute(TestMethodTestDescriptor.java:68)
+	at app//org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$6(NodeTestTask.java:156)
+	at app//org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
+	at app//org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$8(NodeTestTask.java:146)
+	at app//org.junit.platform.engine.support.hierarchical.Node.around(Node.java:137)
+	at app//org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$9(NodeTestTask.java:144)
+	at app//org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
+	at app//org.junit.platform.engine.support.hierarchical.NodeTestTask.executeRecursively(NodeTestTask.java:143)
+	at app//org.junit.platform.engine.support.hierarchical.NodeTestTask.execute(NodeTestTask.java:100)
+	at java.base@17.0.18/java.util.ArrayList.forEach(ArrayList.java:1511)
+	at app//org.junit.platform.engine.support.hierarchical.SameThreadHierarchicalTestExecutorService.invokeAll(SameThreadHierarchicalTestExecutorService.java:41)
+	at app//org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$6(NodeTestTask.java:160)
+	at app//org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
+	at app//org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$8(NodeTestTask.java:146)
+	at app//org.junit.platform.engine.support.hierarchical.Node.around(Node.java:137)
+	at app//org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$9(NodeTestTask.java:144)
+	at app//org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
+	at app//org.junit.platform.engine.support.hierarchical.NodeTestTask.executeRecursively(NodeTestTask.java:143)
+	at app//org.junit.platform.engine.support.hierarchical.NodeTestTask.execute(NodeTestTask.java:100)
+	at java.base@17.0.18/java.util.ArrayList.forEach(ArrayList.java:1511)
+	at app//org.junit.platform.engine.support.hierarchical.SameThreadHierarchicalTestExecutorService.invokeAll(SameThreadHierarchicalTestExecutorService.java:41)
+	at app//org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$6(NodeTestTask.java:160)
+	at app//org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
+	at app//org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$8(NodeTestTask.java:146)
+	at app//org.junit.platform.engine.support.hierarchical.Node.around(Node.java:137)
+	at app//org.junit.platform.engine.support.hierarchical.NodeTestTask.lambda$executeRecursively$9(NodeTestTask.java:144)
+	at app//org.junit.platform.engine.support.hierarchical.ThrowableCollector.execute(ThrowableCollector.java:73)
+	at app//org.junit.platform.engine.support.hierarchical.NodeTestTask.executeRecursively(NodeTestTask.java:143)
+	at app//org.junit.platform.engine.support.hierarchical.NodeTestTask.execute(NodeTestTask.java:100)
+	at app//org.junit.platform.engine.support.hierarchical.SameThreadHierarchicalTestExecutorService.submit(SameThreadHierarchicalTestExecutorService.java:35)
+	at app//org.junit.platform.engine.support.hierarchical.HierarchicalTestExecutor.execute(HierarchicalTestExecutor.java:57)
+	at app//org.junit.platform.engine.support.hierarchical.HierarchicalTestEngine.execute(HierarchicalTestEngine.java:54)
+	at app//org.junit.platform.launcher.core.EngineExecutionOrchestrator.execute(EngineExecutionOrchestrator.java:107)
+	at app//org.junit.platform.launcher.core.EngineExecutionOrchestrator.execute(EngineExecutionOrchestrator.java:88)
+	at app//org.junit.platform.launcher.core.EngineExecutionOrchestrator.lambda$execute$0(EngineExecutionOrchestrator.java:54)
+	at app//org.junit.platform.launcher.core.EngineExecutionOrchestrator.withInterceptedStreams(EngineExecutionOrchestrator.java:67)
+	at app//org.junit.platform.launcher.core.EngineExecutionOrchestrator.execute(EngineExecutionOrchestrator.java:52)
+	at app//org.junit.platform.launcher.core.DefaultLauncher.execute(DefaultLauncher.java:114)
+	at app//org.junit.platform.launcher.core.DefaultLauncher.execute(DefaultLauncher.java:86)
+	at app//org.junit.platform.launcher.core.DefaultLauncherSession$DelegatingLauncher.execute(DefaultLauncherSession.java:86)
+	at org.gradle.api.internal.tasks.testing.junitplatform.JUnitPlatformTestClassProcessor$CollectAllTestClassesExecutor.processAllTestClasses(JUnitPlatformTestClassProcessor.java:124)
+	at org.gradle.api.internal.tasks.testing.junitplatform.JUnitPlatformTestClassProcessor$CollectAllTestClassesExecutor.access$000(JUnitPlatformTestClassProcessor.java:99)
+	at org.gradle.api.internal.tasks.testing.junitplatform.JUnitPlatformTestClassProcessor.stop(JUnitPlatformTestClassProcessor.java:94)
+	at org.gradle.api.internal.tasks.testing.SuiteTestClassProcessor.stop(SuiteTestClassProcessor.java:63)
+	at java.base@17.0.18/jdk.internal.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
+	at java.base@17.0.18/jdk.internal.reflect.NativeMethodAccessorImpl.invoke(NativeMethodAccessorImpl.java:77)
+	at java.base@17.0.18/jdk.internal.reflect.DelegatingMethodAccessorImpl.invoke(DelegatingMethodAccessorImpl.java:43)
+	at java.base@17.0.18/java.lang.reflect.Method.invoke(Method.java:569)
+	at org.gradle.internal.dispatch.ReflectionDispatch.dispatch(ReflectionDispatch.java:36)
+	at org.gradle.internal.dispatch.ReflectionDispatch.dispatch(ReflectionDispatch.java:24)
+	at org.gradle.internal.dispatch.ContextClassLoaderDispatch.dispatch(ContextClassLoaderDispatch.java:33)
+	at org.gradle.internal.dispatch.ProxyDispatchAdapter$DispatchingInvocationHandler.invoke(ProxyDispatchAdapter.java:92)
+	at jdk.proxy1/jdk.proxy1.$Proxy4.stop(Unknown Source)
+	at org.gradle.api.internal.tasks.testing.worker.TestWorker$3.run(TestWorker.java:200)
+	at org.gradle.api.internal.tasks.testing.worker.TestWorker.executeAndMaintainThreadName(TestWorker.java:132)
+	at org.gradle.api.internal.tasks.testing.worker.TestWorker.execute(TestWorker.java:103)
+	at org.gradle.api.internal.tasks.testing.worker.TestWorker.execute(TestWorker.java:63)
+	at org.gradle.process.internal.worker.child.ActionExecutionWorker.execute(ActionExecutionWorker.java:56)
+	at org.gradle.process.internal.worker.child.SystemApplicationClassLoaderWorker.call(SystemApplicationClassLoaderWorker.java:121)
+	at org.gradle.process.internal.worker.child.SystemApplicationClassLoaderWorker.call(SystemApplicationClassLoaderWorker.java:71)
+	at app//worker.org.gradle.process.internal.worker.GradleWorkerMain.run(GradleWorkerMain.java:69)
+	at app//worker.org.gradle.process.internal.worker.GradleWorkerMain.main(GradleWorkerMain.java:74)
+</failure>
+  </testcase>
+  <system-out><![CDATA[09:08:07.526 [Test worker] INFO org.springframework.test.context.support.AnnotationConfigContextLoaderUtils -- Could not detect default configuration classes for test class [com.shop.domain.user.service.UserConcurrencyTest]: UserConcurrencyTest does not declare any static, non-private, non-final, nested classes annotated with @Configuration.
+09:08:07.607 [Test worker] INFO org.springframework.boot.test.context.SpringBootTestContextBootstrapper -- Found @SpringBootConfiguration com.shop.ShopApplication for test class com.shop.domain.user.service.UserConcurrencyTest
+
+  .   ____          _            __ _ _
+ /\\ / ___'_ __ _ _(_)_ __  __ _ \ \ \ \
+( ( )\___ | '_ | '_| | '_ \/ _` | \ \ \ \
+ \\/  ___)| |_)| | | | | || (_| |  ) ) ) )
+  '  |____| .__|_| |_|_| |_\__, | / / / /
+ =========|_|==============|___/=/_/_/_/
+
+ :: Spring Boot ::                (v3.4.1)
+
+2026-02-13T09:08:07.843+09:00  INFO 377006 --- [shopping-mall] [    Test worker] c.s.d.user.service.UserConcurrencyTest   : Starting UserConcurrencyTest using Java 17.0.18 with PID 377006 (started by admin0 in /home/admin0/shopping-mall)
+2026-02-13T09:08:07.844+09:00 DEBUG 377006 --- [shopping-mall] [    Test worker] c.s.d.user.service.UserConcurrencyTest   : Running with Spring Boot v3.4.1, Spring v6.2.1
+2026-02-13T09:08:07.845+09:00  INFO 377006 --- [shopping-mall] [    Test worker] c.s.d.user.service.UserConcurrencyTest   : No active profile set, falling back to 1 default profile: "default"
+2026-02-13T09:08:08.346+09:00  INFO 377006 --- [shopping-mall] [    Test worker] .s.d.r.c.RepositoryConfigurationDelegate : Bootstrapping Spring Data JPA repositories in DEFAULT mode.
+2026-02-13T09:08:08.403+09:00  INFO 377006 --- [shopping-mall] [    Test worker] .s.d.r.c.RepositoryConfigurationDelegate : Finished Spring Data repository scanning in 50 ms. Found 16 JPA repository interfaces.
+2026-02-13T09:08:08.771+09:00  INFO 377006 --- [shopping-mall] [    Test worker] o.hibernate.jpa.internal.util.LogHelper  : HHH000204: Processing PersistenceUnitInfo [name: default]
+2026-02-13T09:08:08.811+09:00  INFO 377006 --- [shopping-mall] [    Test worker] org.hibernate.Version                    : HHH000412: Hibernate ORM core version 6.6.4.Final
+2026-02-13T09:08:08.834+09:00  INFO 377006 --- [shopping-mall] [    Test worker] o.h.c.internal.RegionFactoryInitiator    : HHH000026: Second-level cache disabled
+2026-02-13T09:08:08.898+09:00  INFO 377006 --- [shopping-mall] [    Test worker] com.zaxxer.hikari.HikariDataSource       : HikariPool-1 - Starting...
+2026-02-13T09:08:09.079+09:00  INFO 377006 --- [shopping-mall] [    Test worker] com.zaxxer.hikari.pool.HikariPool        : HikariPool-1 - Added connection org.postgresql.jdbc.PgConnection@686e7513
+2026-02-13T09:08:09.080+09:00  INFO 377006 --- [shopping-mall] [    Test worker] com.zaxxer.hikari.HikariDataSource       : HikariPool-1 - Start completed.
+2026-02-13T09:08:09.104+09:00  WARN 377006 --- [shopping-mall] [    Test worker] org.hibernate.orm.deprecation            : HHH90000025: PostgreSQLDialect does not need to be specified explicitly using 'hibernate.dialect' (remove the property setting and it will be selected by default)
+2026-02-13T09:08:09.116+09:00  INFO 377006 --- [shopping-mall] [    Test worker] org.hibernate.orm.connections.pooling    : HHH10001005: Database info:
+	Database JDBC URL [Connecting through datasource 'HikariDataSource (HikariPool-1)']
+	Database driver: undefined/unknown
+	Database version: 16.11
+	Autocommit mode: undefined/unknown
+	Isolation level: undefined/unknown
+	Minimum pool size: undefined/unknown
+	Maximum pool size: undefined/unknown
+2026-02-13T09:08:09.237+09:00  INFO 377006 --- [shopping-mall] [    Test worker] o.s.o.j.p.SpringPersistenceUnitInfo      : No LoadTimeWeaver setup: ignoring JPA class transformer
+2026-02-13T09:08:09.887+09:00  INFO 377006 --- [shopping-mall] [    Test worker] o.h.e.t.j.p.i.JtaPlatformInitiator       : HHH000489: No JTA platform available (set 'hibernate.transaction.jta.platform' to enable JTA platform integration)
+2026-02-13T09:08:09.918+09:00  INFO 377006 --- [shopping-mall] [    Test worker] j.LocalContainerEntityManagerFactoryBean : Initialized JPA EntityManagerFactory for persistence unit 'default'
+2026-02-13T09:08:10.114+09:00  INFO 377006 --- [shopping-mall] [    Test worker] o.s.d.j.r.query.QueryEnhancerFactory     : Hibernate is in classpath; If applicable, HQL parser will be used.
+2026-02-13T09:08:11.369+09:00  INFO 377006 --- [shopping-mall] [    Test worker] eAuthenticationProviderManagerConfigurer : Global AuthenticationManager configured with AuthenticationProvider bean with name authenticationProvider
+2026-02-13T09:08:11.371+09:00  WARN 377006 --- [shopping-mall] [    Test worker] r$InitializeUserDetailsManagerConfigurer : Global AuthenticationManager configured with an AuthenticationProvider bean. UserDetailsService beans will not be used by Spring Security for automatically configuring username/password login. Consider removing the AuthenticationProvider bean. Alternatively, consider using the UserDetailsService in a manually instantiated DaoAuthenticationProvider. If the current configuration is intentional, to turn off this warning, increase the logging level of 'org.springframework.security.config.annotation.authentication.configuration.InitializeUserDetailsBeanManagerConfigurer' to ERROR
+2026-02-13T09:08:12.017+09:00  INFO 377006 --- [shopping-mall] [    Test worker] c.s.d.user.service.UserConcurrencyTest   : Started UserConcurrencyTest in 4.331 seconds (process running for 4.947)
+========================================
+[시나리오 1: 같은 username 동시 가입]
+  username: conctest_1770941287666_user
+========================================
+2026-02-13T09:08:12.571+09:00  WARN 377006 --- [shopping-mall] [pool-2-thread-5] o.h.engine.jdbc.spi.SqlExceptionHelper   : SQL Error: 0, SQLState: 23505
+2026-02-13T09:08:12.571+09:00  WARN 377006 --- [shopping-mall] [pool-2-thread-4] o.h.engine.jdbc.spi.SqlExceptionHelper   : SQL Error: 0, SQLState: 23505
+2026-02-13T09:08:12.571+09:00  WARN 377006 --- [shopping-mall] [pool-2-thread-1] o.h.engine.jdbc.spi.SqlExceptionHelper   : SQL Error: 0, SQLState: 23505
+2026-02-13T09:08:12.571+09:00  WARN 377006 --- [shopping-mall] [pool-2-thread-2] o.h.engine.jdbc.spi.SqlExceptionHelper   : SQL Error: 0, SQLState: 23505
+2026-02-13T09:08:12.571+09:00 ERROR 377006 --- [shopping-mall] [pool-2-thread-5] o.h.engine.jdbc.spi.SqlExceptionHelper   : ERROR: duplicate key value violates unique constraint "users_username_key"
+  Detail: Key (username)=(conctest_1770941287666_user) already exists.
+2026-02-13T09:08:12.571+09:00 ERROR 377006 --- [shopping-mall] [pool-2-thread-4] o.h.engine.jdbc.spi.SqlExceptionHelper   : ERROR: duplicate key value violates unique constraint "users_username_key"
+  Detail: Key (username)=(conctest_1770941287666_user) already exists.
+2026-02-13T09:08:12.571+09:00 ERROR 377006 --- [shopping-mall] [pool-2-thread-1] o.h.engine.jdbc.spi.SqlExceptionHelper   : ERROR: duplicate key value violates unique constraint "users_username_key"
+  Detail: Key (username)=(conctest_1770941287666_user) already exists.
+2026-02-13T09:08:12.572+09:00 ERROR 377006 --- [shopping-mall] [pool-2-thread-2] o.h.engine.jdbc.spi.SqlExceptionHelper   : ERROR: duplicate key value violates unique constraint "users_username_key"
+  Detail: Key (username)=(conctest_1770941287666_user) already exists.
+========================================
+[테스트 결과]
+  가입 성공:          1명
+  중복 실패:          0명
+  기타 실패:          4명
+  DB 사용자 수:       1명 (기대: 1명)
+  에러:
+    → 시도#2: DataIntegrityViolationException - could not execute statement [ERROR: duplicate key value violates unique constraint "users_username_key"
+  Detail: Key (username)=(conctest_1770941287666_user) already exists.] [insert into users (created_at,email,is_active,last_login_at,name,password_hash,phone,point_balance,role,tier_id,total_spent,updated_at,username) values (?,?,?,?,?,?,?,?,?,?,?,?,?)]; SQL [insert into users (created_at,email,is_active,last_login_at,name,password_hash,phone,point_balance,role,tier_id,total_spent,updated_at,username) values (?,?,?,?,?,?,?,?,?,?,?,?,?)]; constraint [users_username_key]
+    → 시도#1: DataIntegrityViolationException - could not execute statement [ERROR: duplicate key value violates unique constraint "users_username_key"
+  Detail: Key (username)=(conctest_1770941287666_user) already exists.] [insert into users (created_at,email,is_active,last_login_at,name,password_hash,phone,point_balance,role,tier_id,total_spent,updated_at,username) values (?,?,?,?,?,?,?,?,?,?,?,?,?)]; SQL [insert into users (created_at,email,is_active,last_login_at,name,password_hash,phone,point_balance,role,tier_id,total_spent,updated_at,username) values (?,?,?,?,?,?,?,?,?,?,?,?,?)]; constraint [users_username_key]
+    → 시도#5: DataIntegrityViolationException - could not execute statement [ERROR: duplicate key value violates unique constraint "users_username_key"
+  Detail: Key (username)=(conctest_1770941287666_user) already exists.] [insert into users (created_at,email,is_active,last_login_at,name,password_hash,phone,point_balance,role,tier_id,total_spent,updated_at,username) values (?,?,?,?,?,?,?,?,?,?,?,?,?)]; SQL [insert into users (created_at,email,is_active,last_login_at,name,password_hash,phone,point_balance,role,tier_id,total_spent,updated_at,username) values (?,?,?,?,?,?,?,?,?,?,?,?,?)]; constraint [users_username_key]
+    → 시도#4: DataIntegrityViolationException - could not execute statement [ERROR: duplicate key value violates unique constraint "users_username_key"
+  Detail: Key (username)=(conctest_1770941287666_user) already exists.] [insert into users (created_at,email,is_active,last_login_at,name,password_hash,phone,point_balance,role,tier_id,total_spent,updated_at,username) values (?,?,?,?,?,?,?,?,?,?,?,?,?)]; SQL [insert into users (created_at,email,is_active,last_login_at,name,password_hash,phone,point_balance,role,tier_id,total_spent,updated_at,username) values (?,?,?,?,?,?,?,?,?,?,?,?,?)]; constraint [users_username_key]
+========================================
+========================================
+[시나리오 2: 같은 email 동시 가입]
+  email: conctest_1770941287666_dup@test.com
+========================================
+2026-02-13T09:08:12.733+09:00  WARN 377006 --- [shopping-mall] [pool-3-thread-3] o.h.engine.jdbc.spi.SqlExceptionHelper   : SQL Error: 0, SQLState: 23505
+2026-02-13T09:08:12.734+09:00  WARN 377006 --- [shopping-mall] [pool-3-thread-4] o.h.engine.jdbc.spi.SqlExceptionHelper   : SQL Error: 0, SQLState: 23505
+2026-02-13T09:08:12.734+09:00 ERROR 377006 --- [shopping-mall] [pool-3-thread-3] o.h.engine.jdbc.spi.SqlExceptionHelper   : ERROR: duplicate key value violates unique constraint "users_email_key"
+  Detail: Key (email)=(conctest_1770941287666_dup@test.com) already exists.
+2026-02-13T09:08:12.734+09:00 ERROR 377006 --- [shopping-mall] [pool-3-thread-4] o.h.engine.jdbc.spi.SqlExceptionHelper   : ERROR: duplicate key value violates unique constraint "users_email_key"
+  Detail: Key (email)=(conctest_1770941287666_dup@test.com) already exists.
+2026-02-13T09:08:12.733+09:00  WARN 377006 --- [shopping-mall] [pool-3-thread-5] o.h.engine.jdbc.spi.SqlExceptionHelper   : SQL Error: 0, SQLState: 23505
+2026-02-13T09:08:12.734+09:00  WARN 377006 --- [shopping-mall] [pool-3-thread-2] o.h.engine.jdbc.spi.SqlExceptionHelper   : SQL Error: 0, SQLState: 23505
+2026-02-13T09:08:12.734+09:00 ERROR 377006 --- [shopping-mall] [pool-3-thread-2] o.h.engine.jdbc.spi.SqlExceptionHelper   : ERROR: duplicate key value violates unique constraint "users_email_key"
+  Detail: Key (email)=(conctest_1770941287666_dup@test.com) already exists.
+2026-02-13T09:08:12.734+09:00 ERROR 377006 --- [shopping-mall] [pool-3-thread-5] o.h.engine.jdbc.spi.SqlExceptionHelper   : ERROR: duplicate key value violates unique constraint "users_email_key"
+  Detail: Key (email)=(conctest_1770941287666_dup@test.com) already exists.
+========================================
+[테스트 결과]
+  가입 성공:          1명
+  중복 실패:          0명
+  기타 실패:          4명
+  DB 사용자 수:       1명 (기대: 1명)
+  에러:
+    → 시도#3: DataIntegrityViolationException - could not execute statement [ERROR: duplicate key value violates unique constraint "users_email_key"
+  Detail: Key (email)=(conctest_1770941287666_dup@test.com) already exists.] [insert into users (created_at,email,is_active,last_login_at,name,password_hash,phone,point_balance,role,tier_id,total_spent,updated_at,username) values (?,?,?,?,?,?,?,?,?,?,?,?,?)]; SQL [insert into users (created_at,email,is_active,last_login_at,name,password_hash,phone,point_balance,role,tier_id,total_spent,updated_at,username) values (?,?,?,?,?,?,?,?,?,?,?,?,?)]; constraint [users_email_key]
+    → 시도#5: DataIntegrityViolationException - could not execute statement [ERROR: duplicate key value violates unique constraint "users_email_key"
+  Detail: Key (email)=(conctest_1770941287666_dup@test.com) already exists.] [insert into users (created_at,email,is_active,last_login_at,name,password_hash,phone,point_balance,role,tier_id,total_spent,updated_at,username) values (?,?,?,?,?,?,?,?,?,?,?,?,?)]; SQL [insert into users (created_at,email,is_active,last_login_at,name,password_hash,phone,point_balance,role,tier_id,total_spent,updated_at,username) values (?,?,?,?,?,?,?,?,?,?,?,?,?)]; constraint [users_email_key]
+    → 시도#4: DataIntegrityViolationException - could not execute statement [ERROR: duplicate key value violates unique constraint "users_email_key"
+  Detail: Key (email)=(conctest_1770941287666_dup@test.com) already exists.] [insert into users (created_at,email,is_active,last_login_at,name,password_hash,phone,point_balance,role,tier_id,total_spent,updated_at,username) values (?,?,?,?,?,?,?,?,?,?,?,?,?)]; SQL [insert into users (created_at,email,is_active,last_login_at,name,password_hash,phone,point_balance,role,tier_id,total_spent,updated_at,username) values (?,?,?,?,?,?,?,?,?,?,?,?,?)]; constraint [users_email_key]
+    → 시도#2: DataIntegrityViolationException - could not execute statement [ERROR: duplicate key value violates unique constraint "users_email_key"
+  Detail: Key (email)=(conctest_1770941287666_dup@test.com) already exists.] [insert into users (created_at,email,is_active,last_login_at,name,password_hash,phone,point_balance,role,tier_id,total_spent,updated_at,username) values (?,?,?,?,?,?,?,?,?,?,?,?,?)]; SQL [insert into users (created_at,email,is_active,last_login_at,name,password_hash,phone,point_balance,role,tier_id,total_spent,updated_at,username) values (?,?,?,?,?,?,?,?,?,?,?,?,?)]; constraint [users_email_key]
+========================================
+========================================
+[시나리오 3: 이메일 경합 프로필 변경]
+  User A: ID=1000029, email=conctest_1770941287666_a_orig@test.com
+  User B: ID=1000030, email=conctest_1770941287666_b_orig@test.com
+  Target email: conctest_1770941287666_target@test.com
+========================================
+2026-02-13T09:08:12.802+09:00  INFO 377006 --- [shopping-mall] [pool-4-thread-2] org.hibernate.orm.jdbc.batch             : HHH100503: On release of batch it still contained JDBC statements
+2026-02-13T09:08:12.803+09:00  WARN 377006 --- [shopping-mall] [pool-4-thread-2] o.h.engine.jdbc.spi.SqlExceptionHelper   : SQL Error: 0, SQLState: 23505
+2026-02-13T09:08:12.803+09:00 ERROR 377006 --- [shopping-mall] [pool-4-thread-2] o.h.engine.jdbc.spi.SqlExceptionHelper   : Batch entry 0 update users set created_at=('2026-02-13 09:08:12.762657+09'),email=('conctest_1770941287666_target@test.com'),is_active=('TRUE'::boolean),last_login_at=(NULL),name=('유저B'),password_hash=('hash'),phone=('010-0000-0002'),point_balance=('0'::int4),role=('ROLE_USER'),tier_id=('1'::int4),total_spent=('0.00'::numeric),updated_at=('2026-02-13 09:08:12.785572+09'),username=('conctest_1770941287666_profB') where user_id=('1000030'::int8) was aborted: ERROR: duplicate key value violates unique constraint "users_email_key"
+  Detail: Key (email)=(conctest_1770941287666_target@test.com) already exists.  Call getNextException to see other errors in the batch.
+2026-02-13T09:08:12.803+09:00 ERROR 377006 --- [shopping-mall] [pool-4-thread-2] o.h.engine.jdbc.spi.SqlExceptionHelper   : ERROR: duplicate key value violates unique constraint "users_email_key"
+  Detail: Key (email)=(conctest_1770941287666_target@test.com) already exists.
+========================================
+[테스트 결과]
+  변경 성공: 1명
+  중복 실패: 0명
+  기타 실패: 1명
+  target email 보유자 수: 1명 (기대: 1명)
+  에러:
+    → UserB: DataIntegrityViolationException - could not execute batch [Batch entry 0 update users set created_at=('2026-02-13 09:08:12.762657+09'),email=('conctest_1770941287666_target@test.com'),is_active=('TRUE'::boolean),last_login_at=(NULL),name=('유저B'),password_hash=('hash'),phone=('010-0000-0002'),point_balance=('0'::int4),role=('ROLE_USER'),tier_id=('1'::int4),total_spent=('0.00'::numeric),updated_at=('2026-02-13 09:08:12.785572+09'),username=('conctest_1770941287666_profB') where user_id=('1000030'::int8) was aborted: ERROR: duplicate key value violates unique constraint "users_email_key"
+  Detail: Key (email)=(conctest_1770941287666_target@test.com) already exists.  Call getNextException to see other errors in the batch.] [update users set created_at=?,email=?,is_active=?,last_login_at=?,name=?,password_hash=?,phone=?,point_balance=?,role=?,tier_id=?,total_spent=?,updated_at=?,username=? where user_id=?]; SQL [update users set created_at=?,email=?,is_active=?,last_login_at=?,name=?,password_hash=?,phone=?,point_balance=?,role=?,tier_id=?,total_spent=?,updated_at=?,username=? where user_id=?]; constraint [users_email_key]
+========================================
+]]></system-out>
+  <system-err><![CDATA[]]></system-err>
+</testsuite>

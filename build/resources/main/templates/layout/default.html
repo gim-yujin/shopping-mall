@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org"
+      xmlns:layout="http://www.ultraq.net.nz/thymeleaf/layout"
+      xmlns:sec="http://www.thymeleaf.org/extras/spring-security">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title layout:title-pattern="$CONTENT_TITLE - 쇼핑몰">쇼핑몰</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <meta name="_csrf" th:content="${_csrf.token}">
+    <meta name="_csrf_header" th:content="${_csrf.headerName}">
+    <style>
+        [x-cloak] { display: none !important; }
+        .line-clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+    </style>
+</head>
+<body class="bg-gray-50 min-h-screen flex flex-col">
+
+<!-- Header -->
+<header class="bg-white shadow-sm sticky top-0 z-50">
+    <div class="max-w-7xl mx-auto px-4">
+        <!-- Top Bar -->
+        <div class="flex items-center justify-between h-16">
+            <!-- Logo -->
+            <a th:href="@{/}" class="text-2xl font-bold text-indigo-600 flex items-center gap-2">
+                <svg class="w-8 h-8" fill="currentColor" viewBox="0 0 24 24"><path d="M7 18c-1.1 0-1.99.9-1.99 2S5.9 22 7 22s2-.9 2-2-.9-2-2-2zM1 2v2h2l3.6 7.59-1.35 2.45c-.16.28-.25.61-.25.96 0 1.1.9 2 2 2h12v-2H7.42c-.14 0-.25-.11-.25-.25l.03-.12.9-1.63h7.45c.75 0 1.41-.41 1.75-1.03l3.58-6.49A1.003 1.003 0 0020 4H5.21l-.94-2H1zm16 16c-1.1 0-1.99.9-1.99 2s.89 2 1.99 2 2-.9 2-2-.9-2-2-2z"/></svg>
+                ShopMall
+            </a>
+
+            <!-- Search Bar -->
+            <form th:action="@{/search}" method="get" class="flex-1 max-w-xl mx-8">
+                <div class="relative">
+                    <input type="text" name="q" placeholder="상품을 검색해보세요"
+                           th:value="${keyword}"
+                           class="w-full pl-4 pr-12 py-2.5 border border-gray-300 rounded-full focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition">
+                    <button type="submit" class="absolute right-1 top-1/2 -translate-y-1/2 bg-indigo-600 text-white p-2 rounded-full hover:bg-indigo-700 transition">
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+                    </button>
+                </div>
+            </form>
+
+            <!-- User Actions -->
+            <div class="flex items-center gap-4">
+                <div sec:authorize="isAuthenticated()" class="flex items-center gap-4">
+                    <a th:href="@{/mypage}" class="text-gray-600 hover:text-indigo-600 flex flex-col items-center text-xs">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
+                        마이페이지
+                    </a>
+                    <a th:href="@{/wishlist}" class="text-gray-600 hover:text-indigo-600 flex flex-col items-center text-xs">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/></svg>
+                        찜목록
+                    </a>
+                    <a th:href="@{/cart}" class="text-gray-600 hover:text-indigo-600 flex flex-col items-center text-xs relative">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 100 4 2 2 0 000-4z"/></svg>
+                        장바구니
+                    </a>
+                    <a th:href="@{/orders}" class="text-gray-600 hover:text-indigo-600 flex flex-col items-center text-xs">
+                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+                        주문내역
+                    </a>
+                    <form th:action="@{/auth/logout}" method="post" class="inline">
+                        <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}">
+                        <button type="submit" class="text-gray-500 hover:text-red-500 text-xs flex flex-col items-center">
+                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
+                            로그아웃
+                        </button>
+                    </form>
+                    <a sec:authorize="hasRole('ADMIN')" th:href="@{/admin}"
+                       class="bg-red-500 text-white px-3 py-1 rounded text-xs font-medium hover:bg-red-600">Admin</a>
+                </div>
+                <div sec:authorize="isAnonymous()" class="flex items-center gap-3">
+                    <a th:href="@{/auth/login}" class="text-gray-600 hover:text-indigo-600 text-sm font-medium">로그인</a>
+                    <a th:href="@{/auth/signup}" class="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-indigo-700 transition">회원가입</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</header>
+
+<!-- Flash Messages -->
+<div th:if="${successMessage}" class="max-w-7xl mx-auto px-4 mt-4">
+    <div class="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg flex justify-between items-center">
+        <span th:text="${successMessage}"></span>
+        <button onclick="this.parentElement.remove()" class="text-green-500 hover:text-green-700">&times;</button>
+    </div>
+</div>
+<div th:if="${errorMessage}" class="max-w-7xl mx-auto px-4 mt-4">
+    <div class="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg flex justify-between items-center">
+        <span th:text="${errorMessage}"></span>
+        <button onclick="this.parentElement.remove()" class="text-red-500 hover:text-red-700">&times;</button>
+    </div>
+</div>
+
+<!-- Content -->
+<main class="flex-1">
+    <div layout:fragment="content"></div>
+</main>
+
+<!-- Footer -->
+<footer class="bg-gray-800 text-gray-400 mt-16">
+    <div class="max-w-7xl mx-auto px-4 py-12">
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-8">
+            <div>
+                <h3 class="text-white font-bold text-lg mb-4">ShopMall</h3>
+                <p class="text-sm">대규모 트래픽 처리를 위한 고성능 쇼핑몰 플랫폼</p>
+            </div>
+            <div>
+                <h4 class="text-white font-semibold mb-3">고객센터</h4>
+                <p class="text-sm">평일 09:00 ~ 18:00</p>
+                <p class="text-sm">전화: 1588-0000</p>
+                <p class="text-sm">이메일: help@shopmall.com</p>
+            </div>
+            <div>
+                <h4 class="text-white font-semibold mb-3">쇼핑 안내</h4>
+                <ul class="space-y-1 text-sm">
+                    <li><a href="#" class="hover:text-white">이용약관</a></li>
+                    <li><a href="#" class="hover:text-white">개인정보처리방침</a></li>
+                    <li><a href="#" class="hover:text-white">배송/반품 안내</a></li>
+                </ul>
+            </div>
+            <div>
+                <h4 class="text-white font-semibold mb-3">결제 수단</h4>
+                <p class="text-sm">신용카드, 계좌이체, 카카오페이, 네이버페이, 페이코</p>
+            </div>
+        </div>
+        <div class="border-t border-gray-700 mt-8 pt-8 text-center text-sm">
+            © 2024 ShopMall. All rights reserved.
+        </div>
+    </div>
+</footer>
+
+</body>
+</html>
