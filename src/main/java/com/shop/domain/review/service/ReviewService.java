@@ -5,18 +5,15 @@ import com.shop.domain.product.repository.ProductRepository;
 import com.shop.domain.review.dto.ReviewCreateRequest;
 import com.shop.domain.review.entity.Review;
 import com.shop.domain.review.repository.ReviewRepository;
-import com.shop.domain.review.entity.ReviewHelpful;
 import com.shop.domain.review.repository.ReviewHelpfulRepository;
 import com.shop.global.exception.BusinessException;
 import com.shop.global.exception.ResourceNotFoundException;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
-import java.util.Optional;
 import java.util.Set;
 
 @Service
@@ -82,23 +79,19 @@ public class ReviewService {
             throw new BusinessException("SELF_HELPFUL", "본인의 리뷰에는 도움이 돼요를 누를 수 없습니다.");
         }
 
-        // 이미 눌렀으면 취소 (토글)
-        Optional<ReviewHelpful> existing = reviewHelpfulRepository.findByReviewIdAndUserId(reviewId, userId);
-        if (existing.isPresent()) {
-            reviewHelpfulRepository.delete(existing.get());
+        // 1단계: 삭제 시도 (이미 눌렀으면 취소)
+        int deleted = reviewHelpfulRepository.deleteByReviewIdAndUserIdNative(reviewId, userId);
+        if (deleted > 0) {
             reviewRepository.decrementHelpfulCount(reviewId);
             return false; // 취소됨
         }
 
-        // 새로 누르기 — UNIQUE 제약으로 동시 중복 INSERT 방지
-        try {
-            reviewHelpfulRepository.save(new ReviewHelpful(reviewId, userId));
+        // 2단계: 삽입 시도 (ON CONFLICT DO NOTHING → UNIQUE 위반 시 예외 없이 0 반환)
+        int inserted = reviewHelpfulRepository.insertIgnoreConflict(reviewId, userId);
+        if (inserted > 0) {
             reviewRepository.incrementHelpfulCount(reviewId);
-            return true; // 추가됨
-        } catch (DataIntegrityViolationException e) {
-            // 동시 요청으로 UNIQUE 위반 시 무시 (이미 등록됨)
-            return true;
         }
+        return true; // 추가됨 (또는 이미 존재)
     }
 
     public Set<Long> getHelpedReviewIds(Long userId, Set<Long> reviewIds) {

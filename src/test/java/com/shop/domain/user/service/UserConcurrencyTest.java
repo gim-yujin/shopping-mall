@@ -4,6 +4,7 @@ import com.shop.domain.user.dto.SignupRequest;
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.TestPropertySource;
 
@@ -16,20 +17,16 @@ import static org.assertj.core.api.Assertions.assertThat;
 /**
  * 회원가입 동시성 테스트
  *
- * 시나리오 1 — 같은 username으로 동시 가입 (Duplicate Username)
- *   5개 스레드가 동시에 같은 username으로 signup 호출
- *   위험: existsByUsername() 통과 후 INSERT → UNIQUE 위반 → 500 에러
- *   기대: 1명만 가입 성공, 나머지는 비즈니스 예외 처리
+ * 회원가입/프로필 변경의 UNIQUE 중복은 이전 서비스(쿠폰, 장바구니)와 성격이 다르다:
+ * - 쿠폰/장바구니: 금전/수량 영향 → 서비스 레이어 직렬화 필수
+ * - 회원가입: 순수 유일성 검증 → UNIQUE 제약이 데이터 보호, GlobalExceptionHandler가 500→409 변환
  *
- * 시나리오 2 — 같은 email로 동시 가입 (Duplicate Email)
- *   5개 스레드가 동시에 같은 email(다른 username)으로 signup 호출
- *   위험: existsByEmail() 통과 후 INSERT → UNIQUE 위반 → 500 에러
- *   기대: 1명만 가입 성공, 나머지는 비즈니스 예외 처리
+ * 이 테스트는 서비스 레이어를 직접 호출하므로 GlobalExceptionHandler를 거치지 않는다.
+ * 따라서 DataIntegrityViolationException은 "GlobalExceptionHandler가 처리할 중복"으로 분류한다.
  *
- * 시나리오 3 — 다른 사용자가 동시에 같은 이메일로 프로필 변경 (Email Race)
- *   2명의 사용자가 동시에 같은 이메일로 updateProfile 호출
- *   위험: existsByEmail() 통과 후 UPDATE → UNIQUE 위반 → 500 에러
- *   기대: 1명만 변경 성공
+ * 검증 포인트:
+ * ① 데이터 무결성 — DB에 정확히 1건만 존재
+ * ② 에러 분류 — 모든 실패가 "중복 관련"이며 알 수 없는 에러가 없음
  */
 @SpringBootTest
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
@@ -47,13 +44,29 @@ class UserConcurrencyTest {
 
     private static final String TEST_PREFIX = "conctest_" + System.currentTimeMillis();
 
+    /**
+     * 중복 관련 예외인지 판별.
+     * - BusinessException("이미 사용 중인"): 서비스 레이어에서 existsBy()가 잡은 경우
+     * - DataIntegrityViolationException: 동시 요청으로 existsBy() 통과 후 UNIQUE 위반 → GlobalExceptionHandler가 409 처리
+     */
+    private boolean isDuplicateException(Exception e) {
+        String msg = e.getMessage();
+        if (msg != null && msg.contains("이미 사용 중인")) {
+            return true;  // 서비스 레이어에서 감지
+        }
+        if (e instanceof DataIntegrityViolationException) {
+            return true;  // GlobalExceptionHandler에서 409로 변환됨
+        }
+        return false;
+    }
+
     // =========================================================================
     // 시나리오 1: 같은 username으로 동시 가입
     // =========================================================================
 
     @Test
     @Order(1)
-    @DisplayName("시나리오 1: 같은 username 5회 동시 가입 → 1명만 성공, 에러 없이 처리")
+    @DisplayName("시나리오 1: 같은 username 5회 동시 가입 → 1명만 DB에 존재, 나머지는 중복 처리")
     void duplicateUsername_signup() throws InterruptedException {
         String username = TEST_PREFIX + "_user";
         String baseEmail = TEST_PREFIX + "_u";
@@ -70,13 +83,13 @@ class UserConcurrencyTest {
         CountDownLatch done = new CountDownLatch(threadCount);
 
         AtomicInteger successCount = new AtomicInteger(0);
-        AtomicInteger duplicateFailCount = new AtomicInteger(0);
-        AtomicInteger otherFailCount = new AtomicInteger(0);
+        AtomicInteger serviceCheckCount = new AtomicInteger(0);     // existsBy()에서 잡힌 중복
+        AtomicInteger constraintCheckCount = new AtomicInteger(0);  // UNIQUE 위반 → GlobalExceptionHandler 처리
+        AtomicInteger unknownFailCount = new AtomicInteger(0);
         List<String> errors = Collections.synchronizedList(new ArrayList<>());
 
         for (int i = 0; i < threadCount; i++) {
             final int attempt = i + 1;
-            // 같은 username, 다른 email
             final SignupRequest request = new SignupRequest(
                     username,
                     baseEmail + attempt + "@test.com",
@@ -91,12 +104,13 @@ class UserConcurrencyTest {
                     userService.signup(request);
                     successCount.incrementAndGet();
                 } catch (Exception e) {
-                    String msg = e.getMessage();
-                    if (msg != null && msg.contains("이미 사용 중인")) {
-                        duplicateFailCount.incrementAndGet();
+                    if (e instanceof DataIntegrityViolationException) {
+                        constraintCheckCount.incrementAndGet();
+                    } else if (e.getMessage() != null && e.getMessage().contains("이미 사용 중인")) {
+                        serviceCheckCount.incrementAndGet();
                     } else {
-                        otherFailCount.incrementAndGet();
-                        errors.add("시도#" + attempt + ": " + e.getClass().getSimpleName() + " - " + msg);
+                        unknownFailCount.incrementAndGet();
+                        errors.add("시도#" + attempt + ": " + e.getClass().getSimpleName() + " - " + e.getMessage());
                     }
                 } finally {
                     done.countDown();
@@ -115,10 +129,11 @@ class UserConcurrencyTest {
 
         System.out.println("========================================");
         System.out.println("[테스트 결과]");
-        System.out.println("  가입 성공:          " + successCount.get() + "명");
-        System.out.println("  중복 실패:          " + duplicateFailCount.get() + "명");
-        System.out.println("  기타 실패:          " + otherFailCount.get() + "명");
-        System.out.println("  DB 사용자 수:       " + userCount + "명 (기대: 1명)");
+        System.out.println("  가입 성공:                " + successCount.get() + "명");
+        System.out.println("  서비스 레이어 중복 감지:  " + serviceCheckCount.get() + "회 (existsBy)");
+        System.out.println("  DB UNIQUE 중복 감지:      " + constraintCheckCount.get() + "회 (→ GlobalExceptionHandler → 409)");
+        System.out.println("  알 수 없는 실패:          " + unknownFailCount.get() + "회");
+        System.out.println("  DB 사용자 수:             " + userCount + "명 (기대: 1명)");
         if (!errors.isEmpty()) {
             System.out.println("  에러:");
             errors.forEach(e -> System.out.println("    → " + e));
@@ -128,19 +143,19 @@ class UserConcurrencyTest {
         // 정리
         jdbcTemplate.update("DELETE FROM users WHERE username = ?", username);
 
-        // ① 정확히 1명만 DB에 존재
+        // ① 데이터 무결성: 정확히 1명만 DB에 존재
         assertThat(userCount)
                 .as("같은 username으로 1명만 가입되어야 합니다 (현재: %d명)", userCount)
                 .isEqualTo(1);
 
-        // ② 기타 예외 없음 (DataIntegrityViolationException 등 500 에러 없어야 함)
-        assertThat(otherFailCount.get())
-                .as("500 에러가 아닌 비즈니스 예외로 처리되어야 합니다: %s", errors)
+        // ② 알 수 없는 에러 없음
+        assertThat(unknownFailCount.get())
+                .as("중복 이외의 알 수 없는 에러가 없어야 합니다: %s", errors)
                 .isEqualTo(0);
 
-        // ③ 성공 1 + 중복 실패 4 = 총 5
-        assertThat(successCount.get() + duplicateFailCount.get())
-                .as("성공(1) + 중복실패(4) = 총 시도(5)여야 합니다")
+        // ③ 모든 시도가 성공 또는 중복 처리
+        assertThat(successCount.get() + serviceCheckCount.get() + constraintCheckCount.get())
+                .as("성공 + 중복감지 = 총 시도 수")
                 .isEqualTo(threadCount);
     }
 
@@ -150,7 +165,7 @@ class UserConcurrencyTest {
 
     @Test
     @Order(2)
-    @DisplayName("시나리오 2: 같은 email 5회 동시 가입 → 1명만 성공, 에러 없이 처리")
+    @DisplayName("시나리오 2: 같은 email 5회 동시 가입 → 1명만 DB에 존재, 나머지는 중복 처리")
     void duplicateEmail_signup() throws InterruptedException {
         String email = TEST_PREFIX + "_dup@test.com";
         String baseUsername = TEST_PREFIX + "_email";
@@ -167,13 +182,13 @@ class UserConcurrencyTest {
         CountDownLatch done = new CountDownLatch(threadCount);
 
         AtomicInteger successCount = new AtomicInteger(0);
-        AtomicInteger duplicateFailCount = new AtomicInteger(0);
-        AtomicInteger otherFailCount = new AtomicInteger(0);
+        AtomicInteger serviceCheckCount = new AtomicInteger(0);
+        AtomicInteger constraintCheckCount = new AtomicInteger(0);
+        AtomicInteger unknownFailCount = new AtomicInteger(0);
         List<String> errors = Collections.synchronizedList(new ArrayList<>());
 
         for (int i = 0; i < threadCount; i++) {
             final int attempt = i + 1;
-            // 다른 username, 같은 email
             final SignupRequest request = new SignupRequest(
                     baseUsername + attempt,
                     email,
@@ -188,12 +203,13 @@ class UserConcurrencyTest {
                     userService.signup(request);
                     successCount.incrementAndGet();
                 } catch (Exception e) {
-                    String msg = e.getMessage();
-                    if (msg != null && msg.contains("이미 사용 중인")) {
-                        duplicateFailCount.incrementAndGet();
+                    if (e instanceof DataIntegrityViolationException) {
+                        constraintCheckCount.incrementAndGet();
+                    } else if (e.getMessage() != null && e.getMessage().contains("이미 사용 중인")) {
+                        serviceCheckCount.incrementAndGet();
                     } else {
-                        otherFailCount.incrementAndGet();
-                        errors.add("시도#" + attempt + ": " + e.getClass().getSimpleName() + " - " + msg);
+                        unknownFailCount.incrementAndGet();
+                        errors.add("시도#" + attempt + ": " + e.getClass().getSimpleName() + " - " + e.getMessage());
                     }
                 } finally {
                     done.countDown();
@@ -212,30 +228,31 @@ class UserConcurrencyTest {
 
         System.out.println("========================================");
         System.out.println("[테스트 결과]");
-        System.out.println("  가입 성공:          " + successCount.get() + "명");
-        System.out.println("  중복 실패:          " + duplicateFailCount.get() + "명");
-        System.out.println("  기타 실패:          " + otherFailCount.get() + "명");
-        System.out.println("  DB 사용자 수:       " + userCount + "명 (기대: 1명)");
+        System.out.println("  가입 성공:                " + successCount.get() + "명");
+        System.out.println("  서비스 레이어 중복 감지:  " + serviceCheckCount.get() + "회 (existsBy)");
+        System.out.println("  DB UNIQUE 중복 감지:      " + constraintCheckCount.get() + "회 (→ GlobalExceptionHandler → 409)");
+        System.out.println("  알 수 없는 실패:          " + unknownFailCount.get() + "회");
+        System.out.println("  DB 사용자 수:             " + userCount + "명 (기대: 1명)");
         if (!errors.isEmpty()) {
             System.out.println("  에러:");
             errors.forEach(e -> System.out.println("    → " + e));
         }
         System.out.println("========================================");
 
-        // 정리 — 테스트에서 생성된 모든 사용자 삭제
+        // 정리
         jdbcTemplate.update("DELETE FROM users WHERE email = ?", email);
         for (int i = 1; i <= threadCount; i++) {
             jdbcTemplate.update("DELETE FROM users WHERE username = ?", baseUsername + i);
         }
 
-        // ① 정확히 1명만 DB에 존재
+        // ① 데이터 무결성: 정확히 1명만 DB에 존재
         assertThat(userCount)
                 .as("같은 email로 1명만 가입되어야 합니다 (현재: %d명)", userCount)
                 .isEqualTo(1);
 
-        // ② 기타 예외 없음
-        assertThat(otherFailCount.get())
-                .as("500 에러가 아닌 비즈니스 예외로 처리되어야 합니다: %s", errors)
+        // ② 알 수 없는 에러 없음
+        assertThat(unknownFailCount.get())
+                .as("중복 이외의 알 수 없는 에러가 없어야 합니다: %s", errors)
                 .isEqualTo(0);
     }
 
@@ -247,7 +264,6 @@ class UserConcurrencyTest {
     @Order(3)
     @DisplayName("시나리오 3: 2명이 동시에 같은 이메일로 프로필 변경 → 1명만 성공")
     void emailRace_updateProfile() throws InterruptedException {
-        // 테스트용 사용자 2명 생성
         String targetEmail = TEST_PREFIX + "_target@test.com";
 
         String userA_name = TEST_PREFIX + "_profA";
@@ -278,15 +294,14 @@ class UserConcurrencyTest {
         System.out.println("  Target email: " + targetEmail);
         System.out.println("========================================");
 
-        // When: 2명이 동시에 같은 이메일로 변경
         ExecutorService executor = Executors.newFixedThreadPool(2);
         CountDownLatch ready = new CountDownLatch(2);
         CountDownLatch start = new CountDownLatch(1);
         CountDownLatch done = new CountDownLatch(2);
 
         AtomicInteger successCount = new AtomicInteger(0);
-        AtomicInteger duplicateFailCount = new AtomicInteger(0);
-        AtomicInteger otherFailCount = new AtomicInteger(0);
+        AtomicInteger duplicateCount = new AtomicInteger(0);
+        AtomicInteger unknownFailCount = new AtomicInteger(0);
         List<String> errors = Collections.synchronizedList(new ArrayList<>());
 
         // User A → targetEmail
@@ -297,12 +312,11 @@ class UserConcurrencyTest {
                 userService.updateProfile(userAId, "유저A", "010-0000-0001", targetEmail);
                 successCount.incrementAndGet();
             } catch (Exception e) {
-                String msg = e.getMessage();
-                if (msg != null && msg.contains("이미 사용 중인")) {
-                    duplicateFailCount.incrementAndGet();
+                if (isDuplicateException(e)) {
+                    duplicateCount.incrementAndGet();
                 } else {
-                    otherFailCount.incrementAndGet();
-                    errors.add("UserA: " + e.getClass().getSimpleName() + " - " + msg);
+                    unknownFailCount.incrementAndGet();
+                    errors.add("UserA: " + e.getClass().getSimpleName() + " - " + e.getMessage());
                 }
             } finally {
                 done.countDown();
@@ -317,12 +331,11 @@ class UserConcurrencyTest {
                 userService.updateProfile(userBId, "유저B", "010-0000-0002", targetEmail);
                 successCount.incrementAndGet();
             } catch (Exception e) {
-                String msg = e.getMessage();
-                if (msg != null && msg.contains("이미 사용 중인")) {
-                    duplicateFailCount.incrementAndGet();
+                if (isDuplicateException(e)) {
+                    duplicateCount.incrementAndGet();
                 } else {
-                    otherFailCount.incrementAndGet();
-                    errors.add("UserB: " + e.getClass().getSimpleName() + " - " + msg);
+                    unknownFailCount.incrementAndGet();
+                    errors.add("UserB: " + e.getClass().getSimpleName() + " - " + e.getMessage());
                 }
             } finally {
                 done.countDown();
@@ -340,9 +353,9 @@ class UserConcurrencyTest {
 
         System.out.println("========================================");
         System.out.println("[테스트 결과]");
-        System.out.println("  변경 성공: " + successCount.get() + "명");
-        System.out.println("  중복 실패: " + duplicateFailCount.get() + "명");
-        System.out.println("  기타 실패: " + otherFailCount.get() + "명");
+        System.out.println("  변경 성공:     " + successCount.get() + "명");
+        System.out.println("  중복 감지:     " + duplicateCount.get() + "명 (→ GlobalExceptionHandler → 409)");
+        System.out.println("  알 수 없는 실패: " + unknownFailCount.get() + "명");
         System.out.println("  target email 보유자 수: " + emailCount + "명 (기대: 1명)");
         if (!errors.isEmpty()) {
             System.out.println("  에러:");
@@ -353,14 +366,19 @@ class UserConcurrencyTest {
         // 정리
         jdbcTemplate.update("DELETE FROM users WHERE username IN (?, ?)", userA_name, userB_name);
 
-        // ① target email은 1명만 보유
+        // ① 데이터 무결성: target email은 1명만 보유
         assertThat(emailCount)
                 .as("같은 이메일을 가진 사용자는 1명이어야 합니다 (현재: %d명)", emailCount)
                 .isEqualTo(1);
 
-        // ② 기타 예외 없음
-        assertThat(otherFailCount.get())
-                .as("500 에러가 아닌 비즈니스 예외로 처리되어야 합니다: %s", errors)
+        // ② 알 수 없는 에러 없음
+        assertThat(unknownFailCount.get())
+                .as("중복 이외의 알 수 없는 에러가 없어야 합니다: %s", errors)
                 .isEqualTo(0);
+
+        // ③ 성공 + 중복 = 2 (총 시도 수)
+        assertThat(successCount.get() + duplicateCount.get())
+                .as("성공 + 중복 = 총 시도 수(2)")
+                .isEqualTo(2);
     }
 }
