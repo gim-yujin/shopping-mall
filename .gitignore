@@ -1,0 +1,4 @@
+# Do not upload local data/experiment directories
+csv_data/
+experiment_results/
+optimization/
