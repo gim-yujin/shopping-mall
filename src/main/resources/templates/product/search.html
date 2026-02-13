@@ -44,7 +44,7 @@
         </div>
 
         <th:block th:if="${products != null}">
-            <div th:replace="~{fragments/product-card :: pagination(${products}, '/search?q=' + ${keyword})}"></div>
+            <div th:replace="~{fragments/product-card :: pagination(${products}, @{/search(q=${keyword})})}"></div>
         </th:block>
     </div>
 </div>

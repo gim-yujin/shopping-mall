@@ -42,6 +42,7 @@ public class ProductController {
         model.addAttribute("products", productService.findAllSorted(page, size, sort));
         model.addAttribute("categories", categoryService.getTopLevelCategories());
         model.addAttribute("currentSort", sort);
+        model.addAttribute("baseUrl", "/products");
         return "product/list";
     }
 

@@ -42,9 +42,12 @@ public class SearchController {
         Page<Product> results = productService.search(keyword, PageRequest.of(page, size));
         model.addAttribute("products", results);
 
-        Long userId = SecurityUtil.getCurrentUserId().orElse(null);
-        searchService.logSearch(userId, keyword, (int) results.getTotalElements(),
-                request.getRemoteAddr(), request.getHeader("User-Agent"));
+        // 첫 페이지에서만 검색 로그 기록 (페이지네이션 시 중복 기록 방지)
+        if (page == 0) {
+            Long userId = SecurityUtil.getCurrentUserId().orElse(null);
+            searchService.logSearch(userId, keyword, (int) results.getTotalElements(),
+                    request.getRemoteAddr(), request.getHeader("User-Agent"));
+        }
 
         return "product/search";
     }

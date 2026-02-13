@@ -36,15 +36,15 @@
         <div class="flex items-center justify-between mb-6">
             <!-- Sort Options -->
             <div class="flex items-center gap-2">
-                <a th:href="@{/products(sort=best)}" th:classappend="${currentSort == 'best' || currentSort == null} ? 'text-indigo-600 font-semibold' : 'text-gray-500'"
+                <a th:href="@{${baseUrl}(sort=best)}" th:classappend="${currentSort == 'best' || currentSort == null} ? 'text-indigo-600 font-semibold' : 'text-gray-500'"
                    class="text-sm px-3 py-1.5 rounded-full hover:bg-gray-100">베스트</a>
-                <a th:href="@{/products(sort=newest)}" th:classappend="${currentSort == 'newest'} ? 'text-indigo-600 font-semibold' : 'text-gray-500'"
+                <a th:href="@{${baseUrl}(sort=newest)}" th:classappend="${currentSort == 'newest'} ? 'text-indigo-600 font-semibold' : 'text-gray-500'"
                    class="text-sm px-3 py-1.5 rounded-full hover:bg-gray-100">최신순</a>
-                <a th:href="@{/products(sort=price_asc)}" th:classappend="${currentSort == 'price_asc'} ? 'text-indigo-600 font-semibold' : 'text-gray-500'"
+                <a th:href="@{${baseUrl}(sort=price_asc)}" th:classappend="${currentSort == 'price_asc'} ? 'text-indigo-600 font-semibold' : 'text-gray-500'"
                    class="text-sm px-3 py-1.5 rounded-full hover:bg-gray-100">낮은가격</a>
-                <a th:href="@{/products(sort=price_desc)}" th:classappend="${currentSort == 'price_desc'} ? 'text-indigo-600 font-semibold' : 'text-gray-500'"
+                <a th:href="@{${baseUrl}(sort=price_desc)}" th:classappend="${currentSort == 'price_desc'} ? 'text-indigo-600 font-semibold' : 'text-gray-500'"
                    class="text-sm px-3 py-1.5 rounded-full hover:bg-gray-100">높은가격</a>
-                <a th:href="@{/products(sort=rating)}" th:classappend="${currentSort == 'rating'} ? 'text-indigo-600 font-semibold' : 'text-gray-500'"
+                <a th:href="@{${baseUrl}(sort=rating)}" th:classappend="${currentSort == 'rating'} ? 'text-indigo-600 font-semibold' : 'text-gray-500'"
                    class="text-sm px-3 py-1.5 rounded-full hover:bg-gray-100">평점순</a>
             </div>
             <span th:if="${products != null}" class="text-sm text-gray-500" th:text="'총 ' + ${products.totalElements} + '개'"></span>
@@ -61,7 +61,7 @@
         </div>
 
         <!-- Pagination -->
-        <div th:if="${products != null}" th:replace="~{fragments/product-card :: pagination(${products}, '/products')}"></div>
+        <div th:if="${products != null}" th:replace="~{fragments/product-card :: pagination(${products}, ${baseUrl})}"></div>
     </div>
 </div>
 </body>

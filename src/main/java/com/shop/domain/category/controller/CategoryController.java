@@ -36,6 +36,7 @@ public class CategoryController {
         model.addAttribute("products", productService.findByCategoryIds(categoryIds, pageable));
         model.addAttribute("breadcrumb", categoryService.getBreadcrumb(categoryId));
         model.addAttribute("allCategories", categoryService.getTopLevelCategories());
+        model.addAttribute("baseUrl", "/categories/" + categoryId);
         return "product/list";
     }
 }
