@@ -14,7 +14,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.Optional;
 
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
@@ -33,7 +34,9 @@ class CartServiceUnitTest {
     @Test
     @DisplayName("0개 이하 수량은 장바구니 추가가 거부되어야 한다")
     void addToCart_rejectsNonPositiveQuantity() {
-        assertThatThrownBy(() -> cartService.addToCart(1L, 10L, 0))
+        Throwable thrown = catchThrowable(() -> cartService.addToCart(1L, 10L, 0));
+
+        assertThat(thrown)
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("수량은 1개 이상이어야 합니다");
 
@@ -52,7 +55,9 @@ class CartServiceUnitTest {
         Cart existingCart = new Cart(1L, product, 4);
         when(cartRepository.findByUserIdAndProduct_ProductId(1L, 10L)).thenReturn(Optional.of(existingCart));
 
-        assertThatThrownBy(() -> cartService.addToCart(1L, 10L, 2))
+        Throwable thrown = catchThrowable(() -> cartService.addToCart(1L, 10L, 2));
+
+        assertThat(thrown)
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("재고가 부족합니다");
 
