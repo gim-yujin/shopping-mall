@@ -48,6 +48,7 @@ class ReviewServiceIntegrationTest {
     // 원본 상품 평점 백업
     private BigDecimal originalRatingAvg;
     private int originalReviewCount;
+    private int originalActualReviewCount;
 
     // 테스트 중 생성된 데이터 추적
     private final List<Long> createdReviewIds = new ArrayList<>();
@@ -72,6 +73,9 @@ class ReviewServiceIntegrationTest {
                 testProductId);
         originalRatingAvg = (BigDecimal) state.get("rating_avg");
         originalReviewCount = ((Number) state.get("review_count")).intValue();
+        originalActualReviewCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM reviews WHERE product_id = ?",
+                Integer.class, testProductId);
 
         System.out.println("  [setUp] 작성자: " + testUserId + ", 클릭자: " + otherUserId
                 + ", 상품: " + testProductId);
@@ -118,6 +122,7 @@ class ReviewServiceIntegrationTest {
                 "SELECT review_count FROM products WHERE product_id = ?",
                 Integer.class, testProductId);
         assertThat(newReviewCount).isEqualTo(originalReviewCount + 1);
+        assertThat(newReviewCount).isEqualTo(originalActualReviewCount + 1);
 
         System.out.println("  [PASS] 리뷰 생성: reviewId=" + review.getReviewId()
                 + ", reviewCount: " + originalReviewCount + " → " + newReviewCount);
@@ -155,15 +160,27 @@ class ReviewServiceIntegrationTest {
     void createReview_duplicateOrderItem_throwsException() {
         // Given: orderItemId가 있는 리뷰 생성
         // 실제 order_item_id를 사용 (FK 제약이 없으면 임의 값도 가능)
-        Long fakeOrderItemId = System.currentTimeMillis(); // 고유값
+        Long realOrderItemId = jdbcTemplate.queryForObject(
+                """
+                SELECT oi.order_item_id
+                FROM order_items oi
+                LEFT JOIN reviews r ON r.order_item_id = oi.order_item_id AND r.user_id = ?
+                WHERE r.order_item_id IS NULL
+                ORDER BY oi.order_item_id
+                LIMIT 1
+                """,
+                Long.class,
+                testUserId
+        );
+        assertThat(realOrderItemId).as("리뷰가 없는 order_item_id가 필요합니다.").isNotNull();
 
         Review first = reviewService.createReview(testUserId,
-                new ReviewCreateRequest(testProductId, fakeOrderItemId, 4, "첫 리뷰", null));
+                new ReviewCreateRequest(testProductId, realOrderItemId, 4, "첫 리뷰", null));
         createdReviewIds.add(first.getReviewId());
 
         // When & Then: 같은 orderItemId로 다시
         assertThatThrownBy(() -> reviewService.createReview(testUserId,
-                new ReviewCreateRequest(testProductId, fakeOrderItemId, 5, "중복", null)))
+                new ReviewCreateRequest(testProductId, realOrderItemId, 5, "중복", null)))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("이미 리뷰를 작성");
 
