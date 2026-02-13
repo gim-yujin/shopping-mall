@@ -135,4 +135,66 @@ class ReviewServiceUnitTest {
 
         verifyNoInteractions(reviewHelpfulRepository);
     }
+
+    @Test
+    @DisplayName("createReview - 평균값이 없으면 0.00과 리뷰 수로 상품 평점 갱신")
+    void createReview_whenNoAverage_updatesZeroRating() {
+        Long userId = 11L;
+        Long productId = 101L;
+        ReviewCreateRequest request = new ReviewCreateRequest(productId, null, 2, "첫 리뷰", "내용");
+        Product product = mock(Product.class);
+
+        when(reviewRepository.save(any(Review.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(productRepository.findById(productId)).thenReturn(Optional.of(product));
+        when(reviewRepository.findAverageRatingByProductId(productId)).thenReturn(Optional.empty());
+        when(reviewRepository.countByProductId(productId)).thenReturn(0);
+
+        reviewService.createReview(userId, request);
+
+        ArgumentCaptor<BigDecimal> avgCaptor = ArgumentCaptor.forClass(BigDecimal.class);
+        verify(product).updateRating(avgCaptor.capture(), eq(0));
+        assertThat(avgCaptor.getValue())
+                .as("리뷰 평균값이 없으면 기본 평점 0.00으로 갱신되어야 함")
+                .isEqualByComparingTo("0.00");
+    }
+
+    @Test
+    @DisplayName("markHelpful - 본인 리뷰에는 도움이 돼요를 누를 수 없음")
+    void markHelpful_selfVote_throwsBusinessException() {
+        Long reviewId = 1L;
+        Long userId = 2L;
+        Review ownReview = new Review(100L, userId, null, 4, "t", "c");
+
+        when(reviewRepository.findById(reviewId)).thenReturn(Optional.of(ownReview));
+
+        assertThatThrownBy(() -> reviewService.markHelpful(reviewId, userId))
+                .as("리뷰 작성자 본인은 도움이 돼요를 누를 수 없어야 함")
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("본인의 리뷰");
+
+        verifyNoInteractions(reviewHelpfulRepository);
+        verify(reviewRepository, never()).incrementHelpfulCount(any());
+        verify(reviewRepository, never()).decrementHelpfulCount(any());
+    }
+
+    @Test
+    @DisplayName("markHelpful - insert 충돌 시에도 true 반환하고 카운트는 증가하지 않음")
+    void markHelpful_insertConflict_returnsTrueWithoutIncrement() {
+        Long reviewId = 1L;
+        Long userId = 2L;
+        Review review = new Review(100L, 99L, null, 4, "t", "c");
+
+        when(reviewRepository.findById(reviewId)).thenReturn(Optional.of(review));
+        when(reviewHelpfulRepository.deleteByReviewIdAndUserIdNative(reviewId, userId)).thenReturn(0);
+        when(reviewHelpfulRepository.insertIgnoreConflict(reviewId, userId)).thenReturn(0);
+
+        boolean result = reviewService.markHelpful(reviewId, userId);
+
+        assertThat(result)
+                .as("서비스 구현상 insert 충돌(0건)도 true를 반환해야 함")
+                .isTrue();
+        verify(reviewRepository, never()).incrementHelpfulCount(any());
+        verify(reviewRepository, never()).decrementHelpfulCount(any());
+    }
+
 }
