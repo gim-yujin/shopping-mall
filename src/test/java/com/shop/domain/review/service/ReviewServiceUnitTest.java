@@ -71,7 +71,6 @@ class ReviewServiceUnitTest {
         ReviewCreateRequest request = new ReviewCreateRequest(productId, null, 5, "좋음", "내용");
         Product product = mock(Product.class);
 
-        when(reviewRepository.existsByUserIdAndOrderItemId(any(), any())).thenReturn(false);
         when(reviewRepository.save(any(Review.class))).thenAnswer(invocation -> invocation.getArgument(0));
         when(productRepository.findById(productId)).thenReturn(Optional.of(product));
         when(reviewRepository.findAverageRatingByProductId(productId)).thenReturn(Optional.of(4.666666));
