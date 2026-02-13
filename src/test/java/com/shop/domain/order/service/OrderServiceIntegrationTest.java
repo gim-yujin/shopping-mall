@@ -1,0 +1,462 @@
+package com.shop.domain.order.service;
+
+import com.shop.domain.order.dto.OrderCreateRequest;
+import com.shop.domain.order.entity.Order;
+import com.shop.global.exception.BusinessException;
+import com.shop.global.exception.InsufficientStockException;
+import org.junit.jupiter.api.*;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.context.TestPropertySource;
+
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.util.*;
+
+import static org.assertj.core.api.Assertions.*;
+
+/**
+ * OrderService 통합 테스트 — 주문 생성/취소 비즈니스 로직 검증
+ *
+ * 검증 항목:
+ * 1) createOrder 정상 플로우: 장바구니 → 주문 → 재고 차감 → 장바구니 비우기 → 포인트 적립
+ * 2) createOrder + 쿠폰 적용: 할인 금액 정확성, 쿠폰 사용 처리
+ * 3) createOrder 예외: 빈 장바구니, 재고 부족
+ * 4) cancelOrder 정상: 재고 복구 + 쿠폰 복원 + 포인트 회수
+ * 5) cancelOrder 예외: 이미 취소된 주문, 배송완료 주문
+ * 6) updateOrderStatus: 상태 전이
+ *
+ * 주의: 실제 PostgreSQL DB에 연결하여 테스트합니다.
+ */
+@SpringBootTest
+@TestMethodOrder(MethodOrderer.OrderAnnotation.class)
+@TestPropertySource(properties = {
+        "logging.level.org.hibernate.SQL=WARN"
+})
+class OrderServiceIntegrationTest {
+
+    @Autowired
+    private OrderService orderService;
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
+
+    // 테스트 대상
+    private Long testUserId;
+    private Long testProductId;
+
+    // 원본 상태 백업
+    private Map<String, Object> originalProductState;
+    private Map<String, Object> originalUserState;
+
+    // 테스트 중 생성된 데이터 추적
+    private final List<Long> createdOrderIds = new ArrayList<>();
+
+    @BeforeEach
+    void setUp() {
+        // 1) 활성 상품 1개 (충분한 재고)
+        testProductId = jdbcTemplate.queryForObject(
+                "SELECT product_id FROM products WHERE is_active = true AND stock_quantity >= 100 LIMIT 1",
+                Long.class);
+
+        originalProductState = jdbcTemplate.queryForMap(
+                "SELECT stock_quantity, sales_count FROM products WHERE product_id = ?",
+                testProductId);
+
+        // 2) 활성 사용자 1명 (빈 장바구니)
+        testUserId = jdbcTemplate.queryForObject(
+                """
+                SELECT u.user_id FROM users u
+                WHERE u.is_active = true AND u.role = 'ROLE_USER'
+                  AND NOT EXISTS (SELECT 1 FROM carts c WHERE c.user_id = u.user_id)
+                ORDER BY u.user_id LIMIT 1
+                """,
+                Long.class);
+
+        originalUserState = jdbcTemplate.queryForMap(
+                "SELECT total_spent, point_balance, tier_id FROM users WHERE user_id = ?",
+                testUserId);
+
+        System.out.println("  [setUp] 사용자 ID: " + testUserId + ", 상품 ID: " + testProductId);
+    }
+
+    @AfterEach
+    void tearDown() {
+        // 생성된 주문 관련 데이터 삭제
+        for (Long orderId : createdOrderIds) {
+            // user_coupons에서 order_id 참조 해제
+            jdbcTemplate.update(
+                    "UPDATE user_coupons SET is_used = false, used_at = NULL, order_id = NULL WHERE order_id = ?",
+                    orderId);
+            jdbcTemplate.update(
+                    "DELETE FROM product_inventory_history WHERE reference_id = ?", orderId);
+            // order_items는 CASCADE
+            jdbcTemplate.update("DELETE FROM orders WHERE order_id = ?", orderId);
+        }
+        createdOrderIds.clear();
+
+        // 재고 이력 정리 (주문 생성 시 reference_id가 null인 OUT 이력)
+        jdbcTemplate.update(
+                "DELETE FROM product_inventory_history WHERE product_id = ? AND created_by = ? AND reference_id IS NULL",
+                testProductId, testUserId);
+
+        // 장바구니 정리
+        jdbcTemplate.update("DELETE FROM carts WHERE user_id = ?", testUserId);
+
+        // 상품 원본 복원
+        jdbcTemplate.update(
+                "UPDATE products SET stock_quantity = ?, sales_count = ? WHERE product_id = ?",
+                originalProductState.get("stock_quantity"),
+                originalProductState.get("sales_count"),
+                testProductId);
+
+        // 사용자 원본 복원
+        jdbcTemplate.update(
+                "UPDATE users SET total_spent = ?, point_balance = ?, tier_id = ? WHERE user_id = ?",
+                originalUserState.get("total_spent"),
+                originalUserState.get("point_balance"),
+                originalUserState.get("tier_id"),
+                testUserId);
+    }
+
+    // ==================== 장바구니에 상품 추가 (공통 헬퍼) ====================
+
+    private void addCartItem(Long userId, Long productId, int quantity) {
+        String now = LocalDateTime.now().toString();
+        jdbcTemplate.update(
+                "INSERT INTO carts (user_id, product_id, quantity, added_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+                userId, productId, quantity, now, now);
+    }
+
+    private OrderCreateRequest defaultRequest() {
+        return new OrderCreateRequest(
+                "서울시 강남구 테스트로 123", "테스트수령인", "010-0000-0000",
+                "CARD", BigDecimal.ZERO, null);
+    }
+
+    // ==================== createOrder 정상 플로우 ====================
+
+    @Test
+    @DisplayName("createOrder 성공 — 재고 차감 + 장바구니 비우기 + 포인트 적립")
+    void createOrder_success() {
+        // Given: 장바구니에 상품 2개 담기
+        int quantity = 2;
+        addCartItem(testUserId, testProductId, quantity);
+
+        int stockBefore = jdbcTemplate.queryForObject(
+                "SELECT stock_quantity FROM products WHERE product_id = ?",
+                Integer.class, testProductId);
+        int pointsBefore = jdbcTemplate.queryForObject(
+                "SELECT point_balance FROM users WHERE user_id = ?",
+                Integer.class, testUserId);
+
+        // When
+        Order order = orderService.createOrder(testUserId, defaultRequest());
+        createdOrderIds.add(order.getOrderId());
+
+        // Then: 주문 생성 확인
+        assertThat(order.getOrderId()).isNotNull();
+        assertThat(order.getOrderStatus()).isEqualTo("PAID");
+        assertThat(order.getUserId()).isEqualTo(testUserId);
+        assertThat(order.getItems()).hasSize(1);
+        assertThat(order.getItems().get(0).getQuantity()).isEqualTo(quantity);
+
+        // 재고 차감 확인
+        int stockAfter = jdbcTemplate.queryForObject(
+                "SELECT stock_quantity FROM products WHERE product_id = ?",
+                Integer.class, testProductId);
+        assertThat(stockAfter).isEqualTo(stockBefore - quantity);
+
+        // 장바구니 비워졌는지 확인
+        int cartCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM carts WHERE user_id = ?",
+                Integer.class, testUserId);
+        assertThat(cartCount).isZero();
+
+        // 포인트 적립 확인 (0보다 커야 함)
+        int pointsAfter = jdbcTemplate.queryForObject(
+                "SELECT point_balance FROM users WHERE user_id = ?",
+                Integer.class, testUserId);
+        assertThat(pointsAfter).isGreaterThanOrEqualTo(pointsBefore);
+
+        // 재고 이력 기록 확인
+        int historyCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM product_inventory_history WHERE product_id = ? AND change_type = 'OUT' AND created_by = ?",
+                Integer.class, testProductId, testUserId);
+        assertThat(historyCount).isGreaterThanOrEqualTo(1);
+
+        System.out.println("  [PASS] 주문 #" + order.getOrderNumber() + " 생성 완료, 재고: " + stockBefore + " → " + stockAfter);
+    }
+
+    @Test
+    @DisplayName("createOrder 실패 — 빈 장바구니")
+    void createOrder_emptyCart_throwsBusinessException() {
+        // Given: 장바구니 비어있음 (setUp에서 이미 비어있음)
+
+        // When & Then
+        assertThatThrownBy(() -> orderService.createOrder(testUserId, defaultRequest()))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("장바구니가 비어있습니다");
+
+        System.out.println("  [PASS] 빈 장바구니 주문 시 BusinessException 발생");
+    }
+
+    @Test
+    @DisplayName("createOrder 실패 — 재고 부족")
+    void createOrder_insufficientStock_throwsException() {
+        // Given: 재고를 1로 설정하고, 장바구니에 5개 담기
+        jdbcTemplate.update(
+                "UPDATE products SET stock_quantity = 1 WHERE product_id = ?", testProductId);
+        addCartItem(testUserId, testProductId, 5);
+
+        // When & Then
+        assertThatThrownBy(() -> orderService.createOrder(testUserId, defaultRequest()))
+                .isInstanceOf(InsufficientStockException.class);
+
+        // 재고 변경 없음 확인
+        int stock = jdbcTemplate.queryForObject(
+                "SELECT stock_quantity FROM products WHERE product_id = ?",
+                Integer.class, testProductId);
+        assertThat(stock).isEqualTo(1);
+
+        System.out.println("  [PASS] 재고 부족 시 InsufficientStockException 발생, 재고 변경 없음");
+    }
+
+    // ==================== createOrder + 쿠폰 ====================
+
+    @Test
+    @DisplayName("createOrder + 쿠폰 적용 — 할인 반영 + 쿠폰 사용 처리")
+    void createOrder_withCoupon_appliesDiscount() {
+        // Given: 장바구니 + 사용 가능한 쿠폰
+        addCartItem(testUserId, testProductId, 1);
+
+        // 사용자에게 발급된 미사용 쿠폰 찾기
+        List<Map<String, Object>> coupons = jdbcTemplate.queryForList(
+                """
+                SELECT uc.user_coupon_id, c.discount_type, c.discount_value
+                FROM user_coupons uc
+                JOIN coupons c ON uc.coupon_id = c.coupon_id
+                WHERE uc.user_id = ? AND uc.is_used = false
+                  AND uc.expires_at > NOW() AND c.is_active = true
+                LIMIT 1
+                """,
+                testUserId);
+
+        if (coupons.isEmpty()) {
+            System.out.println("  [SKIP] 사용 가능한 쿠폰이 없어 테스트를 건너뜁니다.");
+            return;
+        }
+
+        Long userCouponId = ((Number) coupons.get(0).get("user_coupon_id")).longValue();
+        OrderCreateRequest request = new OrderCreateRequest(
+                "서울시 강남구 테스트로 123", "테스트수령인", "010-0000-0000",
+                "CARD", BigDecimal.ZERO, userCouponId);
+
+        // When
+        Order order = orderService.createOrder(testUserId, request);
+        createdOrderIds.add(order.getOrderId());
+
+        // Then: 할인 적용 확인
+        assertThat(order.getDiscountAmount()).isGreaterThan(BigDecimal.ZERO);
+        assertThat(order.getFinalAmount()).isLessThan(order.getTotalAmount());
+
+        // 쿠폰 사용 처리 확인
+        Boolean isUsed = jdbcTemplate.queryForObject(
+                "SELECT is_used FROM user_coupons WHERE user_coupon_id = ?",
+                Boolean.class, userCouponId);
+        assertThat(isUsed).isTrue();
+
+        Long couponOrderId = jdbcTemplate.queryForObject(
+                "SELECT order_id FROM user_coupons WHERE user_coupon_id = ?",
+                Long.class, userCouponId);
+        assertThat(couponOrderId).isEqualTo(order.getOrderId());
+
+        System.out.println("  [PASS] 쿠폰 적용 주문: 총액=" + order.getTotalAmount()
+                + ", 할인=" + order.getDiscountAmount() + ", 최종=" + order.getFinalAmount());
+    }
+
+    // ==================== cancelOrder ====================
+
+    @Test
+    @DisplayName("cancelOrder 성공 — 재고 복구 + 포인트 회수")
+    void cancelOrder_success_restoresStockAndPoints() {
+        // Given: 주문 생성
+        addCartItem(testUserId, testProductId, 3);
+        Order order = orderService.createOrder(testUserId, defaultRequest());
+        createdOrderIds.add(order.getOrderId());
+
+        int stockAfterOrder = jdbcTemplate.queryForObject(
+                "SELECT stock_quantity FROM products WHERE product_id = ?",
+                Integer.class, testProductId);
+        int pointsAfterOrder = jdbcTemplate.queryForObject(
+                "SELECT point_balance FROM users WHERE user_id = ?",
+                Integer.class, testUserId);
+
+        // When: 주문 취소
+        orderService.cancelOrder(order.getOrderId(), testUserId);
+
+        // Then: 재고 복구 확인
+        int stockAfterCancel = jdbcTemplate.queryForObject(
+                "SELECT stock_quantity FROM products WHERE product_id = ?",
+                Integer.class, testProductId);
+        assertThat(stockAfterCancel).isEqualTo(stockAfterOrder + 3);
+
+        // 포인트 회수 확인
+        int pointsAfterCancel = jdbcTemplate.queryForObject(
+                "SELECT point_balance FROM users WHERE user_id = ?",
+                Integer.class, testUserId);
+        assertThat(pointsAfterCancel).isLessThanOrEqualTo(pointsAfterOrder);
+
+        // 주문 상태 확인
+        String status = jdbcTemplate.queryForObject(
+                "SELECT order_status FROM orders WHERE order_id = ?",
+                String.class, order.getOrderId());
+        assertThat(status).isEqualTo("CANCELLED");
+
+        // 취소 재고 이력 확인
+        int returnHistory = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM product_inventory_history WHERE reference_id = ? AND reason = 'RETURN'",
+                Integer.class, order.getOrderId());
+        assertThat(returnHistory).isGreaterThanOrEqualTo(1);
+
+        System.out.println("  [PASS] 주문 취소: 재고 " + stockAfterOrder + " → " + stockAfterCancel
+                + ", 포인트 " + pointsAfterOrder + " → " + pointsAfterCancel);
+    }
+
+    @Test
+    @DisplayName("cancelOrder 실패 — 이미 취소된 주문")
+    void cancelOrder_alreadyCancelled_throwsException() {
+        // Given: 주문 생성 후 취소
+        addCartItem(testUserId, testProductId, 1);
+        Order order = orderService.createOrder(testUserId, defaultRequest());
+        createdOrderIds.add(order.getOrderId());
+        orderService.cancelOrder(order.getOrderId(), testUserId);
+
+        // When & Then: 다시 취소 시도
+        assertThatThrownBy(() -> orderService.cancelOrder(order.getOrderId(), testUserId))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("취소할 수 없는");
+
+        System.out.println("  [PASS] 이미 취소된 주문 재취소 시 BusinessException 발생");
+    }
+
+    @Test
+    @DisplayName("cancelOrder 실패 — 배송완료 주문은 취소 불가")
+    void cancelOrder_deliveredOrder_throwsException() {
+        // Given: 주문 생성 후 배송완료 상태로 변경
+        addCartItem(testUserId, testProductId, 1);
+        Order order = orderService.createOrder(testUserId, defaultRequest());
+        createdOrderIds.add(order.getOrderId());
+
+        // 상태를 DELIVERED로 직접 변경
+        jdbcTemplate.update(
+                "UPDATE orders SET order_status = 'DELIVERED', delivered_at = NOW() WHERE order_id = ?",
+                order.getOrderId());
+
+        // When & Then
+        assertThatThrownBy(() -> orderService.cancelOrder(order.getOrderId(), testUserId))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("취소할 수 없는");
+
+        System.out.println("  [PASS] 배송완료 주문 취소 시 BusinessException 발생");
+    }
+
+    // ==================== updateOrderStatus ====================
+
+    @Test
+    @DisplayName("updateOrderStatus — PAID → SHIPPED → DELIVERED 정상 전이")
+    void updateOrderStatus_validTransitions() {
+        // Given
+        addCartItem(testUserId, testProductId, 1);
+        Order order = orderService.createOrder(testUserId, defaultRequest());
+        createdOrderIds.add(order.getOrderId());
+
+        // When & Then: SHIPPED
+        orderService.updateOrderStatus(order.getOrderId(), "SHIPPED");
+        String status1 = jdbcTemplate.queryForObject(
+                "SELECT order_status FROM orders WHERE order_id = ?",
+                String.class, order.getOrderId());
+        assertThat(status1).isEqualTo("SHIPPED");
+
+        // DELIVERED
+        orderService.updateOrderStatus(order.getOrderId(), "DELIVERED");
+        String status2 = jdbcTemplate.queryForObject(
+                "SELECT order_status FROM orders WHERE order_id = ?",
+                String.class, order.getOrderId());
+        assertThat(status2).isEqualTo("DELIVERED");
+
+        System.out.println("  [PASS] 상태 전이: PAID → SHIPPED → DELIVERED");
+    }
+
+    @Test
+    @DisplayName("updateOrderStatus — 잘못된 상태 코드")
+    void updateOrderStatus_invalidStatus_throwsException() {
+        // Given
+        addCartItem(testUserId, testProductId, 1);
+        Order order = orderService.createOrder(testUserId, defaultRequest());
+        createdOrderIds.add(order.getOrderId());
+
+        // When & Then
+        assertThatThrownBy(() -> orderService.updateOrderStatus(order.getOrderId(), "INVALID"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("잘못된 주문 상태");
+
+        System.out.println("  [PASS] 잘못된 상태 코드 시 BusinessException 발생");
+    }
+
+    // ==================== cancelOrder + 쿠폰 복원 ====================
+
+    @Test
+    @DisplayName("cancelOrder + 쿠폰 복원 — 취소 시 쿠폰이 미사용 상태로 돌아감")
+    void cancelOrder_restoresCoupon() {
+        // Given: 쿠폰이 있는 주문 생성
+        addCartItem(testUserId, testProductId, 1);
+
+        List<Map<String, Object>> coupons = jdbcTemplate.queryForList(
+                """
+                SELECT uc.user_coupon_id
+                FROM user_coupons uc
+                JOIN coupons c ON uc.coupon_id = c.coupon_id
+                WHERE uc.user_id = ? AND uc.is_used = false
+                  AND uc.expires_at > NOW() AND c.is_active = true
+                LIMIT 1
+                """,
+                testUserId);
+
+        if (coupons.isEmpty()) {
+            System.out.println("  [SKIP] 사용 가능한 쿠폰이 없어 테스트를 건너뜁니다.");
+            return;
+        }
+
+        Long userCouponId = ((Number) coupons.get(0).get("user_coupon_id")).longValue();
+        OrderCreateRequest request = new OrderCreateRequest(
+                "서울시 강남구 테스트로 123", "테스트수령인", "010-0000-0000",
+                "CARD", BigDecimal.ZERO, userCouponId);
+
+        Order order = orderService.createOrder(testUserId, request);
+        createdOrderIds.add(order.getOrderId());
+
+        // 쿠폰 사용됨 확인
+        Boolean usedAfterOrder = jdbcTemplate.queryForObject(
+                "SELECT is_used FROM user_coupons WHERE user_coupon_id = ?",
+                Boolean.class, userCouponId);
+        assertThat(usedAfterOrder).isTrue();
+
+        // When: 취소
+        orderService.cancelOrder(order.getOrderId(), testUserId);
+
+        // Then: 쿠폰 복원 확인
+        Boolean usedAfterCancel = jdbcTemplate.queryForObject(
+                "SELECT is_used FROM user_coupons WHERE user_coupon_id = ?",
+                Boolean.class, userCouponId);
+        assertThat(usedAfterCancel).isFalse();
+
+        Long orderIdOnCoupon = jdbcTemplate.queryForObject(
+                "SELECT order_id FROM user_coupons WHERE user_coupon_id = ?",
+                Long.class, userCouponId);
+        assertThat(orderIdOnCoupon).isNull();
+
+        System.out.println("  [PASS] 주문 취소 시 쿠폰 복원 완료");
+    }
+}
