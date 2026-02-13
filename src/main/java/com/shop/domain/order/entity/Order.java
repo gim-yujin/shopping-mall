@@ -1,0 +1,147 @@
+package com.shop.domain.order.entity;
+
+import jakarta.persistence.*;
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
+
+@Entity
+@Table(name = "orders")
+public class Order {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Column(name = "order_id")
+    private Long orderId;
+
+    @Column(name = "order_number", unique = true, nullable = false, length = 50)
+    private String orderNumber;
+
+    @Column(name = "user_id", nullable = false)
+    private Long userId;
+
+    @Column(name = "order_status", nullable = false, length = 20)
+    private String orderStatus;
+
+    @Column(name = "total_amount", nullable = false, precision = 15, scale = 2)
+    private BigDecimal totalAmount;
+
+    @Column(name = "discount_amount", nullable = false, precision = 15, scale = 2)
+    private BigDecimal discountAmount;
+
+    @Column(name = "shipping_fee", nullable = false, precision = 8, scale = 2)
+    private BigDecimal shippingFee;
+
+    @Column(name = "final_amount", nullable = false, precision = 15, scale = 2)
+    private BigDecimal finalAmount;
+
+    @Column(name = "payment_method", length = 20)
+    private String paymentMethod;
+
+    @Column(name = "shipping_address", columnDefinition = "TEXT")
+    private String shippingAddress;
+
+    @Column(name = "recipient_name", length = 100)
+    private String recipientName;
+
+    @Column(name = "recipient_phone", length = 20)
+    private String recipientPhone;
+
+    @Column(name = "order_date", nullable = false)
+    private LocalDateTime orderDate;
+
+    @Column(name = "paid_at")
+    private LocalDateTime paidAt;
+
+    @Column(name = "shipped_at")
+    private LocalDateTime shippedAt;
+
+    @Column(name = "delivered_at")
+    private LocalDateTime deliveredAt;
+
+    @Column(name = "cancelled_at")
+    private LocalDateTime cancelledAt;
+
+    @OneToMany(mappedBy = "order", fetch = FetchType.LAZY, cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<OrderItem> items = new ArrayList<>();
+
+    protected Order() {}
+
+    public Order(String orderNumber, Long userId, BigDecimal totalAmount, BigDecimal discountAmount,
+                 BigDecimal shippingFee, BigDecimal finalAmount, String paymentMethod,
+                 String shippingAddress, String recipientName, String recipientPhone) {
+        this.orderNumber = orderNumber;
+        this.userId = userId;
+        this.orderStatus = "PENDING";
+        this.totalAmount = totalAmount;
+        this.discountAmount = discountAmount;
+        this.shippingFee = shippingFee;
+        this.finalAmount = finalAmount;
+        this.paymentMethod = paymentMethod;
+        this.shippingAddress = shippingAddress;
+        this.recipientName = recipientName;
+        this.recipientPhone = recipientPhone;
+        this.orderDate = LocalDateTime.now();
+    }
+
+    public void addItem(OrderItem item) {
+        items.add(item);
+        item.setOrder(this);
+    }
+
+    public void markPaid() {
+        this.orderStatus = "PAID";
+        this.paidAt = LocalDateTime.now();
+    }
+
+    public void markShipped() {
+        this.orderStatus = "SHIPPED";
+        this.shippedAt = LocalDateTime.now();
+    }
+
+    public void markDelivered() {
+        this.orderStatus = "DELIVERED";
+        this.deliveredAt = LocalDateTime.now();
+    }
+
+    public void cancel() {
+        this.orderStatus = "CANCELLED";
+        this.cancelledAt = LocalDateTime.now();
+    }
+
+    public boolean isCancellable() {
+        return "PENDING".equals(orderStatus) || "PAID".equals(orderStatus);
+    }
+
+    // Getters
+    public Long getOrderId() { return orderId; }
+    public String getOrderNumber() { return orderNumber; }
+    public Long getUserId() { return userId; }
+    public String getOrderStatus() { return orderStatus; }
+    public BigDecimal getTotalAmount() { return totalAmount; }
+    public BigDecimal getDiscountAmount() { return discountAmount; }
+    public BigDecimal getShippingFee() { return shippingFee; }
+    public BigDecimal getFinalAmount() { return finalAmount; }
+    public String getPaymentMethod() { return paymentMethod; }
+    public String getShippingAddress() { return shippingAddress; }
+    public String getRecipientName() { return recipientName; }
+    public String getRecipientPhone() { return recipientPhone; }
+    public LocalDateTime getOrderDate() { return orderDate; }
+    public LocalDateTime getPaidAt() { return paidAt; }
+    public LocalDateTime getShippedAt() { return shippedAt; }
+    public LocalDateTime getDeliveredAt() { return deliveredAt; }
+    public LocalDateTime getCancelledAt() { return cancelledAt; }
+    public List<OrderItem> getItems() { return items; }
+    
+    public String getStatusDisplay() {
+        return switch (orderStatus) {
+            case "PENDING" -> "결제대기";
+            case "PAID" -> "결제완료";
+            case "SHIPPED" -> "배송중";
+            case "DELIVERED" -> "배송완료";
+            case "CANCELLED" -> "주문취소";
+            default -> orderStatus;
+        };
+    }
+}

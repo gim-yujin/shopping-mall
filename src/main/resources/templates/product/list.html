@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org"
+      xmlns:layout="http://www.ultraq.net.nz/thymeleaf/layout"
+      layout:decorate="~{layout/default}">
+<head><title>상품 목록</title></head>
+<body>
+<div layout:fragment="content">
+    <div class="max-w-7xl mx-auto px-4 py-8">
+
+        <!-- Breadcrumb -->
+        <nav th:if="${breadcrumb != null}" class="flex items-center gap-2 text-sm text-gray-500 mb-6">
+            <a th:href="@{/}" class="hover:text-indigo-600">홈</a>
+            <th:block th:each="bc, iter : ${breadcrumb}">
+                <span>/</span>
+                <a th:if="${!iter.last}" th:href="@{/categories/{id}(id=${bc.categoryId})}" th:text="${bc.categoryName}" class="hover:text-indigo-600"></a>
+                <span th:if="${iter.last}" th:text="${bc.categoryName}" class="text-gray-900 font-medium"></span>
+            </th:block>
+        </nav>
+
+        <!-- Category Header -->
+        <div th:if="${category != null}" class="mb-6">
+            <h1 class="text-2xl font-bold text-gray-900" th:text="${category.categoryName}"></h1>
+        </div>
+        <div th:if="${category == null}" class="mb-6">
+            <h1 class="text-2xl font-bold text-gray-900">전체 상품</h1>
+        </div>
+
+        <!-- Sub Categories -->
+        <div th:if="${subCategories != null && !subCategories.isEmpty()}" class="flex gap-3 mb-6 overflow-x-auto pb-2">
+            <a th:each="sub : ${subCategories}" th:href="@{/categories/{id}(id=${sub.categoryId})}"
+               class="flex-shrink-0 bg-white border border-gray-200 rounded-full px-4 py-2 text-sm text-gray-700 hover:border-indigo-300 hover:text-indigo-600 transition">
+                <span th:text="${sub.categoryName}"></span>
+            </a>
+        </div>
+
+        <div class="flex items-center justify-between mb-6">
+            <!-- Sort Options -->
+            <div class="flex items-center gap-2">
+                <a th:href="@{/products(sort=best)}" th:classappend="${currentSort == 'best' || currentSort == null} ? 'text-indigo-600 font-semibold' : 'text-gray-500'"
+                   class="text-sm px-3 py-1.5 rounded-full hover:bg-gray-100">베스트</a>
+                <a th:href="@{/products(sort=newest)}" th:classappend="${currentSort == 'newest'} ? 'text-indigo-600 font-semibold' : 'text-gray-500'"
+                   class="text-sm px-3 py-1.5 rounded-full hover:bg-gray-100">최신순</a>
+                <a th:href="@{/products(sort=price_asc)}" th:classappend="${currentSort == 'price_asc'} ? 'text-indigo-600 font-semibold' : 'text-gray-500'"
+                   class="text-sm px-3 py-1.5 rounded-full hover:bg-gray-100">낮은가격</a>
+                <a th:href="@{/products(sort=price_desc)}" th:classappend="${currentSort == 'price_desc'} ? 'text-indigo-600 font-semibold' : 'text-gray-500'"
+                   class="text-sm px-3 py-1.5 rounded-full hover:bg-gray-100">높은가격</a>
+                <a th:href="@{/products(sort=rating)}" th:classappend="${currentSort == 'rating'} ? 'text-indigo-600 font-semibold' : 'text-gray-500'"
+                   class="text-sm px-3 py-1.5 rounded-full hover:bg-gray-100">평점순</a>
+            </div>
+            <span th:if="${products != null}" class="text-sm text-gray-500" th:text="'총 ' + ${products.totalElements} + '개'"></span>
+        </div>
+
+        <!-- Product Grid -->
+        <div th:if="${products != null && products.hasContent()}" class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
+            <div th:each="product : ${products.content}" th:insert="~{fragments/product-card :: card(${product})}"></div>
+        </div>
+
+        <div th:if="${products == null || !products.hasContent()}" class="text-center py-20">
+            <svg class="w-16 h-16 text-gray-300 mx-auto mb-4" fill="currentColor" viewBox="0 0 24 24"><path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/></svg>
+            <p class="text-gray-500">상품이 없습니다.</p>
+        </div>
+
+        <!-- Pagination -->
+        <div th:if="${products != null}" th:replace="~{fragments/product-card :: pagination(${products}, '/products')}"></div>
+    </div>
+</div>
+</body>
+</html>

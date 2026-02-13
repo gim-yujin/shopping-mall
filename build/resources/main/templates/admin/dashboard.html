@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org"
+      xmlns:layout="http://www.ultraq.net.nz/thymeleaf/layout"
+      layout:decorate="~{layout/default}">
+<head><title>관리자 대시보드</title></head>
+<body>
+<div layout:fragment="content">
+    <div class="max-w-6xl mx-auto">
+        <h1 class="text-2xl font-bold mb-6">관리자 대시보드</h1>
+
+        <!-- Quick Stats -->
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+            <div class="bg-white rounded-lg shadow p-5">
+                <p class="text-sm text-gray-500">전체 상품</p>
+                <p class="text-2xl font-bold mt-1" th:text="${products.totalElements}">0</p>
+            </div>
+            <div class="bg-white rounded-lg shadow p-5">
+                <p class="text-sm text-gray-500">전체 주문</p>
+                <p class="text-2xl font-bold mt-1" th:text="${recentOrders.totalElements}">0</p>
+            </div>
+            <div class="bg-white rounded-lg shadow p-5">
+                <p class="text-sm text-gray-500">신규 주문</p>
+                <p class="text-2xl font-bold mt-1 text-blue-600" th:text="${recentOrders.content.size()}">0</p>
+            </div>
+            <div class="bg-white rounded-lg shadow p-5">
+                <p class="text-sm text-gray-500">관리</p>
+                <div class="flex gap-2 mt-2">
+                    <a th:href="@{/admin/products}" class="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded">상품</a>
+                    <a th:href="@{/admin/orders}" class="text-xs bg-green-100 text-green-700 px-2 py-1 rounded">주문</a>
+                </div>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <!-- Recent Orders -->
+            <div class="bg-white rounded-lg shadow p-6">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-lg font-bold">최근 주문</h2>
+                    <a th:href="@{/admin/orders}" class="text-sm text-blue-600 hover:text-blue-800">전체보기 →</a>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm">
+                        <thead><tr class="border-b text-left text-gray-500">
+                            <th class="py-2">주문번호</th><th>일시</th><th>금액</th><th>상태</th>
+                        </tr></thead>
+                        <tbody>
+                        <tr th:each="order : ${recentOrders.content}" class="border-b last:border-0">
+                            <td class="py-2 font-medium" th:text="${order.orderNumber}">ORD</td>
+                            <td class="text-gray-500" th:text="${#temporals.format(order.orderDate, 'MM.dd HH:mm')}">날짜</td>
+                            <td th:text="${#numbers.formatDecimal(order.finalAmount,0,'COMMA',0,'POINT')} + '원'">0원</td>
+                            <td><span class="px-2 py-0.5 text-xs rounded-full"
+                                      th:classappend="${order.orderStatus == 'DELIVERED' ? 'bg-green-100 text-green-700' :
+                                                       order.orderStatus == 'CANCELLED' ? 'bg-red-100 text-red-700' :
+                                                       'bg-yellow-100 text-yellow-700'}"
+                                      th:text="${order.orderStatus}">STATUS</span></td>
+                        </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Products -->
+            <div class="bg-white rounded-lg shadow p-6">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-lg font-bold">상품 목록</h2>
+                    <a th:href="@{/admin/products}" class="text-sm text-blue-600 hover:text-blue-800">전체보기 →</a>
+                </div>
+                <div class="overflow-x-auto">
+                    <table class="w-full text-sm">
+                        <thead><tr class="border-b text-left text-gray-500">
+                            <th class="py-2">상품명</th><th>가격</th><th>재고</th><th>판매</th>
+                        </tr></thead>
+                        <tbody>
+                        <tr th:each="product : ${products.content}" class="border-b last:border-0">
+                            <td class="py-2 font-medium max-w-[150px] truncate" th:text="${product.productName}">상품명</td>
+                            <td th:text="${#numbers.formatDecimal(product.price,0,'COMMA',0,'POINT')} + '원'">0원</td>
+                            <td th:classappend="${product.stockQuantity < 10 ? 'text-red-600 font-bold' : ''}" th:text="${product.stockQuantity}">0</td>
+                            <td th:text="${product.salesCount}">0</td>
+                        </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+</body>
+</html>
