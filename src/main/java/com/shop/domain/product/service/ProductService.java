@@ -30,7 +30,8 @@ public class ProductService {
     @Transactional
     public Product findByIdAndIncrementView(Long productId) {
         productRepository.incrementViewCount(productId);
-        return findById(productId);
+        return productRepository.findByIdWithCategory(productId)
+                .orElseThrow(() -> new ResourceNotFoundException("상품", productId));
     }
 
     public Page<Product> findByCategory(Integer categoryId, Pageable pageable) {

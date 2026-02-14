@@ -51,7 +51,7 @@ public class UserService {
     }
 
     public User findById(Long userId) {
-        return userRepository.findById(userId)
+        return userRepository.findByIdWithTier(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("사용자", userId));
     }
 

@@ -1,8 +1,3 @@
-# Local-only data/experiment directories
-csv_data/
-experiment_results/
-optimization/
-
 # Gradle/Spring build outputs
 build/
 !gradle/wrapper/gradle-wrapper.jar
@@ -12,5 +7,8 @@ build/
 csv_data/
 experiment_results/
 optimization/
+load_test/
 # Log files
 *.log
+# Local compressed files
+*.zip

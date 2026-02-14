@@ -193,12 +193,17 @@ public class OrderService {
     }
 
     public Page<Order> getOrdersByUser(Long userId, Pageable pageable) {
-        return orderRepository.findByUserId(userId, pageable);
+        Page<Order> orders = orderRepository.findByUserId(userId, pageable);
+        // OSIV off: 트랜잭션 내에서 Lazy 컬렉션 초기화 (batch_fetch_size=100 활용)
+        orders.getContent().forEach(order -> order.getItems().size());
+        return orders;
     }
 
     public Order getOrderDetail(Long orderId, Long userId) {
-        return orderRepository.findByIdAndUserId(orderId, userId)
+        Order order = orderRepository.findByIdAndUserId(orderId, userId)
                 .orElseThrow(() -> new ResourceNotFoundException("주문", orderId));
+        order.getItems().size(); // OSIV off: Lazy 컬렉션 초기화
+        return order;
     }
 
     @Transactional
@@ -251,11 +256,15 @@ public class OrderService {
     }
 
     public Page<Order> getAllOrders(Pageable pageable) {
-        return orderRepository.findAllByOrderByOrderDateDesc(pageable);
+        Page<Order> orders = orderRepository.findAllByOrderByOrderDateDesc(pageable);
+        orders.getContent().forEach(order -> order.getItems().size());
+        return orders;
     }
 
     public Page<Order> getOrdersByStatus(String status, Pageable pageable) {
-        return orderRepository.findByStatus(status, pageable);
+        Page<Order> orders = orderRepository.findByStatus(status, pageable);
+        orders.getContent().forEach(order -> order.getItems().size());
+        return orders;
     }
 
     @Transactional
