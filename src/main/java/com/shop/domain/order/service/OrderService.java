@@ -30,7 +30,7 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.ThreadLocalRandom;
+import java.util.UUID;
 
 @Service
 @Transactional(readOnly = true)
@@ -272,8 +272,8 @@ public class OrderService {
     }
 
     private String generateOrderNumber() {
-        String datePart = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd"));
-        int randomPart = ThreadLocalRandom.current().nextInt(10000, 99999);
+        String datePart = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmssSSS"));
+        String randomPart = UUID.randomUUID().toString().replace("-", "").substring(0, 12).toUpperCase();
         return datePart + "-" + randomPart;
     }
 
