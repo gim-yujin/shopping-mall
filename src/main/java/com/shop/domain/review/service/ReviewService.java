@@ -8,6 +8,7 @@ import com.shop.domain.review.repository.ReviewRepository;
 import com.shop.domain.review.repository.ReviewHelpfulRepository;
 import com.shop.global.exception.BusinessException;
 import com.shop.global.exception.ResourceNotFoundException;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -32,6 +33,7 @@ public class ReviewService {
         this.productRepository = productRepository;
     }
 
+    @Cacheable(value = "productReviews", key = "#productId + ':' + #pageable.pageNumber")
     public Page<Review> getProductReviews(Long productId, Pageable pageable) {
         return reviewRepository.findByProductIdOrderByCreatedAtDesc(productId, pageable);
     }

@@ -18,8 +18,13 @@ public class CacheConfig {
     @Bean
     public CacheManager cacheManager() {
         CaffeineCacheManager cacheManager = new CaffeineCacheManager(
+                // 홈 페이지 (기존)
                 "bestSellers", "newArrivals", "deals", "topCategories", "popularKeywords",
-                "subCategories", "categoryDescendants", "categoryBreadcrumb"
+                // 카테고리 (이전 추가)
+                "subCategories", "categoryDescendants", "categoryBreadcrumb", "categoryById",
+                // Browse 경로 응답 캐시 (신규)
+                "productList", "productDetail", "searchResults", "categoryProducts",
+                "productReviews"
         );
         cacheManager.setCaffeine(Caffeine.newBuilder()
                 .expireAfterWrite(5, TimeUnit.MINUTES)

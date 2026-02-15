@@ -31,13 +31,15 @@ public class ProductService {
 
     /**
      * 상품 상세 조회 + 조회수 증가 (비동기).
-     * OSIV off 환경: category를 JOIN FETCH로 즉시 로딩.
-     * viewCount UPDATE는 비동기 스레드에서 별도 트랜잭션으로 처리 → 읽기 전용 트랜잭션 유지.
+     * 캐시 히트 시 메서드 본문이 실행되지 않으므로:
+     *   - DB 조회 0회, viewCount 증가는 캐시 미스 시에만 발생
+     *   - TTL 2분 = 상품당 2분에 1회만 DB 접근
      */
+    @Cacheable(value = "productDetail", key = "#productId")
     public Product findByIdAndIncrementView(Long productId) {
         Product product = productRepository.findByIdWithCategory(productId)
                 .orElseThrow(() -> new ResourceNotFoundException("상품", productId));
-        viewCountService.incrementAsync(productId);  // fire-and-forget
+        viewCountService.incrementAsync(productId);
         return product;
     }
 
@@ -45,10 +47,14 @@ public class ProductService {
         return productRepository.findByCategoryId(categoryId, pageable);
     }
 
+    @Cacheable(value = "categoryProducts",
+               key = "#categoryIds.hashCode() + ':' + #pageable.pageNumber + ':' + #pageable.pageSize")
     public Page<Product> findByCategoryIds(List<Integer> categoryIds, Pageable pageable) {
         return productRepository.findByCategoryIds(categoryIds, pageable);
     }
 
+    @Cacheable(value = "searchResults",
+               key = "#keyword + ':' + #pageable.pageNumber + ':' + #pageable.pageSize")
     public Page<Product> search(String keyword, Pageable pageable) {
         Page<Product> results = productRepository.searchByKeyword(keyword, pageable);
         if (results.isEmpty()) {
@@ -76,6 +82,7 @@ public class ProductService {
         return productRepository.findAll(pageable);
     }
 
+    @Cacheable(value = "productList", key = "#page + ':' + #size + ':' + #sort")
     public Page<Product> findAllSorted(int page, int size, String sort) {
         Sort sortObj = switch (sort) {
             case "price_asc" -> Sort.by("price").ascending();

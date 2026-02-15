@@ -24,6 +24,7 @@ public class CategoryService {
         return categoryRepository.findTopLevelCategories();
     }
 
+    @Cacheable(value = "categoryById", key = "#categoryId")
     public Category findById(Integer categoryId) {
         return categoryRepository.findById(categoryId)
                 .orElseThrow(() -> new ResourceNotFoundException("카테고리", categoryId));
