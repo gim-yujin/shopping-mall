@@ -22,9 +22,13 @@ public class CacheConfig {
                 "bestSellers", "newArrivals", "deals", "topCategories", "popularKeywords",
                 // 카테고리 (이전 추가)
                 "subCategories", "categoryDescendants", "categoryBreadcrumb", "categoryById",
-                // Browse 경로 응답 캐시 (신규)
+                // Browse 경로 응답 캐시
                 "productList", "productDetail", "searchResults", "categoryProducts",
-                "productReviews"
+                "productReviews",
+                // 인증
+                "userDetails",
+                // 쿠폰 목록
+                "activeCoupons"
         );
         cacheManager.setCaffeine(Caffeine.newBuilder()
                 .expireAfterWrite(5, TimeUnit.MINUTES)

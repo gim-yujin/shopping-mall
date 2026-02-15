@@ -2,6 +2,7 @@ package com.shop.global.security;
 
 import com.shop.domain.user.entity.User;
 import com.shop.domain.user.repository.UserRepository;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
@@ -20,7 +21,14 @@ public class CustomUserDetailsService implements UserDetailsService {
         this.userRepository = userRepository;
     }
 
+    /**
+     * 사용자 인증 정보 조회.
+     * @Cacheable: 동일 username의 반복 로그인 시 DB 쿼리를 건너뛰어
+     *   커넥션 풀 경합을 줄임. BCrypt 검증은 여전히 매번 실행됨.
+     * TTL 5분 (CacheConfig 공통) → 비밀번호 변경 시 최대 5분 후 반영.
+     */
     @Override
+    @Cacheable(value = "userDetails", key = "#username")
     @Transactional(readOnly = true)
     public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
         User user = userRepository.findByUsername(username)

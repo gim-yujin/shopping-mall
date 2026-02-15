@@ -6,6 +6,7 @@ import com.shop.domain.coupon.repository.CouponRepository;
 import com.shop.domain.coupon.repository.UserCouponRepository;
 import com.shop.global.exception.BusinessException;
 import com.shop.global.exception.ResourceNotFoundException;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -29,6 +30,7 @@ public class CouponService {
         this.entityManager = entityManager;
     }
 
+    @Cacheable(value = "activeCoupons", key = "#pageable.pageNumber + ':' + #pageable.pageSize")
     public Page<Coupon> getActiveCoupons(Pageable pageable) {
         return couponRepository.findActiveCoupons(pageable);
     }
