@@ -36,7 +36,7 @@ spring:
       continue-on-error: true
 
   thymeleaf:
-    cache: false
+    cache: true  # 템플릿 캐시 활성화 (부하 테스트 시 SSR 오버헤드 감소)
     prefix: classpath:/templates/
     suffix: .html
     encoding: UTF-8
@@ -58,6 +58,6 @@ server:
 logging:
   level:
     root: INFO
-    com.shop: DEBUG
-    org.hibernate.SQL: WARN
-    org.hibernate.type.descriptor.sql.BasicBinder: WARN
+    com.shop: INFO # DEBUG → INFO (부하 테스트 시 로그 I/O 감소)
+    org.hibernate.SQL: WARN # DEBUG → WARN (SQL 로그 비활성화)
+    org.hibernate.type.descriptor.sql.BasicBinder: WARN # TRACE → WARN

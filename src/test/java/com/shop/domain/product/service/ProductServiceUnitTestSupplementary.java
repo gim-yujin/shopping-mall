@@ -29,11 +29,14 @@ class ProductServiceUnitTestSupplementary {
     @Mock
     private ProductRepository productRepository;
 
+    @Mock
+    private ViewCountService viewCountService;
+
     private ProductService productService;
 
     @BeforeEach
     void setUp() {
-        productService = new ProductService(productRepository);
+        productService = new ProductService(productRepository, viewCountService);
     }
 
     // ==================== 미커버 메서드 5개 ====================

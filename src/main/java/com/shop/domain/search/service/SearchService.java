@@ -3,6 +3,7 @@ package com.shop.domain.search.service;
 import com.shop.domain.search.entity.SearchLog;
 import com.shop.domain.search.repository.SearchLogRepository;
 import org.springframework.cache.annotation.Cacheable;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
@@ -18,6 +19,12 @@ public class SearchService {
         this.searchLogRepository = searchLogRepository;
     }
 
+    /**
+     * 검색 로그를 비동기로 저장한다.
+     * 이전: 검색 요청 스레드에서 동기 INSERT → 커넥션 풀 점유 + 응답 지연
+     * 이후: 별도 스레드에서 INSERT → 검색 응답은 읽기 전용으로 즉시 반환
+     */
+    @Async("asyncExecutor")
     @Transactional
     public void logSearch(Long userId, String keyword, int resultCount, String ipAddress, String userAgent) {
         searchLogRepository.save(new SearchLog(userId, keyword, resultCount, ipAddress, userAgent));

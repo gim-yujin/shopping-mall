@@ -17,9 +17,11 @@ import java.util.List;
 public class ProductService {
 
     private final ProductRepository productRepository;
+    private final ViewCountService viewCountService;
 
-    public ProductService(ProductRepository productRepository) {
+    public ProductService(ProductRepository productRepository, ViewCountService viewCountService) {
         this.productRepository = productRepository;
+        this.viewCountService = viewCountService;
     }
 
     public Product findById(Long productId) {
@@ -27,11 +29,16 @@ public class ProductService {
                 .orElseThrow(() -> new ResourceNotFoundException("상품", productId));
     }
 
-    @Transactional
+    /**
+     * 상품 상세 조회 + 조회수 증가 (비동기).
+     * OSIV off 환경: category를 JOIN FETCH로 즉시 로딩.
+     * viewCount UPDATE는 비동기 스레드에서 별도 트랜잭션으로 처리 → 읽기 전용 트랜잭션 유지.
+     */
     public Product findByIdAndIncrementView(Long productId) {
-        productRepository.incrementViewCount(productId);
-        return productRepository.findByIdWithCategory(productId)
+        Product product = productRepository.findByIdWithCategory(productId)
                 .orElseThrow(() -> new ResourceNotFoundException("상품", productId));
+        viewCountService.incrementAsync(productId);  // fire-and-forget
+        return product;
     }
 
     public Page<Product> findByCategory(Integer categoryId, Pageable pageable) {

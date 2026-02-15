@@ -35,13 +35,16 @@ class SearchServiceIntegrationTest {
 
     @Test
     @DisplayName("logSearch - search_logs에 검색 로그가 저장됨")
-    void logSearch_persistsRow() {
+    void logSearch_persistsRow() throws InterruptedException {
         keywordForCleanup = "TEST_SEARCH_" + System.currentTimeMillis();
         int before = jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM search_logs WHERE search_keyword = ?",
                 Integer.class, keywordForCleanup);
 
         searchService.logSearch(11L, keywordForCleanup, 5, "127.0.0.1", "JUnit-Integration");
+
+        // @Async로 변경된 logSearch가 별도 스레드에서 완료될 때까지 대기
+        Thread.sleep(500);
 
         int after = jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM search_logs WHERE search_keyword = ?",

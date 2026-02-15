@@ -44,8 +44,11 @@ class ProductServiceIntegrationTest {
 
     @Test
     @DisplayName("findByIdAndIncrementView - 조회수 1 증가")
-    void findByIdAndIncrementView_incrementsViewCount() {
+    void findByIdAndIncrementView_incrementsViewCount() throws InterruptedException {
         Product product = productService.findByIdAndIncrementView(testProductId);
+
+        // @Async로 변경된 viewCount UPDATE가 별도 스레드에서 완료될 때까지 대기
+        Thread.sleep(500);
 
         int after = jdbcTemplate.queryForObject(
                 "SELECT view_count FROM products WHERE product_id = ?",
