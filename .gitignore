@@ -7,7 +7,7 @@ build/
 csv_data/
 experiment_results/
 optimization/
-load_test/
+load-test/
 # Log files
 *.log
 # Local compressed files
