@@ -62,12 +62,12 @@ class ProductServiceUnitTest {
     @Test
     @DisplayName("findAllSorted - sort 파라미터에 따라 정렬 필드가 선택됨")
     void findAllSorted_usesExpectedSortField() {
-        when(productRepository.findAll(any(Pageable.class))).thenReturn(Page.empty());
+        when(productRepository.findByIsActiveTrue(any(Pageable.class))).thenReturn(Page.empty());
 
         productService.findAllSorted(0, 12, "rating");
 
         ArgumentCaptor<Pageable> pageableCaptor = ArgumentCaptor.forClass(Pageable.class);
-        verify(productRepository).findAll(pageableCaptor.capture());
+        verify(productRepository).findByIsActiveTrue(pageableCaptor.capture());
 
         Pageable pageable = pageableCaptor.getValue();
         assertThat(pageable.getSort().toString())
