@@ -118,60 +118,60 @@ class ProductServiceUnitTestSupplementary {
     @Test
     @DisplayName("findAllSorted — price_asc → price ASC 정렬")
     void findAllSorted_priceAsc() {
-        when(productRepository.findAll(any(Pageable.class))).thenReturn(Page.empty());
+        when(productRepository.findByIsActiveTrue(any(Pageable.class))).thenReturn(Page.empty());
 
         productService.findAllSorted(0, 20, "price_asc");
 
         ArgumentCaptor<Pageable> captor = ArgumentCaptor.forClass(Pageable.class);
-        verify(productRepository).findAll(captor.capture());
+        verify(productRepository).findByIsActiveTrue(captor.capture());
         assertThat(captor.getValue().getSort().toString()).contains("price: ASC");
     }
 
     @Test
     @DisplayName("findAllSorted — price_desc → price DESC 정렬")
     void findAllSorted_priceDesc() {
-        when(productRepository.findAll(any(Pageable.class))).thenReturn(Page.empty());
+        when(productRepository.findByIsActiveTrue(any(Pageable.class))).thenReturn(Page.empty());
 
         productService.findAllSorted(0, 20, "price_desc");
 
         ArgumentCaptor<Pageable> captor = ArgumentCaptor.forClass(Pageable.class);
-        verify(productRepository).findAll(captor.capture());
+        verify(productRepository).findByIsActiveTrue(captor.capture());
         assertThat(captor.getValue().getSort().toString()).contains("price: DESC");
     }
 
     @Test
     @DisplayName("findAllSorted — newest → createdAt DESC 정렬")
     void findAllSorted_newest() {
-        when(productRepository.findAll(any(Pageable.class))).thenReturn(Page.empty());
+        when(productRepository.findByIsActiveTrue(any(Pageable.class))).thenReturn(Page.empty());
 
         productService.findAllSorted(0, 20, "newest");
 
         ArgumentCaptor<Pageable> captor = ArgumentCaptor.forClass(Pageable.class);
-        verify(productRepository).findAll(captor.capture());
+        verify(productRepository).findByIsActiveTrue(captor.capture());
         assertThat(captor.getValue().getSort().toString()).contains("createdAt: DESC");
     }
 
     @Test
     @DisplayName("findAllSorted — review → reviewCount DESC 정렬")
     void findAllSorted_review() {
-        when(productRepository.findAll(any(Pageable.class))).thenReturn(Page.empty());
+        when(productRepository.findByIsActiveTrue(any(Pageable.class))).thenReturn(Page.empty());
 
         productService.findAllSorted(0, 20, "review");
 
         ArgumentCaptor<Pageable> captor = ArgumentCaptor.forClass(Pageable.class);
-        verify(productRepository).findAll(captor.capture());
+        verify(productRepository).findByIsActiveTrue(captor.capture());
         assertThat(captor.getValue().getSort().toString()).contains("reviewCount: DESC");
     }
 
     @Test
     @DisplayName("findAllSorted — 알 수 없는 sort값 → default: salesCount DESC")
     void findAllSorted_defaultBest() {
-        when(productRepository.findAll(any(Pageable.class))).thenReturn(Page.empty());
+        when(productRepository.findByIsActiveTrue(any(Pageable.class))).thenReturn(Page.empty());
 
         productService.findAllSorted(0, 20, "best");
 
         ArgumentCaptor<Pageable> captor = ArgumentCaptor.forClass(Pageable.class);
-        verify(productRepository).findAll(captor.capture());
+        verify(productRepository).findByIsActiveTrue(captor.capture());
         assertThat(captor.getValue().getSort().toString()).contains("salesCount: DESC");
     }
 }
