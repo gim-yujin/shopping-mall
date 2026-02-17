@@ -41,20 +41,24 @@
 <!-- Pagination Fragment -->
 <nav th:fragment="pagination(page, baseUrl)" th:if="${page.totalPages > 1}" class="flex justify-center mt-8">
     <th:block th:with="separator=${baseUrl.contains('?') ? '&amp;' : '?'}">
-    <div class="flex items-center gap-1">
-        <a th:if="${page.hasPrevious()}" th:href="${baseUrl + separator + 'page=' + (page.number - 1)}"
-           class="px-3 py-2 text-sm border rounded hover:bg-gray-50">&laquo; 이전</a>
-        <th:block th:with="start=${T(java.lang.Math).max(0, page.number - 2)}, end=${T(java.lang.Math).min(page.totalPages - 1, page.number + 2)}"
-                  th:each="i : ${#numbers.sequence(start, end)}">
-            <a th:if="${i >= page.number - 2 && i <= page.number + 2}"
-               th:href="${baseUrl + separator + 'page=' + i}"
-               th:text="${i + 1}"
-               th:classappend="${i == page.number} ? 'bg-indigo-600 text-white border-indigo-600' : 'hover:bg-gray-50'"
-               class="px-3 py-2 text-sm border rounded"></a>
-        </th:block>
-        <a th:if="${page.hasNext()}" th:href="${baseUrl + separator + 'page=' + (page.number + 1)}"
-           class="px-3 py-2 text-sm border rounded hover:bg-gray-50">다음 &raquo;</a>
-    </div>
+        <div class="flex items-center gap-1">
+            <a th:if="${page.hasPrevious()}" th:href="${baseUrl + separator + 'page=' + (page.number - 1)}"
+               class="px-3 py-2 text-sm border rounded hover:bg-gray-50">&laquo; 이전</a>
+
+            <!-- 전체 범위를 순회하지 않고, 현재 페이지 기준의 윈도우 범위만 페이지 생성 -->
+            <th:block th:with="start=${T(java.lang.Math).max(0, page.number - 2)}, 
+                               end=${T(java.lang.Math).min(page.totalPages - 1, page.number + 2)}">
+                <th:block th:each="i : ${#numbers.sequence(start, end)}">
+                    <a th:href="${baseUrl + separator + 'page=' + i}"
+                       th:text="${i + 1}"
+                       th:classappend="${i == page.number} ? 'bg-indigo-600 text-white border-indigo-600' : 'hover:bg-gray-50'"
+                       class="px-3 py-2 text-sm border rounded"></a>
+                </th:block>
+            </th:block>
+
+            <a th:if="${page.hasNext()}" th:href="${baseUrl + separator + 'page=' + (page.number + 1)}"
+               class="px-3 py-2 text-sm border rounded hover:bg-gray-50">다음 &raquo;</a>
+        </div>
     </th:block>
 </nav>
 </body>
