@@ -286,6 +286,7 @@ public class OrderService {
         return datePart + "-" + randomPart;
     }
 
+    // 주문 생성 중 계산된 상품별 스냅샷 데이터를 임시로 보관하는 내부 DTO
     private record OrderLine(Long productId, String productName, int quantity,
                              BigDecimal unitPrice, BigDecimal subtotal) {
     }
