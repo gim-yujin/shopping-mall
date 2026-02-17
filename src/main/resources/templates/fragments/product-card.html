@@ -44,7 +44,8 @@
     <div class="flex items-center gap-1">
         <a th:if="${page.hasPrevious()}" th:href="${baseUrl + separator + 'page=' + (page.number - 1)}"
            class="px-3 py-2 text-sm border rounded hover:bg-gray-50">&laquo; 이전</a>
-        <th:block th:each="i : ${#numbers.sequence(0, page.totalPages - 1)}">
+        <th:block th:with="start=${T(java.lang.Math).max(0, page.number - 2)}, end=${T(java.lang.Math).min(page.totalPages - 1, page.number + 2)}"
+                  th:each="i : ${#numbers.sequence(start, end)}">
             <a th:if="${i >= page.number - 2 && i <= page.number + 2}"
                th:href="${baseUrl + separator + 'page=' + i}"
                th:text="${i + 1}"
