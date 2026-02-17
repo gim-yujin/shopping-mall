@@ -92,6 +92,6 @@ public class ProductService {
             case "review" -> Sort.by("reviewCount").descending();
             default -> Sort.by("salesCount").descending();
         };
-        return productRepository.findAll(PageRequest.of(page, size, sortObj));
+        return productRepository.findByIsActiveTrue(PageRequest.of(page, size, sortObj));
     }
 }

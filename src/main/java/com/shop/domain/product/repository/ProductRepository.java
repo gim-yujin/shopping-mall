@@ -46,6 +46,8 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
     @Query("SELECT p FROM Product p LEFT JOIN FETCH p.category WHERE p.productId = :id")
     Optional<Product> findByIdWithCategory(@Param("id") Long id);
 
+    Page<Product> findByIsActiveTrue(Pageable pageable);
+
     @Modifying
     @Query("UPDATE Product p SET p.viewCount = p.viewCount + 1 WHERE p.productId = :id")
     void incrementViewCount(@Param("id") Long id);

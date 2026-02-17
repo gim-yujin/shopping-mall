@@ -445,6 +445,8 @@ CREATE INDEX idx_product_price ON products(price);
 CREATE INDEX idx_product_sales ON products(is_active, sales_count DESC);
 CREATE INDEX idx_product_created ON products(is_active, created_at DESC);
 CREATE INDEX idx_product_rating ON products(is_active, rating_avg DESC, review_count DESC);
+CREATE INDEX idx_product_price_active ON products(is_active, price);
+CREATE INDEX idx_product_review_count ON products(is_active, review_count DESC);
 
 -- findDeals 최적화: partial expression index
 -- WHERE is_active=true AND original_price > price 조건의 행만 인덱싱
