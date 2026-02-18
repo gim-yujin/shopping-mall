@@ -63,7 +63,7 @@
                                     th:data-discount-value="${uc.coupon.discountValue}"
                                     th:data-min-order="${uc.coupon.minOrderAmount}"
                                     th:data-max-discount="${uc.coupon.maxDiscount}"
-                                    th:text="${uc.coupon.couponName + ' (' + (uc.coupon.discountType == 'PERCENT' ? uc.coupon.discountValue + '%' : #numbers.formatDecimal(uc.coupon.discountValue,0,'COMMA',0,'POINT') + '원') + ' 할인, 최소주문 ' + #numbers.formatDecimal(uc.coupon.minOrderAmount,0,'COMMA',0,'POINT') + '원)'}">
+                                    th:text="${couponDisplayNames.get(uc.userCouponId)}">
                                 쿠폰명
                             </option>
                         </select>

@@ -15,9 +15,9 @@
         <div class="flex gap-2 mb-6 flex-wrap">
             <a th:href="@{/admin/orders}" class="px-4 py-2 rounded-full text-sm"
                th:classappend="${currentStatus == null ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}">전체</a>
-            <a th:each="s : ${ {'PENDING','PAID','SHIPPED','DELIVERED','CANCELLED'} }"
+            <a th:each="s : ${orderStatuses}"
                th:href="@{/admin/orders(status=${s})}"
-               th:text="${s == 'PENDING' ? '결제대기' : s == 'PAID' ? '결제완료' : s == 'SHIPPED' ? '배송중' : s == 'DELIVERED' ? '배송완료' : '취소'}"
+               th:text="${orderStatusLabels.getOrDefault(s, s)}"
                th:classappend="${currentStatus == s ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}"
                class="px-4 py-2 rounded-full text-sm">상태</a>
         </div>
@@ -46,11 +46,8 @@
                         <td class="text-right font-medium" th:text="${#numbers.formatDecimal(order.finalAmount,0,'COMMA',0,'POINT')} + '원'">0원</td>
                         <td>
                             <span class="px-2 py-0.5 text-xs rounded-full"
-                                  th:classappend="${order.orderStatus == 'DELIVERED' ? 'bg-green-100 text-green-700' :
-                                                   order.orderStatus == 'CANCELLED' ? 'bg-red-100 text-red-700' :
-                                                   order.orderStatus == 'SHIPPED' ? 'bg-blue-100 text-blue-700' :
-                                                   'bg-yellow-100 text-yellow-700'}"
-                                  th:text="${order.orderStatus}">STATUS</span>
+                                  th:classappend="${orderStatusBadgeClasses.getOrDefault(order.orderStatus, 'bg-yellow-100 text-yellow-700')}"
+                                  th:text="${orderStatusLabels.getOrDefault(order.orderStatus, order.orderStatus)}">STATUS</span>
                         </td>
                         <td>
                             <form th:if="${order.orderStatus != 'DELIVERED' and order.orderStatus != 'CANCELLED'}"
@@ -71,13 +68,27 @@
         </div>
 
         <!-- Pagination -->
-        <div th:if="${orders.totalPages > 1}" class="flex justify-center gap-2 mt-6">
-            <a th:each="i : ${#numbers.sequence(0, orders.totalPages - 1)}"
-               th:href="@{/admin/orders(page=${i}, status=${currentStatus})}"
-               th:text="${i + 1}"
-               th:classappend="${i == orders.number ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'}"
-               class="px-3 py-2 rounded-lg border text-sm">1</a>
-        </div>
+        <nav th:if="${orders.totalPages > 1}" class="flex justify-center mt-6">
+            <th:block th:with="baseUrl=@{/admin/orders(status=${currentStatus})}, separator=${baseUrl.contains('?') ? '&amp;' : '?'}">
+                <div class="flex items-center gap-1">
+                    <a th:if="${orders.hasPrevious()}" th:href="${baseUrl + separator + 'page=' + (orders.number - 1)}"
+                       class="px-3 py-2 text-sm border rounded hover:bg-gray-50">&laquo; 이전</a>
+
+                    <th:block th:with="start=${T(java.lang.Math).max(0, orders.number - 2)},
+                                       end=${T(java.lang.Math).min(orders.totalPages - 1, orders.number + 2)}">
+                        <th:block th:each="i : ${#numbers.sequence(start, end)}">
+                            <a th:href="${baseUrl + separator + 'page=' + i}"
+                               th:text="${i + 1}"
+                               th:classappend="${i == orders.number} ? 'bg-blue-600 text-white border-blue-600' : 'hover:bg-gray-50'"
+                               class="px-3 py-2 text-sm border rounded"></a>
+                        </th:block>
+                    </th:block>
+
+                    <a th:if="${orders.hasNext()}" th:href="${baseUrl + separator + 'page=' + (orders.number + 1)}"
+                       class="px-3 py-2 text-sm border rounded hover:bg-gray-50">다음 &raquo;</a>
+                </div>
+            </th:block>
+        </nav>
     </div>
 </div>
 </body>
