@@ -51,13 +51,27 @@
             </div>
 
             <!-- Pagination -->
-            <div th:if="${orders.totalPages > 1}" class="flex justify-center gap-2 mt-6">
-                <a th:each="i : ${#numbers.sequence(0, orders.totalPages - 1)}"
-                   th:href="@{/orders(page=${i})}"
-                   th:text="${i + 1}"
-                   th:classappend="${i == orders.number ? 'bg-blue-600 text-white' : 'bg-white text-gray-700 hover:bg-gray-50'}"
-                   class="px-3 py-2 rounded-lg border text-sm">1</a>
-            </div>
+            <nav th:if="${orders.totalPages > 1}" class="flex justify-center mt-6">
+                <th:block th:with="baseUrl=@{/orders}, separator=${baseUrl.contains('?') ? '&amp;' : '?'}">
+                    <div class="flex items-center gap-1">
+                        <a th:if="${orders.hasPrevious()}" th:href="${baseUrl + separator + 'page=' + (orders.number - 1)}"
+                           class="px-3 py-2 text-sm border rounded hover:bg-gray-50">&laquo; 이전</a>
+
+                        <th:block th:with="start=${T(java.lang.Math).max(0, orders.number - 2)},
+                                           end=${T(java.lang.Math).min(orders.totalPages - 1, orders.number + 2)}">
+                            <th:block th:each="i : ${#numbers.sequence(start, end)}">
+                                <a th:href="${baseUrl + separator + 'page=' + i}"
+                                   th:text="${i + 1}"
+                                   th:classappend="${i == orders.number} ? 'bg-blue-600 text-white border-blue-600' : 'hover:bg-gray-50'"
+                                   class="px-3 py-2 text-sm border rounded"></a>
+                            </th:block>
+                        </th:block>
+
+                        <a th:if="${orders.hasNext()}" th:href="${baseUrl + separator + 'page=' + (orders.number + 1)}"
+                           class="px-3 py-2 text-sm border rounded hover:bg-gray-50">다음 &raquo;</a>
+                    </div>
+                </th:block>
+            </nav>
         </div>
     </div>
 </div>

@@ -55,6 +55,7 @@ public class ProductController {
 
         model.addAttribute("product", product);
         model.addAttribute("reviews", reviews);
+        model.addAttribute("helpedReviewIds", Set.of());
 
         SecurityUtil.getCurrentUserId().ifPresent(userId -> {
             model.addAttribute("isWishlisted", wishlistService.isWishlisted(userId, productId));
