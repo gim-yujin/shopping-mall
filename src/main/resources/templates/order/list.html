@@ -22,15 +22,8 @@
                         <span class="font-medium text-sm" th:text="${order.orderNumber}">ORD-001</span>
                     </div>
                     <span class="px-3 py-1 text-xs font-medium rounded-full"
-                          th:classappend="${order.orderStatus == 'DELIVERED' ? 'bg-green-100 text-green-700' :
-                                           order.orderStatus == 'CANCELLED' ? 'bg-red-100 text-red-700' :
-                                           order.orderStatus == 'SHIPPED' ? 'bg-blue-100 text-blue-700' :
-                                           'bg-yellow-100 text-yellow-700'}"
-                          th:text="${order.orderStatus == 'PENDING' ? '결제대기' :
-                                    order.orderStatus == 'PAID' ? '결제완료' :
-                                    order.orderStatus == 'SHIPPED' ? '배송중' :
-                                    order.orderStatus == 'DELIVERED' ? '배송완료' :
-                                    order.orderStatus == 'CANCELLED' ? '취소' : order.orderStatus}">상태</span>
+                          th:classappend="${orderStatusBadgeClasses.getOrDefault(order.orderStatus, 'bg-yellow-100 text-yellow-700')}"
+                          th:text="${orderStatusLabels.getOrDefault(order.orderStatus, order.orderStatus)}">상태</span>
                 </div>
                 <div class="px-6 py-4">
                     <div th:each="item : ${order.items}" class="flex items-center gap-4 py-2">

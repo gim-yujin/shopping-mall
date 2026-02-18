@@ -2,12 +2,14 @@ package com.shop.domain.product.controller;
 
 import com.shop.domain.order.service.OrderService;
 import com.shop.domain.product.service.ProductService;
-import com.shop.domain.user.service.UserService;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.support.RedirectAttributes;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 
 @Controller
 @RequestMapping("/admin")
@@ -38,6 +40,9 @@ public class AdminController {
             model.addAttribute("orders", orderService.getAllOrders(PageRequest.of(page, 20)));
         }
         model.addAttribute("currentStatus", status);
+        model.addAttribute("orderStatuses", List.of("PENDING", "PAID", "SHIPPED", "DELIVERED", "CANCELLED"));
+        model.addAttribute("orderStatusLabels", orderStatusLabels());
+        model.addAttribute("orderStatusBadgeClasses", orderStatusBadgeClasses());
         return "admin/orders";
     }
 
@@ -54,4 +59,24 @@ public class AdminController {
         model.addAttribute("products", productService.findAll(PageRequest.of(page, 20)));
         return "admin/products";
     }
+    private Map<String, String> orderStatusLabels() {
+        Map<String, String> labels = new LinkedHashMap<>();
+        labels.put("PENDING", "결제대기");
+        labels.put("PAID", "결제완료");
+        labels.put("SHIPPED", "배송중");
+        labels.put("DELIVERED", "배송완료");
+        labels.put("CANCELLED", "취소");
+        return labels;
+    }
+
+    private Map<String, String> orderStatusBadgeClasses() {
+        Map<String, String> classes = new LinkedHashMap<>();
+        classes.put("PENDING", "bg-yellow-100 text-yellow-700");
+        classes.put("PAID", "bg-yellow-100 text-yellow-700");
+        classes.put("SHIPPED", "bg-blue-100 text-blue-700");
+        classes.put("DELIVERED", "bg-green-100 text-green-700");
+        classes.put("CANCELLED", "bg-red-100 text-red-700");
+        return classes;
+    }
+
 }

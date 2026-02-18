@@ -15,9 +15,9 @@
         <div class="flex gap-2 mb-6 flex-wrap">
             <a th:href="@{/admin/orders}" class="px-4 py-2 rounded-full text-sm"
                th:classappend="${currentStatus == null ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}">전체</a>
-            <a th:each="s : ${ {'PENDING','PAID','SHIPPED','DELIVERED','CANCELLED'} }"
+            <a th:each="s : ${orderStatuses}"
                th:href="@{/admin/orders(status=${s})}"
-               th:text="${s == 'PENDING' ? '결제대기' : s == 'PAID' ? '결제완료' : s == 'SHIPPED' ? '배송중' : s == 'DELIVERED' ? '배송완료' : '취소'}"
+               th:text="${orderStatusLabels.getOrDefault(s, s)}"
                th:classappend="${currentStatus == s ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}"
                class="px-4 py-2 rounded-full text-sm">상태</a>
         </div>
@@ -46,11 +46,8 @@
                         <td class="text-right font-medium" th:text="${#numbers.formatDecimal(order.finalAmount,0,'COMMA',0,'POINT')} + '원'">0원</td>
                         <td>
                             <span class="px-2 py-0.5 text-xs rounded-full"
-                                  th:classappend="${order.orderStatus == 'DELIVERED' ? 'bg-green-100 text-green-700' :
-                                                   order.orderStatus == 'CANCELLED' ? 'bg-red-100 text-red-700' :
-                                                   order.orderStatus == 'SHIPPED' ? 'bg-blue-100 text-blue-700' :
-                                                   'bg-yellow-100 text-yellow-700'}"
-                                  th:text="${order.orderStatus}">STATUS</span>
+                                  th:classappend="${orderStatusBadgeClasses.getOrDefault(order.orderStatus, 'bg-yellow-100 text-yellow-700')}"
+                                  th:text="${orderStatusLabels.getOrDefault(order.orderStatus, order.orderStatus)}">STATUS</span>
                         </td>
                         <td>
                             <form th:if="${order.orderStatus != 'DELIVERED' and order.orderStatus != 'CANCELLED'}"
