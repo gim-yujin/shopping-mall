@@ -8,6 +8,7 @@ import com.shop.domain.review.repository.ReviewRepository;
 import com.shop.domain.review.repository.ReviewHelpfulRepository;
 import com.shop.global.exception.BusinessException;
 import com.shop.global.exception.ResourceNotFoundException;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -39,6 +40,7 @@ public class ReviewService {
     }
 
     @Transactional
+    @CacheEvict(value = "productReviews", allEntries = true)
     public Review createReview(Long userId, ReviewCreateRequest request) {
         if (request.orderItemId() != null &&
             reviewRepository.existsByUserIdAndOrderItemId(userId, request.orderItemId())) {
@@ -54,6 +56,7 @@ public class ReviewService {
     }
 
     @Transactional
+    @CacheEvict(value = "productReviews", allEntries = true)
     public void deleteReview(Long reviewId, Long userId) {
         Review review = reviewRepository.findById(reviewId)
                 .orElseThrow(() -> new ResourceNotFoundException("리뷰", reviewId));
@@ -74,6 +77,7 @@ public class ReviewService {
     }
 
     @Transactional
+    @CacheEvict(value = "productReviews", allEntries = true)
     public boolean markHelpful(Long reviewId, Long userId) {
         Review review = reviewRepository.findById(reviewId)
                 .orElseThrow(() -> new ResourceNotFoundException("리뷰", reviewId));
