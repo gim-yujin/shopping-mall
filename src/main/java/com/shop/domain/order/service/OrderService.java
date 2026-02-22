@@ -69,7 +69,7 @@ public class OrderService {
         if (cartItems.isEmpty()) {
             throw new BusinessException("EMPTY_CART", "장바구니가 비어있습니다.");
         }
-        // [추가] 데드락 예방을 위해 상품 ID 순으로 정렬 (자원 획득 순서 일관성 유지)
+        // 데드락 예방을 위해 상품 ID 순으로 정렬 (자원 획득 순서 일관성 유지)
         cartItems.sort(java.util.Comparator.comparing(cart -> cart.getProduct().getProductId()));
 
         // 0) 사용자 & 등급 정보 로드
