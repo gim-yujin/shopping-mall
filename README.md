@@ -67,7 +67,7 @@ com.shop
 ### 2. 데이터베이스 설정
 
 ```sql
-CREATE DATABASE shopping_mall;
+CREATE DATABASE shopping_mall_db;
 ```
 
 ### 3. Gradle Wrapper 초기화
