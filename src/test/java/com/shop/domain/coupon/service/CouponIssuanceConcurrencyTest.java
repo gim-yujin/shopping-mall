@@ -17,8 +17,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  * 쿠폰 발급 동시성 테스트
  *
  * 시나리오 1 — 초과 발급 (Over-Issuance)
- *   총 수량 5장인 쿠폰에 20명이 동시 발급 요청
- *   위험: Coupon에 락 없이 usedQuantity를 읽으므로 20명 모두 "수량 남음"으로 판단
+ *   총 수량 5장인 쿠폰에 100명이 동시 발급 요청
+ *   위험: Coupon에 락 없이 usedQuantity를 읽으므로 100명 모두 "수량 남음"으로 판단
  *   기대: 정확히 5명만 성공
  *
  * 시나리오 2 — 중복 발급 (Duplicate Issuance)
@@ -84,12 +84,12 @@ class CouponIssuanceConcurrencyTest {
                 "SELECT coupon_id FROM coupons WHERE coupon_code = ?",
                 Integer.class, overIssueCouponCode);
 
-        // 20명의 사용자 선택
+        // 100명의 사용자 선택
         testUserIds = jdbcTemplate.queryForList(
                 """
                 SELECT u.user_id FROM users u
                 WHERE u.is_active = true AND u.role = 'ROLE_USER'
-                ORDER BY u.user_id LIMIT 20
+                ORDER BY u.user_id LIMIT 100
                 """,
                 Long.class);
 
@@ -153,7 +153,7 @@ class CouponIssuanceConcurrencyTest {
 
     @Test
     @Order(1)
-    @DisplayName("시나리오 1: 총 5장 쿠폰에 20명 동시 발급 → 초과 발급 방지")
+    @DisplayName("시나리오 1: 총 5장 쿠폰에 100명 동시 발급 → 초과 발급 방지")
     void overIssuance_prevention() throws InterruptedException {
         int threadCount = testUserIds.size();
         ExecutorService executor = Executors.newFixedThreadPool(threadCount);
@@ -166,7 +166,7 @@ class CouponIssuanceConcurrencyTest {
         AtomicInteger otherFailCount = new AtomicInteger(0);
         List<String> errors = Collections.synchronizedList(new ArrayList<>());
 
-        // When: 20명이 동시에 같은 쿠폰 발급 요청
+        // When: 100명이 동시에 같은 쿠폰 발급 요청
         for (int i = 0; i < threadCount; i++) {
             final Long userId = testUserIds.get(i);
             final int attempt = i + 1;
