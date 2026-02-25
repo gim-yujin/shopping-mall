@@ -73,6 +73,16 @@ class ReviewServiceIntegrationTest {
                 "SELECT product_id FROM products WHERE is_active = true LIMIT 1",
                 Long.class);
 
+        // review_count를 실제 리뷰 수와 동기화 (이전 테스트/운영으로 불일치 가능)
+        jdbcTemplate.update("""
+                UPDATE products SET review_count = (SELECT COUNT(*) FROM reviews WHERE product_id = ?),
+                       rating_avg = COALESCE((SELECT AVG(rating) FROM reviews WHERE product_id = ?), 0)
+                WHERE product_id = ?
+                """, testProductId, testProductId, testProductId);
+
+        // productDetail 캐시 evict (이전 테스트의 stale 엔트리 방지)
+        productService.evictProductDetailCache(testProductId);
+
         // 원본 평점 백업
         var state = jdbcTemplate.queryForMap(
                 "SELECT rating_avg, review_count FROM products WHERE product_id = ?",
@@ -84,7 +94,9 @@ class ReviewServiceIntegrationTest {
                 Integer.class, testProductId);
 
         System.out.println("  [setUp] 작성자: " + testUserId + ", 클릭자: " + otherUserId
-                + ", 상품: " + testProductId);
+                + ", 상품: " + testProductId
+                + " (review_count=" + originalReviewCount
+                + ", actual=" + originalActualReviewCount + ")");
     }
 
     @AfterEach
@@ -105,6 +117,9 @@ class ReviewServiceIntegrationTest {
         jdbcTemplate.update(
                 "UPDATE products SET rating_avg = ?, review_count = ? WHERE product_id = ?",
                 originalRatingAvg, originalReviewCount, testProductId);
+
+        // productDetail 캐시 evict (복원된 DB 값과 캐시 불일치 방지)
+        productService.evictProductDetailCache(testProductId);
     }
 
     // ==================== createReview ====================
