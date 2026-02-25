@@ -8,8 +8,10 @@ import com.shop.domain.user.dto.ProfileUpdateRequest;
 import com.shop.domain.user.entity.User;
 import com.shop.domain.user.service.UserService;
 import com.shop.global.exception.BusinessException;
+import com.shop.global.exception.DuplicateConstraintMessageResolver;
 import com.shop.global.security.SecurityUtil;
 import jakarta.validation.Valid;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
@@ -25,13 +27,16 @@ public class MyPageController {
     private final OrderService orderService;
     private final ReviewService reviewService;
     private final CouponService couponService;
+    private final DuplicateConstraintMessageResolver duplicateConstraintMessageResolver;
 
     public MyPageController(UserService userService, OrderService orderService,
-                            ReviewService reviewService, CouponService couponService) {
+                            ReviewService reviewService, CouponService couponService,
+                            DuplicateConstraintMessageResolver duplicateConstraintMessageResolver) {
         this.userService = userService;
         this.orderService = orderService;
         this.reviewService = reviewService;
         this.couponService = couponService;
+        this.duplicateConstraintMessageResolver = duplicateConstraintMessageResolver;
     }
 
     @GetMapping
@@ -55,15 +60,12 @@ public class MyPageController {
     @PostMapping("/profile")
     public String updateProfile(@Valid @ModelAttribute("profileUpdateRequest") ProfileUpdateRequest request,
                                 BindingResult bindingResult,
-                                Model model,
                                 RedirectAttributes redirectAttributes) {
         Long userId = SecurityUtil.getCurrentUserId().orElseThrow();
-        User user = userService.findById(userId);
 
         if (bindingResult.hasErrors()) {
-            populateProfilePageModel(model, user);
-            model.addAttribute("profileErrorMessage", "입력값을 확인해주세요.");
-            return "mypage/profile";
+            redirectAttributes.addFlashAttribute("profileErrorMessage", "입력값을 확인해주세요.");
+            return "redirect:/mypage/profile";
         }
 
         try {
@@ -71,24 +73,23 @@ public class MyPageController {
             redirectAttributes.addFlashAttribute("successMessage", "프로필이 수정되었습니다.");
             return "redirect:/mypage/profile";
         } catch (BusinessException e) {
-            populateProfilePageModel(model, user);
-            model.addAttribute("profileErrorMessage", e.getMessage());
-            return "mypage/profile";
+            redirectAttributes.addFlashAttribute("profileErrorMessage", e.getMessage());
+            return "redirect:/mypage/profile";
+        } catch (DataIntegrityViolationException e) {
+            redirectAttributes.addFlashAttribute("profileErrorMessage", duplicateConstraintMessageResolver.resolve(e));
+            return "redirect:/mypage/profile";
         }
     }
 
     @PostMapping("/password")
     public String changePassword(@Valid @ModelAttribute("passwordChangeRequest") PasswordChangeRequest request,
                                  BindingResult bindingResult,
-                                 Model model,
                                  RedirectAttributes redirectAttributes) {
         Long userId = SecurityUtil.getCurrentUserId().orElseThrow();
-        User user = userService.findById(userId);
 
         if (bindingResult.hasErrors()) {
-            populateProfilePageModel(model, user);
-            model.addAttribute("passwordErrorMessage", "입력값을 확인해주세요.");
-            return "mypage/profile";
+            redirectAttributes.addFlashAttribute("passwordErrorMessage", "입력값을 확인해주세요.");
+            return "redirect:/mypage/profile";
         }
 
         try {
@@ -96,9 +97,8 @@ public class MyPageController {
             redirectAttributes.addFlashAttribute("successMessage", "비밀번호가 변경되었습니다.");
             return "redirect:/mypage/profile";
         } catch (BusinessException e) {
-            populateProfilePageModel(model, user);
-            model.addAttribute("passwordErrorMessage", e.getMessage());
-            return "mypage/profile";
+            redirectAttributes.addFlashAttribute("passwordErrorMessage", e.getMessage());
+            return "redirect:/mypage/profile";
         }
     }
 
