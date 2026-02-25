@@ -48,9 +48,15 @@ public class ProductService {
     }
 
     @Cacheable(value = "categoryProducts",
-               key = "#categoryIds.hashCode() + ':' + #pageable.pageNumber + ':' + #pageable.pageSize")
+               key = "#categoryIds.hashCode() + ':' + #pageable.pageNumber + ':' + #pageable.pageSize + ':' + #pageable.sort.toString()")
     public Page<Product> findByCategoryIds(List<Integer> categoryIds, Pageable pageable) {
         return productRepository.findByCategoryIds(categoryIds, pageable);
+    }
+
+    @Cacheable(value = "categoryProducts",
+               key = "#categoryIds.hashCode() + ':' + #page + ':' + #size + ':' + #sort")
+    public Page<Product> findByCategoryIdsSorted(List<Integer> categoryIds, int page, int size, String sort) {
+        return productRepository.findByCategoryIds(categoryIds, PageRequest.of(page, size, mapSort(sort)));
     }
 
     @Cacheable(value = "searchResults",
@@ -84,7 +90,11 @@ public class ProductService {
 
     @Cacheable(value = "productList", key = "#page + ':' + #size + ':' + #sort")
     public Page<Product> findAllSorted(int page, int size, String sort) {
-        Sort sortObj = switch (sort) {
+        return productRepository.findByIsActiveTrue(PageRequest.of(page, size, mapSort(sort)));
+    }
+
+    private Sort mapSort(String sort) {
+        return switch (sort) {
             case "price_asc" -> Sort.by("price").ascending();
             case "price_desc" -> Sort.by("price").descending();
             case "newest" -> Sort.by("createdAt").descending();
@@ -92,6 +102,5 @@ public class ProductService {
             case "review" -> Sort.by("reviewCount").descending();
             default -> Sort.by("salesCount").descending();
         };
-        return productRepository.findByIsActiveTrue(PageRequest.of(page, size, sortObj));
     }
 }
