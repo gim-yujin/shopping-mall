@@ -2,6 +2,9 @@ package com.shop.domain.review.service;
 
 import com.shop.domain.product.entity.Product;
 import com.shop.domain.product.repository.ProductRepository;
+import com.shop.domain.order.entity.Order;
+import com.shop.domain.order.entity.OrderItem;
+import com.shop.domain.order.repository.OrderItemRepository;
 import com.shop.domain.review.dto.ReviewCreateRequest;
 import com.shop.domain.review.entity.Review;
 import com.shop.domain.review.repository.ReviewHelpfulRepository;
@@ -37,11 +40,25 @@ class ReviewServiceUnitTest {
     @Mock
     private ProductRepository productRepository;
 
+    @Mock
+    private OrderItemRepository orderItemRepository;
+
     private ReviewService reviewService;
 
     @BeforeEach
     void setUp() {
-        reviewService = new ReviewService(reviewRepository, reviewHelpfulRepository, productRepository);
+        reviewService = new ReviewService(reviewRepository, reviewHelpfulRepository, productRepository, orderItemRepository);
+    }
+
+    private void mockValidDeliveredOrderItem(Long orderItemId, Long userId, Long productId) {
+        Order order = mock(Order.class);
+        OrderItem orderItem = mock(OrderItem.class);
+
+        when(orderItemRepository.findById(orderItemId)).thenReturn(Optional.of(orderItem));
+        when(orderItem.getOrder()).thenReturn(order);
+        when(order.getUserId()).thenReturn(userId);
+        when(orderItem.getProductId()).thenReturn(productId);
+        when(order.getOrderStatus()).thenReturn("DELIVERED");
     }
 
     @Test
@@ -52,6 +69,8 @@ class ReviewServiceUnitTest {
         Long orderItemId = 1001L;
         ReviewCreateRequest request = new ReviewCreateRequest(productId, orderItemId, 5, "중복", "내용");
 
+        mockValidDeliveredOrderItem(orderItemId, userId, productId);
+
         when(reviewRepository.existsByUserIdAndOrderItemId(userId, orderItemId)).thenReturn(true);
 
         assertThatThrownBy(() -> reviewService.createReview(userId, request))
@@ -61,6 +80,94 @@ class ReviewServiceUnitTest {
 
         verify(reviewRepository, never()).save(any());
         verify(productRepository, never()).findById(any());
+    }
+
+    @Test
+    @DisplayName("createReview - 타인 주문 항목이면 예외")
+    void createReview_orderItemOwnedByOtherUser_throwsException() {
+        Long userId = 11L;
+        Long productId = 101L;
+        Long orderItemId = 1001L;
+        ReviewCreateRequest request = new ReviewCreateRequest(productId, orderItemId, 5, "권한", "내용");
+        Order order = mock(Order.class);
+        OrderItem orderItem = mock(OrderItem.class);
+
+        when(orderItemRepository.findById(orderItemId)).thenReturn(Optional.of(orderItem));
+        when(orderItem.getOrder()).thenReturn(order);
+        when(order.getUserId()).thenReturn(999L);
+
+        assertThatThrownBy(() -> reviewService.createReview(userId, request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("본인 주문");
+
+        verify(reviewRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("createReview - 주문 상품과 요청 상품이 다르면 예외")
+    void createReview_orderItemProductMismatch_throwsException() {
+        Long userId = 11L;
+        Long productId = 101L;
+        Long orderItemId = 1001L;
+        ReviewCreateRequest request = new ReviewCreateRequest(productId, orderItemId, 5, "불일치", "내용");
+        Order order = mock(Order.class);
+        OrderItem orderItem = mock(OrderItem.class);
+
+        when(orderItemRepository.findById(orderItemId)).thenReturn(Optional.of(orderItem));
+        when(orderItem.getOrder()).thenReturn(order);
+        when(order.getUserId()).thenReturn(userId);
+        when(orderItem.getProductId()).thenReturn(202L);
+
+        assertThatThrownBy(() -> reviewService.createReview(userId, request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("일치하지 않습니다");
+
+        verify(reviewRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("createReview - 배송 완료 전 주문이면 예외")
+    void createReview_orderStatusNotDelivered_throwsException() {
+        Long userId = 11L;
+        Long productId = 101L;
+        Long orderItemId = 1001L;
+        ReviewCreateRequest request = new ReviewCreateRequest(productId, orderItemId, 5, "미배송", "내용");
+        Order order = mock(Order.class);
+        OrderItem orderItem = mock(OrderItem.class);
+
+        when(orderItemRepository.findById(orderItemId)).thenReturn(Optional.of(orderItem));
+        when(orderItem.getOrder()).thenReturn(order);
+        when(order.getUserId()).thenReturn(userId);
+        when(orderItem.getProductId()).thenReturn(productId);
+        when(order.getOrderStatus()).thenReturn("SHIPPED");
+
+        assertThatThrownBy(() -> reviewService.createReview(userId, request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("배송 완료");
+
+        verify(reviewRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("createReview - 배송 완료된 본인 주문 항목이면 생성 성공")
+    void createReview_validOrderItem_succeeds() {
+        Long userId = 11L;
+        Long productId = 101L;
+        Long orderItemId = 1001L;
+        ReviewCreateRequest request = new ReviewCreateRequest(productId, orderItemId, 5, "정상", "내용");
+        Product product = mock(Product.class);
+
+        mockValidDeliveredOrderItem(orderItemId, userId, productId);
+        when(reviewRepository.existsByUserIdAndOrderItemId(userId, orderItemId)).thenReturn(false);
+        when(reviewRepository.save(any(Review.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(productRepository.findById(productId)).thenReturn(Optional.of(product));
+        when(reviewRepository.findAverageRatingByProductId(productId)).thenReturn(Optional.of(5.0));
+        when(reviewRepository.countByProductId(productId)).thenReturn(1);
+
+        Review saved = reviewService.createReview(userId, request);
+
+        assertThat(saved.getOrderItemId()).isEqualTo(orderItemId);
+        verify(reviewRepository).save(any(Review.class));
     }
 
     @Test
