@@ -3,6 +3,7 @@ package com.shop.domain.product.service;
 import com.shop.domain.product.entity.Product;
 import com.shop.domain.product.repository.ProductRepository;
 import com.shop.global.exception.ResourceNotFoundException;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -41,6 +42,12 @@ public class ProductService {
                 .orElseThrow(() -> new ResourceNotFoundException("상품", productId));
         viewCountService.incrementAsync(productId);
         return product;
+    }
+
+    @Transactional
+    @CacheEvict(value = "productDetail", key = "#productId")
+    public void evictProductDetailCache(Long productId) {
+        // 캐시 evict 전용 진입점
     }
 
     public Page<Product> findByCategory(Integer categoryId, Pageable pageable) {

@@ -2,6 +2,7 @@ package com.shop.domain.review.service;
 
 import com.shop.domain.product.entity.Product;
 import com.shop.domain.product.repository.ProductRepository;
+import com.shop.domain.product.service.ProductService;
 import com.shop.domain.order.entity.Order;
 import com.shop.domain.order.entity.OrderItem;
 import com.shop.domain.order.repository.OrderItemRepository;
@@ -42,6 +43,9 @@ class ReviewServiceUnitTest {
     private ProductRepository productRepository;
 
     @Mock
+    private ProductService productService;
+
+    @Mock
     private OrderItemRepository orderItemRepository;
 
     @Mock
@@ -51,7 +55,13 @@ class ReviewServiceUnitTest {
 
     @BeforeEach
     void setUp() {
-        reviewService = new ReviewService(reviewRepository, reviewHelpfulRepository, productRepository, orderItemRepository, cacheManager);
+        reviewService = new ReviewService(
+                reviewRepository,
+                reviewHelpfulRepository,
+                productRepository,
+                productService,
+                orderItemRepository,
+                cacheManager);
     }
 
     private void mockValidDeliveredOrderItem(Long orderItemId, Long userId, Long productId) {
@@ -84,6 +94,7 @@ class ReviewServiceUnitTest {
 
         verify(reviewRepository, never()).save(any());
         verify(productRepository, never()).findById(any());
+        verifyNoInteractions(productService);
     }
 
     @Test
@@ -172,6 +183,7 @@ class ReviewServiceUnitTest {
 
         assertThat(saved.getOrderItemId()).isEqualTo(orderItemId);
         verify(reviewRepository).save(any(Review.class));
+        verify(productService).evictProductDetailCache(productId);
     }
 
     @Test
@@ -194,6 +206,7 @@ class ReviewServiceUnitTest {
         assertThat(avgCaptor.getValue())
                 .as("평균 평점은 소수 둘째 자리 반올림 값이어야 함")
                 .isEqualByComparingTo("4.67");
+        verify(productService).evictProductDetailCache(productId);
     }
 
     @Test
@@ -232,6 +245,27 @@ class ReviewServiceUnitTest {
                 .as("신규 도움이 돼요 추가면 true 반환")
                 .isTrue();
         verify(reviewRepository).incrementHelpfulCount(reviewId);
+        verifyNoInteractions(productService);
+    }
+
+    @Test
+    @DisplayName("deleteReview - 삭제 성공 시 productDetail 캐시 evict 호출")
+    void deleteReview_success_evictsProductDetailCache() {
+        Long reviewId = 1L;
+        Long userId = 2L;
+        Long productId = 100L;
+        Review review = new Review(productId, userId, null, 5, "삭제", "대상");
+
+        when(reviewRepository.findById(reviewId)).thenReturn(Optional.of(review));
+        Product product = mock(Product.class);
+        when(productRepository.findById(productId)).thenReturn(Optional.of(product));
+        when(reviewRepository.findAverageRatingByProductId(productId)).thenReturn(Optional.of(0.0));
+        when(reviewRepository.countByProductId(productId)).thenReturn(0);
+
+        reviewService.deleteReview(reviewId, userId);
+
+        verify(reviewRepository).delete(review);
+        verify(productService).evictProductDetailCache(productId);
     }
 
     @Test
@@ -267,6 +301,7 @@ class ReviewServiceUnitTest {
         assertThat(avgCaptor.getValue())
                 .as("리뷰 평균값이 없으면 기본 평점 0.00으로 갱신되어야 함")
                 .isEqualByComparingTo("0.00");
+        verify(productService).evictProductDetailCache(productId);
     }
 
     @Test
@@ -306,6 +341,7 @@ class ReviewServiceUnitTest {
                 .isTrue();
         verify(reviewRepository, never()).incrementHelpfulCount(any());
         verify(reviewRepository, never()).decrementHelpfulCount(any());
+        verifyNoInteractions(productService);
     }
 
 }
