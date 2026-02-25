@@ -34,7 +34,7 @@ public class ReviewService {
         this.productRepository = productRepository;
     }
 
-    @Cacheable(value = "productReviews", key = "#productId + ':' + #pageable.pageNumber")
+    @Cacheable(value = "productReviews", key = "T(com.shop.global.cache.CacheKeyGenerator).pageableWithPrefix(#productId, #pageable)")
     public Page<Review> getProductReviews(Long productId, Pageable pageable) {
         return reviewRepository.findByProductIdOrderByCreatedAtDesc(productId, pageable);
     }

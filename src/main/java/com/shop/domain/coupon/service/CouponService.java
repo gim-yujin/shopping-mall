@@ -30,7 +30,7 @@ public class CouponService {
         this.entityManager = entityManager;
     }
 
-    @Cacheable(value = "activeCoupons", key = "#pageable.pageNumber + ':' + #pageable.pageSize")
+    @Cacheable(value = "activeCoupons", key = "T(com.shop.global.cache.CacheKeyGenerator).pageable(#pageable)")
     public Page<Coupon> getActiveCoupons(Pageable pageable) {
         return couponRepository.findActiveCoupons(pageable);
     }
