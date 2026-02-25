@@ -14,10 +14,10 @@ import java.util.List;
 
 public interface ProductRepository extends JpaRepository<Product, Long> {
 
-    @Query("SELECT p FROM Product p WHERE p.isActive = true AND p.category.categoryId = :categoryId ORDER BY p.salesCount DESC")
+    @Query("SELECT p FROM Product p WHERE p.isActive = true AND p.category.categoryId = :categoryId")
     Page<Product> findByCategoryId(@Param("categoryId") Integer categoryId, Pageable pageable);
 
-    @Query("SELECT p FROM Product p WHERE p.isActive = true AND p.category.categoryId IN :categoryIds ORDER BY p.salesCount DESC")
+    @Query("SELECT p FROM Product p WHERE p.isActive = true AND p.category.categoryId IN :categoryIds")
     Page<Product> findByCategoryIds(@Param("categoryIds") List<Integer> categoryIds, Pageable pageable);
 
     @Query(value = "SELECT p.* FROM products p WHERE p.is_active = true AND to_tsvector('simple', p.product_name) @@ plainto_tsquery('simple', :keyword) ORDER BY p.sales_count DESC",

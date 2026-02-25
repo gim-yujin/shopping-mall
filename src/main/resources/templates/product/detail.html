@@ -192,7 +192,7 @@
                 <p>아직 리뷰가 없습니다. 첫 리뷰를 작성해보세요!</p>
             </div>
 
-            <div th:replace="~{fragments/product-card :: pagination(${reviews}, '/products/' + ${product.productId} + '?reviewPage')}"></div>
+            <div th:replace="~{fragments/product-card :: pagination(${reviews}, '/products/' + ${product.productId} + '?reviewPage', ${null})}"></div>
         </div>
     </div>
 
