@@ -2,15 +2,14 @@ package com.shop.global.exception;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.ui.Model;
 import org.springframework.validation.BindException;
 import org.springframework.validation.FieldError;
+import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseStatus;
-import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 
 import java.util.Optional;
@@ -32,32 +31,6 @@ public class GlobalExceptionHandler {
     public String handleBusiness(BusinessException e, RedirectAttributes redirectAttributes) {
         log.warn("Business error [{}]: {}", e.getCode(), e.getMessage());
         redirectAttributes.addFlashAttribute("errorMessage", e.getMessage());
-        return "redirect:/";
-    }
-
-    /**
-     * DB UNIQUE 제약 위반 처리.
-     * 동시 요청으로 인해 서비스 레이어의 existsBy() 검증을 통과한 후
-     * INSERT/UPDATE 시 UNIQUE 위반이 발생하는 경우를 처리한다.
-     * 500 대신 사용자 친화적인 409 Conflict 응답을 반환한다.
-     */
-    @ExceptionHandler(DataIntegrityViolationException.class)
-    public String handleDataIntegrity(DataIntegrityViolationException e,
-                                      RedirectAttributes redirectAttributes) {
-        String message = e.getMessage();
-        String userMessage;
-
-        if (message != null && message.contains("users_username_key")) {
-            userMessage = "이미 사용 중인 아이디입니다.";
-        } else if (message != null && message.contains("users_email_key")) {
-            userMessage = "이미 사용 중인 이메일입니다.";
-        } else {
-            log.error("Unhandled data integrity violation", e);
-            userMessage = "중복된 데이터가 존재합니다. 다시 시도해주세요.";
-        }
-
-        log.warn("Data integrity violation (concurrent duplicate): {}", userMessage);
-        redirectAttributes.addFlashAttribute("errorMessage", userMessage);
         return "redirect:/";
     }
 
