@@ -10,7 +10,6 @@ import com.shop.domain.order.repository.OrderRepository;
 import com.shop.domain.product.entity.Product;
 import com.shop.domain.product.repository.ProductRepository;
 import com.shop.domain.user.entity.User;
-import com.shop.domain.user.entity.UserTier;
 import com.shop.domain.user.repository.UserRepository;
 import com.shop.domain.user.repository.UserTierRepository;
 import com.shop.global.exception.BusinessException;
@@ -94,7 +93,6 @@ class OrderServiceUnitTest {
         OrderItem item = mock(OrderItem.class);
         Product product = mock(Product.class);
         User user = mock(User.class);
-        UserTier userTier = mock(UserTier.class);
         UserCoupon userCoupon = mock(UserCoupon.class);
 
         when(orderRepository.findByIdWithLock(orderId)).thenReturn(Optional.of(order));
@@ -112,8 +110,7 @@ class OrderServiceUnitTest {
         when(product.getStockQuantity()).thenReturn(5, 7);
 
         when(userRepository.findById(orderOwnerId)).thenReturn(Optional.of(user));
-        when(user.getTier()).thenReturn(userTier);
-        when(userTier.getPointEarnRate()).thenReturn(new BigDecimal("1.00"));
+        when(order.getEarnedPointsSnapshot()).thenReturn(100);
 
         when(userCouponRepository.findByOrderId(orderId)).thenReturn(Optional.of(userCoupon));
 

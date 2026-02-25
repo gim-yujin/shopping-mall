@@ -133,6 +133,20 @@ psql -U postgres -d shopping_mall_db -f src/main/resources/schema.sql
 
 > 참고: `data.sql` 기반 자동 초기 데이터 적재는 현재 사용하지 않습니다.
 
+### 주문 포인트 스냅샷 컬럼 마이그레이션 가이드
+
+`orders`에 `point_earn_rate_snapshot`, `earned_points_snapshot` 컬럼을 추가할 때는 아래 순서를 권장합니다.
+
+1. **DDL 추가 (안전한 기본값)**
+   - 두 컬럼을 `NOT NULL DEFAULT 0`으로 추가해 배포 직후 기존 주문 데이터도 읽기/취소 로직이 깨지지 않게 합니다.
+2. **백필(Backfill)**
+   - `earned_points_snapshot = FLOOR(final_amount * point_earn_rate_snapshot / 100)` 규칙으로 채웁니다.
+   - `point_earn_rate_snapshot`을 정확히 알 수 없으면 보수적으로 `0`을 유지해 과차감(사용자 포인트 마이너스) 위험을 방지합니다.
+3. **애플리케이션 배포**
+   - 신규 주문은 생성 시점의 스냅샷 값으로 저장하고, 취소 시에도 해당 스냅샷을 사용해 포인트를 회수합니다.
+4. **선택적 정합성 점검 쿼리**
+   - `earned_points_snapshot != FLOOR(final_amount * point_earn_rate_snapshot / 100)` 건수를 모니터링해 백필 품질을 검증합니다.
+
 ## 온보딩 검증 체크리스트 (빈 DB)
 
 - [ ] PostgreSQL에 `shopping_mall_db` 데이터베이스를 생성했다.

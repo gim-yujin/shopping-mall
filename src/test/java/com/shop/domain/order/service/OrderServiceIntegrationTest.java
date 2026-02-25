@@ -169,6 +169,8 @@ class OrderServiceIntegrationTest {
         assertThat(order.getUserId()).isEqualTo(testUserId);
         assertThat(order.getItems()).hasSize(1);
         assertThat(order.getItems().get(0).getQuantity()).isEqualTo(quantity);
+        assertThat(order.getPointEarnRateSnapshot()).isNotNull();
+        assertThat(order.getEarnedPointsSnapshot()).isGreaterThanOrEqualTo(0);
 
         // 재고 차감 확인
         int stockAfter = jdbcTemplate.queryForObject(
@@ -308,10 +310,19 @@ class OrderServiceIntegrationTest {
     // ==================== cancelOrder ====================
 
     @Test
-    @DisplayName("cancelOrder 성공 — 재고 복구 + 포인트 회수")
+    @DisplayName("cancelOrder 성공 — 주문/취소 왕복 시 포인트 정확히 원복")
     void cancelOrder_success_restoresStockAndPoints() {
-        // Given: 주문 생성
+        // Given: 주문 전 기준 상태 저장
         addCartItem(testUserId, testProductId, 3);
+
+        int stockBeforeOrder = jdbcTemplate.queryForObject(
+                "SELECT stock_quantity FROM products WHERE product_id = ?",
+                Integer.class, testProductId);
+        int pointsBeforeOrder = jdbcTemplate.queryForObject(
+                "SELECT point_balance FROM users WHERE user_id = ?",
+                Integer.class, testUserId);
+
+        // When: 주문 생성
         Order order = orderService.createOrder(testUserId, defaultRequest());
         createdOrderIds.add(order.getOrderId());
 
@@ -322,20 +333,31 @@ class OrderServiceIntegrationTest {
                 "SELECT point_balance FROM users WHERE user_id = ?",
                 Integer.class, testUserId);
 
+        // 스냅샷 컬럼 저장 검증
+        Map<String, Object> pointSnapshot = jdbcTemplate.queryForMap(
+                "SELECT point_earn_rate_snapshot, earned_points_snapshot FROM orders WHERE order_id = ?",
+                order.getOrderId());
+        BigDecimal pointEarnRateSnapshot = (BigDecimal) pointSnapshot.get("point_earn_rate_snapshot");
+        Integer earnedPointsSnapshot = (Integer) pointSnapshot.get("earned_points_snapshot");
+
+        assertThat(pointEarnRateSnapshot).isEqualByComparingTo(order.getPointEarnRateSnapshot());
+        assertThat(earnedPointsSnapshot).isEqualTo(order.getEarnedPointsSnapshot());
+        assertThat(pointsAfterOrder - pointsBeforeOrder).isEqualTo(order.getEarnedPointsSnapshot());
+
         // When: 주문 취소
         orderService.cancelOrder(order.getOrderId(), testUserId);
 
-        // Then: 재고 복구 확인
+        // Then: 재고/포인트 모두 주문 전 상태로 정확히 원복
         int stockAfterCancel = jdbcTemplate.queryForObject(
                 "SELECT stock_quantity FROM products WHERE product_id = ?",
                 Integer.class, testProductId);
-        assertThat(stockAfterCancel).isEqualTo(stockAfterOrder + 3);
-
-        // 포인트 회수 확인
         int pointsAfterCancel = jdbcTemplate.queryForObject(
                 "SELECT point_balance FROM users WHERE user_id = ?",
                 Integer.class, testUserId);
-        assertThat(pointsAfterCancel).isLessThanOrEqualTo(pointsAfterOrder);
+
+        assertThat(stockAfterOrder).isEqualTo(stockBeforeOrder - 3);
+        assertThat(stockAfterCancel).isEqualTo(stockBeforeOrder);
+        assertThat(pointsAfterCancel).isEqualTo(pointsBeforeOrder);
 
         // 주문 상태 확인
         String status = jdbcTemplate.queryForObject(
@@ -349,8 +371,9 @@ class OrderServiceIntegrationTest {
                 Integer.class, order.getOrderId());
         assertThat(returnHistory).isGreaterThanOrEqualTo(1);
 
-        System.out.println("  [PASS] 주문 취소: 재고 " + stockAfterOrder + " → " + stockAfterCancel
-                + ", 포인트 " + pointsAfterOrder + " → " + pointsAfterCancel);
+        System.out.println("  [PASS] 주문-취소 왕복: 재고 " + stockBeforeOrder + " → " + stockAfterOrder + " → " + stockAfterCancel
+                + ", 포인트 " + pointsBeforeOrder + " → " + pointsAfterOrder + " → " + pointsAfterCancel
+                + ", 적립 스냅샷=" + earnedPointsSnapshot + "P");
     }
 
     @Test
