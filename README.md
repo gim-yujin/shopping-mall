@@ -70,6 +70,8 @@ com.shop
 CREATE DATABASE shopping_mall_db;
 ```
 
+> 스키마 생성은 애플리케이션 시작 시 자동 실행되지 않습니다. (`spring.jpa.hibernate.ddl-auto=validate`, `spring.sql.init.mode=never`)
+
 ### 3. Gradle Wrapper 초기화
 
 프로젝트에 Gradle이 설치되어 있다면:
@@ -88,6 +90,8 @@ chmod +x setup.sh
 ```bash
 ./gradlew bootRun
 ```
+
+실행 전, 아래 **DB 마이그레이션 전략**에 따라 스키마를 먼저 준비해야 합니다.
 
 ### 5. 접속
 
@@ -114,6 +118,29 @@ spring:
 - 표준 삽입 구문: `<input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}"/>`
 - 신규 폼 추가/수정 시 누락 여부를 코드 리뷰 체크리스트에 포함하세요.
 
+## DB 마이그레이션 전략
+
+- 현재 기준 마이그레이션 도구(Flyway/Liquibase)는 **도입하지 않았습니다**.
+- 운영/개발 공통으로 DB 스키마는 `src/main/resources/schema.sql`을 단일 기준(single source of truth)으로 수동 적용합니다.
+- 애플리케이션은 스키마 검증만 수행합니다.
+  - `spring.jpa.hibernate.ddl-auto=validate`
+  - `spring.sql.init.mode=never`
+- 따라서 빈 DB에서는 아래처럼 스키마를 먼저 반영한 뒤 애플리케이션을 실행해야 합니다.
+
+```bash
+psql -U postgres -d shopping_mall_db -f src/main/resources/schema.sql
+```
+
+> 참고: `data.sql` 기반 자동 초기 데이터 적재는 현재 사용하지 않습니다.
+
+## 온보딩 검증 체크리스트 (빈 DB)
+
+- [ ] PostgreSQL에 `shopping_mall_db` 데이터베이스를 생성했다.
+- [ ] `schema.sql`을 적용해 테이블/인덱스를 생성했다.
+- [ ] `src/main/resources/application.yml`의 DB 접속 정보를 로컬 환경과 일치시켰다.
+- [ ] `./gradlew bootRun` 실행 시 `ddl-auto=validate` 검증이 통과한다.
+- [ ] 애플리케이션(`http://localhost:8080`) 접속이 정상 동작한다.
+
 ## 프로젝트 구조
 
 ```
@@ -130,7 +157,6 @@ shopping-mall/
 │   └── resources/
 │       ├── application.yml
 │       ├── schema.sql      (DDL - 테이블, 인덱스)
-│       ├── data.sql         (초기 데이터)
 │       └── templates/       (Thymeleaf 22개 템플릿)
 └── README.md
 ```

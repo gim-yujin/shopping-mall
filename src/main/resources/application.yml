@@ -31,9 +31,6 @@ spring:
   sql:
     init:
       mode: never
-      schema-locations: classpath:schema.sql
-      data-locations: classpath:data.sql
-      continue-on-error: true
 
   thymeleaf:
     cache: true  # 템플릿 캐시 활성화 (부하 테스트 시 SSR 오버헤드 감소)
