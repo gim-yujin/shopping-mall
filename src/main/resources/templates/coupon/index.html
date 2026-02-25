@@ -34,6 +34,7 @@
                               class="inline-block text-xs text-gray-400 border border-gray-300 rounded-full px-4 py-1.5">발급완료</span>
                         <form th:unless="${issuedCouponIds.contains(coupon.couponId)}"
                               th:action="@{/coupons/issue/{id}(id=${coupon.couponId})}" method="post" class="inline">
+                            <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}"/>
                             <button type="submit"
                                     class="text-xs text-white bg-blue-600 hover:bg-blue-700 rounded-full px-4 py-1.5 transition font-medium">쿠폰 받기</button>
                         </form>

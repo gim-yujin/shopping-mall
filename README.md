@@ -107,6 +107,13 @@ spring:
     password: 4321
 ```
 
+
+## 보안 템플릿 규칙
+
+- 모든 Thymeleaf 템플릿의 `method="post"` 폼에는 CSRF hidden input을 **반드시** 포함해야 합니다.
+- 표준 삽입 구문: `<input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}"/>`
+- 신규 폼 추가/수정 시 누락 여부를 코드 리뷰 체크리스트에 포함하세요.
+
 ## 프로젝트 구조
 
 ```
