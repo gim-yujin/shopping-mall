@@ -2,6 +2,7 @@ package com.shop.domain.review.service;
 
 import com.shop.domain.product.entity.Product;
 import com.shop.domain.product.repository.ProductRepository;
+import com.shop.domain.product.service.ProductService;
 import com.shop.domain.order.entity.OrderItem;
 import com.shop.domain.order.repository.OrderItemRepository;
 import com.shop.domain.review.dto.ReviewCreateRequest;
@@ -34,17 +35,20 @@ public class ReviewService {
     private final ReviewRepository reviewRepository;
     private final ReviewHelpfulRepository reviewHelpfulRepository;
     private final ProductRepository productRepository;
+    private final ProductService productService;
     private final OrderItemRepository orderItemRepository;
     private final CacheManager cacheManager;
 
     public ReviewService(ReviewRepository reviewRepository,
                          ReviewHelpfulRepository reviewHelpfulRepository,
                          ProductRepository productRepository,
+                         ProductService productService,
                          OrderItemRepository orderItemRepository,
                          CacheManager cacheManager) {
         this.reviewRepository = reviewRepository;
         this.reviewHelpfulRepository = reviewHelpfulRepository;
         this.productRepository = productRepository;
+        this.productService = productService;
         this.orderItemRepository = orderItemRepository;
         this.cacheManager = cacheManager;
     }
@@ -73,6 +77,7 @@ public class ReviewService {
         Review saved = reviewRepository.save(review);
 
         updateProductRating(request.productId());
+        productService.evictProductDetailCache(request.productId());
         bumpProductReviewVersion(request.productId());
         return saved;
     }
@@ -120,6 +125,7 @@ public class ReviewService {
         Long productId = review.getProductId();
         reviewRepository.delete(review);
         updateProductRating(productId);
+        productService.evictProductDetailCache(productId);
         bumpProductReviewVersion(productId);
     }
 
