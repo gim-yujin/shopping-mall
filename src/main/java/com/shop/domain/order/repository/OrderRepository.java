@@ -25,6 +25,10 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
     @Query("SELECT o FROM Order o WHERE o.orderId = :orderId AND o.userId = :userId")
     Optional<Order> findByIdAndUserIdWithLock(@Param("orderId") Long orderId, @Param("userId") Long userId);
 
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT o FROM Order o WHERE o.orderId = :orderId")
+    Optional<Order> findByIdWithLock(@Param("orderId") Long orderId);
+
     Page<Order> findAllByOrderByOrderDateDesc(Pageable pageable);
 
     @Query("SELECT o FROM Order o WHERE o.orderStatus = :status ORDER BY o.orderDate DESC")

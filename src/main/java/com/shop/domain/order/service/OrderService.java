@@ -211,9 +211,40 @@ public class OrderService {
         // 이중 취소 방지를 위해 Order에 비관적 락 적용
         Order order = orderRepository.findByIdAndUserIdWithLock(orderId, userId)
                 .orElseThrow(() -> new ResourceNotFoundException("주문", orderId));
+        cancelOrderInternal(order, userId);
+    }
+
+    public Page<Order> getAllOrders(Pageable pageable) {
+        Page<Order> orders = orderRepository.findAllByOrderByOrderDateDesc(pageable);
+        orders.getContent().forEach(order -> order.getItems().size());
+        return orders;
+    }
+
+    public Page<Order> getOrdersByStatus(String status, Pageable pageable) {
+        Page<Order> orders = orderRepository.findByStatus(status, pageable);
+        orders.getContent().forEach(order -> order.getItems().size());
+        return orders;
+    }
+
+    @Transactional
+    public void updateOrderStatus(Long orderId, String status) {
+        Order order = orderRepository.findByIdWithLock(orderId)
+                .orElseThrow(() -> new ResourceNotFoundException("주문", orderId));
+        switch (status) {
+            case "PAID" -> order.markPaid();
+            case "SHIPPED" -> order.markShipped();
+            case "DELIVERED" -> order.markDelivered();
+            case "CANCELLED" -> cancelOrderInternal(order, order.getUserId());
+            default -> throw new BusinessException("INVALID_STATUS", "잘못된 주문 상태입니다.");
+        }
+    }
+
+    private void cancelOrderInternal(Order order, Long userId) {
         if (!order.isCancellable()) {
             throw new BusinessException("CANCEL_FAIL", "취소할 수 없는 주문 상태입니다.");
         }
+
+        Long orderId = order.getOrderId();
 
         // 1) 재고 복구 — 데드락 예방을 위해 상품 ID 순으로 정렬
         List<OrderItem> sortedItems = order.getItems().stream()
@@ -248,36 +279,9 @@ public class OrderService {
                 .ifPresent(user::updateTier);
 
         // 3) 쿠폰 복원
-        userCouponRepository.findByOrderId(orderId).ifPresent(uc -> {
-            uc.cancelUse();
-        });
+        userCouponRepository.findByOrderId(orderId).ifPresent(UserCoupon::cancelUse);
 
         order.cancel();
-    }
-
-    public Page<Order> getAllOrders(Pageable pageable) {
-        Page<Order> orders = orderRepository.findAllByOrderByOrderDateDesc(pageable);
-        orders.getContent().forEach(order -> order.getItems().size());
-        return orders;
-    }
-
-    public Page<Order> getOrdersByStatus(String status, Pageable pageable) {
-        Page<Order> orders = orderRepository.findByStatus(status, pageable);
-        orders.getContent().forEach(order -> order.getItems().size());
-        return orders;
-    }
-
-    @Transactional
-    public void updateOrderStatus(Long orderId, String status) {
-        Order order = orderRepository.findById(orderId)
-                .orElseThrow(() -> new ResourceNotFoundException("주문", orderId));
-        switch (status) {
-            case "PAID" -> order.markPaid();
-            case "SHIPPED" -> order.markShipped();
-            case "DELIVERED" -> order.markDelivered();
-            case "CANCELLED" -> order.cancel();
-            default -> throw new BusinessException("INVALID_STATUS", "잘못된 주문 상태입니다.");
-        }
     }
 
     private String generateOrderNumber() {

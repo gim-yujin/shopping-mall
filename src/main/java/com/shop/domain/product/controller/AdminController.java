@@ -2,6 +2,7 @@ package com.shop.domain.product.controller;
 
 import com.shop.domain.order.service.OrderService;
 import com.shop.domain.product.service.ProductService;
+import com.shop.global.exception.BusinessException;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
@@ -49,8 +50,12 @@ public class AdminController {
     @PostMapping("/orders/{orderId}/status")
     public String updateOrderStatus(@PathVariable Long orderId, @RequestParam String status,
                                     RedirectAttributes redirectAttributes) {
-        orderService.updateOrderStatus(orderId, status);
-        redirectAttributes.addFlashAttribute("successMessage", "주문 상태가 변경되었습니다.");
+        try {
+            orderService.updateOrderStatus(orderId, status);
+            redirectAttributes.addFlashAttribute("successMessage", "주문 상태가 변경되었습니다.");
+        } catch (BusinessException e) {
+            redirectAttributes.addFlashAttribute("errorMessage", e.getMessage());
+        }
         return "redirect:/admin/orders";
     }
 
