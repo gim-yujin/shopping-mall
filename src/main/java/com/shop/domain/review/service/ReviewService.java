@@ -2,6 +2,8 @@ package com.shop.domain.review.service;
 
 import com.shop.domain.product.entity.Product;
 import com.shop.domain.product.repository.ProductRepository;
+import com.shop.domain.order.entity.OrderItem;
+import com.shop.domain.order.repository.OrderItemRepository;
 import com.shop.domain.review.dto.ReviewCreateRequest;
 import com.shop.domain.review.entity.Review;
 import com.shop.domain.review.repository.ReviewRepository;
@@ -25,13 +27,16 @@ public class ReviewService {
     private final ReviewRepository reviewRepository;
     private final ReviewHelpfulRepository reviewHelpfulRepository;
     private final ProductRepository productRepository;
+    private final OrderItemRepository orderItemRepository;
 
     public ReviewService(ReviewRepository reviewRepository,
                          ReviewHelpfulRepository reviewHelpfulRepository,
-                         ProductRepository productRepository) {
+                         ProductRepository productRepository,
+                         OrderItemRepository orderItemRepository) {
         this.reviewRepository = reviewRepository;
         this.reviewHelpfulRepository = reviewHelpfulRepository;
         this.productRepository = productRepository;
+        this.orderItemRepository = orderItemRepository;
     }
 
     @Cacheable(value = "productReviews", key = "T(com.shop.global.cache.CacheKeyGenerator).pageableWithPrefix(#productId, #pageable)")
@@ -42,6 +47,8 @@ public class ReviewService {
     @Transactional
     @CacheEvict(value = "productReviews", allEntries = true)
     public Review createReview(Long userId, ReviewCreateRequest request) {
+        validateOrderItemForReview(userId, request);
+
         if (request.orderItemId() != null &&
             reviewRepository.existsByUserIdAndOrderItemId(userId, request.orderItemId())) {
             throw new BusinessException("DUPLICATE_REVIEW", "이미 리뷰를 작성하였습니다.");
@@ -53,6 +60,39 @@ public class ReviewService {
 
         updateProductRating(request.productId());
         return saved;
+    }
+
+    private void validateOrderItemForReview(Long userId, ReviewCreateRequest request) {
+        if (request.orderItemId() == null) {
+            return;
+        }
+
+        OrderItem orderItem = orderItemRepository.findById(request.orderItemId())
+                .orElseThrow(() -> new BusinessException(
+                        "REVIEW_ORDER_ITEM_NOT_FOUND",
+                        "리뷰 대상 주문 항목을 찾을 수 없습니다."
+                ));
+
+        if (!orderItem.getOrder().getUserId().equals(userId)) {
+            throw new BusinessException(
+                    "REVIEW_ORDER_ITEM_FORBIDDEN",
+                    "본인 주문의 상품에 대해서만 리뷰를 작성할 수 있습니다."
+            );
+        }
+
+        if (!orderItem.getProductId().equals(request.productId())) {
+            throw new BusinessException(
+                    "REVIEW_PRODUCT_MISMATCH",
+                    "주문 상품과 리뷰 상품이 일치하지 않습니다."
+            );
+        }
+
+        if (!"DELIVERED".equals(orderItem.getOrder().getOrderStatus())) {
+            throw new BusinessException(
+                    "REVIEW_ORDER_STATUS_NOT_ALLOWED",
+                    "배송 완료된 주문만 리뷰를 작성할 수 있습니다."
+            );
+        }
     }
 
     @Transactional

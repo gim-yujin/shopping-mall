@@ -52,6 +52,7 @@ class ReviewServiceIntegrationTest {
 
     // 테스트 중 생성된 데이터 추적
     private final List<Long> createdReviewIds = new ArrayList<>();
+    private final List<Long> createdOrderIds = new ArrayList<>();
 
     @BeforeEach
     void setUp() {
@@ -90,6 +91,11 @@ class ReviewServiceIntegrationTest {
         }
         createdReviewIds.clear();
 
+        for (Long orderId : createdOrderIds) {
+            jdbcTemplate.update("DELETE FROM orders WHERE order_id = ?", orderId);
+        }
+        createdOrderIds.clear();
+
         // 상품 평점 원본 복원
         jdbcTemplate.update(
                 "UPDATE products SET rating_avg = ?, review_count = ? WHERE product_id = ?",
@@ -97,6 +103,39 @@ class ReviewServiceIntegrationTest {
     }
 
     // ==================== createReview ====================
+
+    private Long createOrderItemForReview(Long userId, Long productId, String orderStatus) {
+        String orderNumber = "TEST-REVIEW-" + UUID.randomUUID();
+
+        Long orderId = jdbcTemplate.queryForObject(
+                """
+                INSERT INTO orders (
+                    order_number, user_id, order_status, total_amount, discount_amount,
+                    shipping_fee, final_amount, payment_method, shipping_address,
+                    recipient_name, recipient_phone, order_date
+                )
+                VALUES (?, ?, ?, 10000, 0, 0, 10000, 'CARD', '테스트주소', '테스터', '010-0000-0000', CURRENT_TIMESTAMP)
+                RETURNING order_id
+                """,
+                Long.class,
+                orderNumber, userId, orderStatus
+        );
+        createdOrderIds.add(orderId);
+
+        return jdbcTemplate.queryForObject(
+                """
+                INSERT INTO order_items (
+                    order_id, product_id, product_name, quantity, unit_price, discount_rate, subtotal, created_at
+                )
+                VALUES (?, ?, ?, 1, 10000, 0, 10000, CURRENT_TIMESTAMP)
+                RETURNING order_item_id
+                """,
+                Long.class,
+                orderId,
+                productId,
+                "리뷰테스트상품"
+        );
+    }
 
     @Test
     @DisplayName("createReview 성공 — 리뷰 생성 + 상품 평점 갱신")
@@ -157,21 +196,8 @@ class ReviewServiceIntegrationTest {
     @Test
     @DisplayName("createReview 실패 — 동일 orderItem 중복 리뷰")
     void createReview_duplicateOrderItem_throwsException() {
-        // Given: orderItemId가 있는 리뷰 생성
-        // 실제 order_item_id를 사용 (FK 제약이 없으면 임의 값도 가능)
-        Long realOrderItemId = jdbcTemplate.queryForObject(
-                """
-                SELECT oi.order_item_id
-                FROM order_items oi
-                LEFT JOIN reviews r ON r.order_item_id = oi.order_item_id AND r.user_id = ?
-                WHERE r.order_item_id IS NULL
-                ORDER BY oi.order_item_id
-                LIMIT 1
-                """,
-                Long.class,
-                testUserId
-        );
-        assertThat(realOrderItemId).as("리뷰가 없는 order_item_id가 필요합니다.").isNotNull();
+        // Given: 배송 완료된 본인 주문 항목
+        Long realOrderItemId = createOrderItemForReview(testUserId, testProductId, "DELIVERED");
 
         Review first = reviewService.createReview(testUserId,
                 new ReviewCreateRequest(testProductId, realOrderItemId, 4, "첫 리뷰", null));
@@ -184,6 +210,60 @@ class ReviewServiceIntegrationTest {
                 .hasMessageContaining("이미 리뷰를 작성");
 
         System.out.println("  [PASS] 동일 orderItem 중복 리뷰 → BusinessException");
+    }
+
+    @Test
+    @DisplayName("createReview 실패 — 타인 주문 항목")
+    void createReview_orderItemOwnedByOtherUser_throwsException() {
+        Long otherUsersOrderItemId = createOrderItemForReview(otherUserId, testProductId, "DELIVERED");
+
+        assertThatThrownBy(() -> reviewService.createReview(testUserId,
+                new ReviewCreateRequest(testProductId, otherUsersOrderItemId, 5, "권한없음", null)))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("본인 주문");
+    }
+
+    @Test
+    @DisplayName("createReview 실패 — 주문 상품과 요청 상품 불일치")
+    void createReview_productMismatch_throwsException() {
+        Long anotherProductId = jdbcTemplate.queryForObject(
+                "SELECT product_id FROM products WHERE is_active = true AND product_id <> ? ORDER BY product_id LIMIT 1",
+                Long.class,
+                testProductId
+        );
+        assertThat(anotherProductId).as("테스트용 다른 상품이 필요합니다.").isNotNull();
+
+        Long orderItemId = createOrderItemForReview(testUserId, anotherProductId, "DELIVERED");
+
+        assertThatThrownBy(() -> reviewService.createReview(testUserId,
+                new ReviewCreateRequest(testProductId, orderItemId, 5, "상품불일치", null)))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("일치하지 않습니다");
+    }
+
+    @Test
+    @DisplayName("createReview 실패 — 미배송 주문 상태")
+    void createReview_notDeliveredOrderStatus_throwsException() {
+        Long orderItemId = createOrderItemForReview(testUserId, testProductId, "SHIPPED");
+
+        assertThatThrownBy(() -> reviewService.createReview(testUserId,
+                new ReviewCreateRequest(testProductId, orderItemId, 5, "미배송", null)))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("배송 완료");
+    }
+
+    @Test
+    @DisplayName("createReview 성공 — 배송 완료된 본인 주문 항목")
+    void createReview_validDeliveredOrderItem_success() {
+        Long orderItemId = createOrderItemForReview(testUserId, testProductId, "DELIVERED");
+
+        Review review = reviewService.createReview(testUserId,
+                new ReviewCreateRequest(testProductId, orderItemId, 5, "정상", "주문 기반 리뷰"));
+        createdReviewIds.add(review.getReviewId());
+
+        assertThat(review.getOrderItemId()).isEqualTo(orderItemId);
+        assertThat(review.getProductId()).isEqualTo(testProductId);
+        assertThat(review.getUserId()).isEqualTo(testUserId);
     }
 
     // ==================== deleteReview ====================
