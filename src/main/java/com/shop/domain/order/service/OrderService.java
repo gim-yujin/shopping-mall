@@ -129,7 +129,7 @@ public class OrderService {
         BigDecimal afterTierAmount = totalAmount.subtract(tierDiscountTotal);
 
         if (request.userCouponId() != null) {
-            userCoupon = userCouponRepository.findById(request.userCouponId())
+            userCoupon = userCouponRepository.findByIdWithLock(request.userCouponId())
                     .orElseThrow(() -> new BusinessException("COUPON_NOT_FOUND", "쿠폰을 찾을 수 없습니다."));
 
             if (!userCoupon.getUserId().equals(userId)) {
@@ -172,9 +172,16 @@ public class OrderService {
         order.markPaid();
         Order savedOrder = orderRepository.save(order);
 
-        // 5) 쿠폰 사용 처리
+        // 5) 쿠폰 사용 처리 (DB 레벨 원자적 전환 보장)
         if (userCoupon != null) {
-            userCoupon.use(savedOrder.getOrderId());
+            int updatedRows = userCouponRepository.markAsUsedIfUnused(
+                    userCoupon.getUserCouponId(),
+                    savedOrder.getOrderId(),
+                    LocalDateTime.now()
+            );
+            if (updatedRows != 1) {
+                throw new BusinessException("COUPON_ALREADY_USED", "이미 사용된 쿠폰입니다.");
+            }
         }
 
         // 6) 포인트 적립 (등급별 적립률 적용)
