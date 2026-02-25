@@ -159,9 +159,14 @@ public class OrderService {
             finalAmount = BigDecimal.ZERO;
         }
 
+        BigDecimal pointRateSnapshot = tier.getPointEarnRate(); // e.g. 1.50 = 1.5%
+        int earnedPointsSnapshot = finalAmount.multiply(pointRateSnapshot)
+                .divide(BigDecimal.valueOf(100), 0, java.math.RoundingMode.FLOOR).intValue();
+
         Order order = new Order(orderNumber, userId, totalAmount, totalDiscount,
-                shippingFee, finalAmount, request.paymentMethod(),
-                request.shippingAddress(), request.recipientName(), request.recipientPhone());
+                shippingFee, finalAmount, pointRateSnapshot, earnedPointsSnapshot,
+                request.paymentMethod(), request.shippingAddress(),
+                request.recipientName(), request.recipientPhone());
 
         for (OrderLine orderLine : orderLines) {
             OrderItem item = new OrderItem(orderLine.productId(), orderLine.productName(),
@@ -186,10 +191,7 @@ public class OrderService {
 
         // 6) 포인트 적립 (등급별 적립률 적용)
         user.addTotalSpent(finalAmount);
-        BigDecimal pointRate = tier.getPointEarnRate(); // e.g. 1.50 = 1.5%
-        int earnedPoints = finalAmount.multiply(pointRate)
-                .divide(BigDecimal.valueOf(100), 0, java.math.RoundingMode.FLOOR).intValue();
-        user.addPoints(earnedPoints);
+        user.addPoints(earnedPointsSnapshot);
 
         // 7) 등급 재계산
         userTierRepository.findFirstByMinSpentLessThanEqualOrderByTierLevelDesc(user.getTotalSpent())
@@ -277,10 +279,7 @@ public class OrderService {
         BigDecimal finalAmount = order.getFinalAmount();
         user.addTotalSpent(finalAmount.negate());
 
-        BigDecimal pointRate = user.getTier().getPointEarnRate();
-        int earnedPoints = finalAmount.multiply(pointRate)
-                .divide(BigDecimal.valueOf(100), 0, java.math.RoundingMode.FLOOR).intValue();
-        user.addPoints(-earnedPoints);
+        user.addPoints(-order.getEarnedPointsSnapshot());
 
         userTierRepository.findFirstByMinSpentLessThanEqualOrderByTierLevelDesc(user.getTotalSpent())
                 .ifPresent(user::updateTier);

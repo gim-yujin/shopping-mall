@@ -16,6 +16,7 @@ class OrderEntityUnitTest {
         return new Order("ORD-001", 1L,
                 BigDecimal.valueOf(50000), BigDecimal.ZERO,
                 BigDecimal.valueOf(3000), BigDecimal.valueOf(53000),
+                BigDecimal.valueOf(1.50), 795,
                 "CARD", "서울시 강남구", "홍길동", "010-1234-5678");
     }
 
@@ -27,6 +28,8 @@ class OrderEntityUnitTest {
         Order order = createOrder();
         assertThat(order.getOrderStatus()).isEqualTo("PENDING");
         assertThat(order.getOrderDate()).isNotNull();
+        assertThat(order.getPointEarnRateSnapshot()).isEqualByComparingTo("1.5");
+        assertThat(order.getEarnedPointsSnapshot()).isEqualTo(795);
     }
 
     // ==================== 상태 전이 ====================
