@@ -173,6 +173,7 @@
                     <div class="mt-3 flex items-center gap-3">
                         <form th:action="@{/reviews/{id}/helpful(id=${review.reviewId})}" method="post" class="inline"
                               th:with="isHelped=${helpedReviewIds.contains(review.reviewId)}">
+                            <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}"/>
                             <input type="hidden" name="productId" th:value="${product.productId}"/>
                             <button type="submit"
                                     th:classappend="${isHelped} ? 'bg-blue-50 text-blue-600 border-blue-300' : 'text-gray-500 border-gray-200 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200'"
