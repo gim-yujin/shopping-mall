@@ -15,6 +15,7 @@ import com.shop.global.security.SecurityUtil;
 import jakarta.validation.Valid;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Controller;
+import org.springframework.validation.BindingResult;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.support.RedirectAttributes;
@@ -59,7 +60,16 @@ public class OrderController {
     }
 
     @PostMapping
-    public String createOrder(@Valid OrderCreateRequest request, RedirectAttributes redirectAttributes) {
+    public String createOrder(@Valid OrderCreateRequest request,
+                              BindingResult bindingResult,
+                              RedirectAttributes redirectAttributes) {
+        if (bindingResult.hasErrors()) {
+            redirectAttributes.addFlashAttribute("errorMessage", "입력값을 확인해주세요.");
+            redirectAttributes.addFlashAttribute("org.springframework.validation.BindingResult.orderCreateRequest", bindingResult);
+            redirectAttributes.addFlashAttribute("orderCreateRequest", request);
+            return "redirect:/orders/checkout";
+        }
+
         Long userId = SecurityUtil.getCurrentUserId().orElseThrow();
         try {
             Order order = orderService.createOrder(userId, request);
