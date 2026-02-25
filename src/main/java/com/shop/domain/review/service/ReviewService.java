@@ -173,7 +173,7 @@ public class ReviewService {
         }
 
         if (cache instanceof CaffeineCache caffeineCache) {
-            caffeineCache.getNativeCache().asMap().merge(productId, 1L, Long::sum);
+            caffeineCache.getNativeCache().asMap().merge(productId, 1L, (a, b) -> ((Long) a) + ((Long) b));
             return;
         }
 

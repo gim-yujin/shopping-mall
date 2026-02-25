@@ -250,7 +250,7 @@ class UserServiceIntegrationTest {
     @DisplayName("updateProfile — 이메일 변경 없이 다른 정보만 변경")
     void updateProfile_sameEmail_success() {
         // When: 기존 이메일 그대로, 이름만 변경
-        userService.updateProfile(existingUserId, "이름만변경", existingOriginalPhone, existingOriginalEmail);
+        userService.updateProfile(existingUserId, "이름만변경", "010-0000-0000", existingOriginalEmail);
 
         // Then
         String updatedName = jdbcTemplate.queryForObject(
@@ -306,7 +306,7 @@ class UserServiceIntegrationTest {
     @DisplayName("changePassword 실패 — 현재 비밀번호 불일치")
     void changePassword_wrongCurrentPassword_throwsException() {
         assertThatThrownBy(() ->
-                userService.changePassword(existingUserId, "wrong_password_999", "new_password"))
+                userService.changePassword(existingUserId, "wrong_password_999", "new_password_456!"))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("현재 비밀번호가 일치하지 않습니다");
 
