@@ -21,6 +21,7 @@
                 </div>
 
                 <form th:action="@{/auth/login}" method="post" class="space-y-5">
+                    <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}"/>
                     <div>
                         <label for="username" class="block text-sm font-medium text-gray-700 mb-1">아이디</label>
                         <input type="text" id="username" name="username" required autofocus
