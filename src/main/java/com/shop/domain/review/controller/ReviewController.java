@@ -6,6 +6,7 @@ import com.shop.global.exception.BusinessException;
 import com.shop.global.security.SecurityUtil;
 import jakarta.validation.Valid;
 import org.springframework.stereotype.Controller;
+import org.springframework.validation.BindingResult;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 
@@ -20,7 +21,16 @@ public class ReviewController {
     }
 
     @PostMapping
-    public String createReview(@Valid ReviewCreateRequest request, RedirectAttributes redirectAttributes) {
+    public String createReview(@Valid ReviewCreateRequest request,
+                               BindingResult bindingResult,
+                               RedirectAttributes redirectAttributes) {
+        if (bindingResult.hasErrors()) {
+            redirectAttributes.addFlashAttribute("errorMessage", "리뷰 입력값을 확인해주세요.");
+            redirectAttributes.addFlashAttribute("org.springframework.validation.BindingResult.reviewCreateRequest", bindingResult);
+            redirectAttributes.addFlashAttribute("reviewCreateRequest", request);
+            return "redirect:/products/" + request.productId();
+        }
+
         Long userId = SecurityUtil.getCurrentUserId().orElseThrow();
         try {
             reviewService.createReview(userId, request);
