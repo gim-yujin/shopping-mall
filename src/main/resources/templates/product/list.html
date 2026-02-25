@@ -61,7 +61,7 @@
         </div>
 
         <!-- Pagination -->
-        <div th:if="${products != null}" th:replace="~{fragments/product-card :: pagination(${products}, ${baseUrl})}"></div>
+        <div th:if="${products != null}" th:replace="~{fragments/product-card :: pagination(${products}, ${baseUrl}, ${currentSort})}"></div>
     </div>
 </div>
 </body>
