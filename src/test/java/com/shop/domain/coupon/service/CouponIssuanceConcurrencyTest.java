@@ -22,7 +22,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  *   기대: 정확히 5명만 성공
  *
  * 시나리오 2 — 중복 발급 (Duplicate Issuance)
- *   같은 사용자가 같은 쿠폰을 5회 동시 요청
+ *   같은 사용자가 같은 쿠폰을 100회 동시 요청
  *   위험: (user_id, coupon_id) UNIQUE 제약이 없으므로 여러 장 발급 가능
  *   기대: 정확히 1장만 발급
  */
@@ -131,7 +131,7 @@ class CouponIssuanceConcurrencyTest {
         System.out.println("[중복 발급 테스트 준비 완료]");
         System.out.println("  쿠폰 ID: " + dupCouponId);
         System.out.println("  사용자 ID: " + dupTestUserId);
-        System.out.println("  동시 요청: 5회");
+        System.out.println("  동시 요청: 100회");
         System.out.println("========================================");
     }
 
@@ -242,9 +242,9 @@ class CouponIssuanceConcurrencyTest {
 
     @Test
     @Order(2)
-    @DisplayName("시나리오 2: 같은 사용자가 같은 쿠폰 5회 동시 발급 → 중복 발급 방지")
+    @DisplayName("시나리오 2: 같은 사용자가 같은 쿠폰 100회 동시 발급 → 중복 발급 방지")
     void duplicateIssuance_prevention() throws InterruptedException {
-        int threadCount = 5;
+        int threadCount = 100;
         ExecutorService executor = Executors.newFixedThreadPool(threadCount);
         CountDownLatch ready = new CountDownLatch(threadCount);
         CountDownLatch start = new CountDownLatch(1);
@@ -255,7 +255,7 @@ class CouponIssuanceConcurrencyTest {
         AtomicInteger otherFailCount = new AtomicInteger(0);
         List<String> errors = Collections.synchronizedList(new ArrayList<>());
 
-        // When: 같은 사용자가 같은 쿠폰을 5회 동시 요청
+        // When: 같은 사용자가 같은 쿠폰을 100회 동시 요청
         for (int i = 0; i < threadCount; i++) {
             final int attempt = i + 1;
             executor.submit(() -> {
