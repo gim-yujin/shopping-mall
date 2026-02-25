@@ -60,7 +60,7 @@ public class ProductService {
     }
 
     @Cacheable(value = "searchResults",
-               key = "#keyword + ':' + #pageable.pageNumber + ':' + #pageable.pageSize")
+               key = "T(com.shop.global.cache.CacheKeyGenerator).pageableWithPrefix(#keyword, #pageable)")
     public Page<Product> search(String keyword, Pageable pageable) {
         Page<Product> results = productRepository.searchByKeyword(keyword, pageable);
         if (results.isEmpty()) {
