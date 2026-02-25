@@ -44,6 +44,7 @@ public class CacheConfig {
 
                 // 리뷰 목록: 작성/삭제/도움 토글로 변동이 잦아 stale 허용폭이 작은 도메인.
                 cacheSeconds("productReviews", 30, 500),
+                cacheMinutes("productReviewVersion", 60, 10000),
 
                 // 인증 사용자 정보: 권한/계정 상태 변경 전파를 빠르게 반영하기 위해 1분.
                 cacheMinutes("userDetails", 1, 1000),
