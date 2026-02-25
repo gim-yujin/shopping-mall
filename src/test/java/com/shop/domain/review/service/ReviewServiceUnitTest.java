@@ -13,6 +13,7 @@ import com.shop.global.exception.BusinessException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.cache.CacheManager;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
@@ -43,11 +44,14 @@ class ReviewServiceUnitTest {
     @Mock
     private OrderItemRepository orderItemRepository;
 
+    @Mock
+    private CacheManager cacheManager;
+
     private ReviewService reviewService;
 
     @BeforeEach
     void setUp() {
-        reviewService = new ReviewService(reviewRepository, reviewHelpfulRepository, productRepository, orderItemRepository);
+        reviewService = new ReviewService(reviewRepository, reviewHelpfulRepository, productRepository, orderItemRepository, cacheManager);
     }
 
     private void mockValidDeliveredOrderItem(Long orderItemId, Long userId, Long productId) {
