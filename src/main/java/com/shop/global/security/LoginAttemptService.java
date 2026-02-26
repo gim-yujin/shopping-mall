@@ -4,6 +4,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.cache.Cache;
 import org.springframework.cache.CacheManager;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.cache.caffeine.CaffeineCache;
 import org.springframework.security.web.util.matcher.IpAddressMatcher;
 import org.springframework.stereotype.Service;
 
@@ -20,10 +21,12 @@ public class LoginAttemptService {
     private static final String LOGIN_ATTEMPT_CACHE = "loginAttempts";
     private static final Duration BASE_DELAY = Duration.ofSeconds(1);
     private static final Duration MAX_DELAY = Duration.ofMinutes(5);
+    private static final int FALLBACK_LOCK_BUCKETS = 64;
 
     private final CacheManager cacheManager;
     private final List<IpAddressMatcher> trustedProxyMatchers;
     private final int trustedHopCount;
+    private final Object[] fallbackLocks;
 
     public LoginAttemptService(
             CacheManager cacheManager,
@@ -33,6 +36,7 @@ public class LoginAttemptService {
         this.cacheManager = cacheManager;
         this.trustedProxyMatchers = buildMatchers(trustedProxyCidrs);
         this.trustedHopCount = Math.max(trustedHopCount, 0);
+        this.fallbackLocks = buildFallbackLocks();
     }
 
     public boolean isBlocked(String username, String ipAddress) {
@@ -54,15 +58,27 @@ public class LoginAttemptService {
 
     public long recordFailure(String username, String ipAddress) {
         String cacheKey = buildCacheKey(username, ipAddress);
-        AttemptState current = Optional.ofNullable(getState(cacheKey))
-                .orElse(new AttemptState(0, null));
+        Cache cache = cacheManager.getCache(LOGIN_ATTEMPT_CACHE);
+        if (cache == null) {
+            return BASE_DELAY.getSeconds();
+        }
 
-        int nextFailures = current.failureCount() + 1;
-        Duration backoff = calculateBackoff(nextFailures);
-        Instant nextAllowedAt = Instant.now().plus(backoff);
+        AttemptState nextState;
+        if (cache instanceof CaffeineCache caffeineCache) {
+            Object updated = caffeineCache.getNativeCache().asMap().compute(cacheKey, (key, existing) ->
+                    nextAttemptState(existing instanceof AttemptState state ? state : null)
+            );
+            nextState = updated instanceof AttemptState state ? state : nextAttemptState(null);
+        } else {
+            Object lock = lockFor(cacheKey);
+            synchronized (lock) {
+                AttemptState current = cache.get(cacheKey, AttemptState.class);
+                nextState = nextAttemptState(current);
+                cache.put(cacheKey, nextState);
+            }
+        }
 
-        put(cacheKey, new AttemptState(nextFailures, nextAllowedAt));
-        return backoff.getSeconds();
+        return calculateBackoff(nextState.failureCount()).getSeconds();
     }
 
     public void clearFailures(String username, String ipAddress) {
@@ -157,19 +173,35 @@ public class LoginAttemptService {
         return Duration.ofSeconds(Math.min(seconds, MAX_DELAY.getSeconds()));
     }
 
+    private AttemptState nextAttemptState(AttemptState current) {
+        AttemptState previous = Optional.ofNullable(current).orElse(new AttemptState(0, null));
+        int nextFailures = previous.failureCount() + 1;
+        Duration backoff = calculateBackoff(nextFailures);
+        return new AttemptState(nextFailures, Instant.now().plus(backoff));
+    }
+
+    private Object[] buildFallbackLocks() {
+        Object[] locks = new Object[FALLBACK_LOCK_BUCKETS];
+        for (int i = 0; i < locks.length; i++) {
+            locks[i] = new Object();
+        }
+        return locks;
+    }
+
+    private Object lockFor(String key) {
+        return fallbackLocks[Math.floorMod(key.hashCode(), fallbackLocks.length)];
+    }
+
+    AttemptState getStateForTest(String username, String ipAddress) {
+        return getState(buildCacheKey(username, ipAddress));
+    }
+
     private AttemptState getState(String key) {
         Cache cache = cacheManager.getCache(LOGIN_ATTEMPT_CACHE);
         if (cache == null) {
             return null;
         }
         return cache.get(key, AttemptState.class);
-    }
-
-    private void put(String key, AttemptState state) {
-        Cache cache = cacheManager.getCache(LOGIN_ATTEMPT_CACHE);
-        if (cache != null) {
-            cache.put(key, state);
-        }
     }
 
     private void evict(String key) {
