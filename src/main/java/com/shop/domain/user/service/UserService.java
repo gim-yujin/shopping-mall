@@ -7,6 +7,8 @@ import com.shop.domain.user.repository.UserRepository;
 import com.shop.domain.user.repository.UserTierRepository;
 import com.shop.global.exception.BusinessException;
 import com.shop.global.exception.ResourceNotFoundException;
+import org.springframework.cache.Cache;
+import org.springframework.cache.CacheManager;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,12 +26,17 @@ public class UserService {
     private final UserRepository userRepository;
     private final UserTierRepository tierRepository;
     private final PasswordEncoder passwordEncoder;
+    private final CacheManager cacheManager;
+
+    private static final String USER_DETAILS_CACHE = "userDetails";
 
     public UserService(UserRepository userRepository, UserTierRepository tierRepository,
-                       PasswordEncoder passwordEncoder) {
+                       PasswordEncoder passwordEncoder,
+                       CacheManager cacheManager) {
         this.userRepository = userRepository;
         this.tierRepository = tierRepository;
         this.passwordEncoder = passwordEncoder;
+        this.cacheManager = cacheManager;
     }
 
     @Transactional
@@ -89,6 +96,15 @@ public class UserService {
             throw new BusinessException("SAME_PASSWORD", "새 비밀번호는 기존 비밀번호와 달라야 합니다.");
         }
         user.changePassword(passwordEncoder.encode(newPassword));
+        evictUserDetailsCache(user.getUsername());
+    }
+
+    private void evictUserDetailsCache(String username) {
+        Cache cache = cacheManager.getCache(USER_DETAILS_CACHE);
+        if (cache == null || username == null) {
+            return;
+        }
+        cache.evict(username);
     }
 
     private void validateProfileInput(String name, String phone, String email) {
