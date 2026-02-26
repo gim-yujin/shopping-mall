@@ -61,19 +61,20 @@ public class ProductService {
     }
 
     @Cacheable(value = "categoryProducts",
-               key = "#categoryIds.hashCode() + ':' + #pageable.pageNumber + ':' + #pageable.pageSize + ':' + #pageable.sort.toString()")
+               key = "#categoryIds.toString() + ':' + #pageable.pageNumber + ':' + #pageable.pageSize + ':' + #pageable.sort.toString()")
     public Page<Product> findByCategoryIds(List<Integer> categoryIds, Pageable pageable) {
         return productRepository.findByCategoryIds(categoryIds, pageable);
     }
 
+    /**
+     * 카테고리별 상품 목록 조회 (정렬 포함).
+     * 입력 파라미터는 컨트롤러에서 정규화된 상태로 전달된다.
+     */
     @Cacheable(value = "categoryProducts",
-               key = "#categoryIds.hashCode() + ':' + #page + ':' + #size + ':' + #sort")
+               key = "#categoryIds.toString() + ':' + #page + ':' + #size + ':' + #sort")
     public Page<Product> findByCategoryIdsSorted(List<Integer> categoryIds, int page, int size, String sort) {
-        int normalizedPage = PagingParams.normalizePage(page);
-        int normalizedSize = PagingParams.normalizeSize(size);
-        String normalizedSort = PagingParams.normalizeProductSort(sort);
         return productRepository.findByCategoryIds(categoryIds,
-                PageRequest.of(normalizedPage, normalizedSize, PagingParams.toProductSort(normalizedSort)));
+                PageRequest.of(page, size, PagingParams.toProductSort(sort)));
     }
 
     @Cacheable(value = "searchResults",
@@ -105,13 +106,14 @@ public class ProductService {
         return productRepository.findAll(pageable);
     }
 
+    /**
+     * 상품 전체 목록 조회 (정렬 포함).
+     * 입력 파라미터는 컨트롤러에서 정규화된 상태로 전달된다.
+     */
     @Cacheable(value = "productList", key = "#page + ':' + #size + ':' + #sort")
     public Page<Product> findAllSorted(int page, int size, String sort) {
-        int normalizedPage = PagingParams.normalizePage(page);
-        int normalizedSize = PagingParams.normalizeSize(size);
-        String normalizedSort = PagingParams.normalizeProductSort(sort);
         return productRepository.findByIsActiveTrue(
-                PageRequest.of(normalizedPage, normalizedSize, PagingParams.toProductSort(normalizedSort)));
+                PageRequest.of(page, size, PagingParams.toProductSort(sort)));
     }
 
     // ────────────────────────────────────────────

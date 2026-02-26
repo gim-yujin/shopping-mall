@@ -8,7 +8,10 @@
     <div class="max-w-6xl mx-auto">
         <div class="flex items-center justify-between mb-6">
             <h1 class="text-2xl font-bold">상품 관리</h1>
-            <a th:href="@{/admin}" class="text-sm text-gray-500 hover:text-gray-700">← 대시보드</a>
+            <div class="flex items-center gap-3">
+                <a th:href="@{/admin/products/new}" class="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700">+ 상품 등록</a>
+                <a th:href="@{/admin}" class="text-sm text-gray-500 hover:text-gray-700">← 대시보드</a>
+            </div>
         </div>
 
         <div class="bg-white rounded-lg shadow overflow-hidden">
@@ -24,6 +27,7 @@
                         <th class="text-right">판매량</th>
                         <th class="text-center">평점</th>
                         <th class="text-center">상태</th>
+                        <th class="text-center">관리</th>
                     </tr>
                     </thead>
                     <tbody>
@@ -43,6 +47,19 @@
                         <td class="text-center">
                             <span th:if="${product.isActive}" class="inline-block w-2 h-2 bg-green-500 rounded-full" title="활성"></span>
                             <span th:unless="${product.isActive}" class="inline-block w-2 h-2 bg-red-500 rounded-full" title="비활성"></span>
+                        </td>
+                        <td class="text-center">
+                            <div class="flex items-center justify-center gap-2">
+                                <a th:href="@{/admin/products/{id}/edit(id=${product.productId})}"
+                                   class="text-blue-600 hover:text-blue-800 text-xs font-medium">수정</a>
+                                <form th:action="@{/admin/products/{id}/toggle-active(id=${product.productId})}" method="post" class="inline">
+                                    <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}"/>
+                                    <button type="submit"
+                                            th:text="${product.isActive ? '비활성' : '활성'}"
+                                            th:class="${product.isActive ? 'text-red-500 hover:text-red-700 text-xs font-medium' : 'text-green-600 hover:text-green-800 text-xs font-medium'}">
+                                    </button>
+                                </form>
+                            </div>
                         </td>
                     </tr>
                     </tbody>

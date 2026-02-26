@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org"
+      xmlns:layout="http://www.ultraq.net.nz/thymeleaf/layout"
+      layout:decorate="~{layout/default}">
+<head><title th:text="${editMode ? '상품 수정' : '상품 등록'}">상품 등록</title></head>
+<body>
+<div layout:fragment="content">
+    <div class="max-w-3xl mx-auto">
+        <div class="flex items-center justify-between mb-6">
+            <h1 class="text-2xl font-bold" th:text="${editMode ? '상품 수정' : '상품 등록'}">상품 등록</h1>
+            <a th:href="@{/admin/products}" class="text-sm text-gray-500 hover:text-gray-700">← 상품 목록</a>
+        </div>
+
+        <form th:if="${editMode}"
+              th:action="@{/admin/products/{id}(id=${productId})}" method="post"
+              th:object="${request}"
+              class="bg-white rounded-lg shadow p-6 space-y-6">
+            <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}"/>
+
+            <!-- 현재 상태 표시 (수정 모드) -->
+            <div class="flex items-center gap-4 pb-4 border-b text-sm text-gray-500">
+                <span>ID: <span th:text="${productId}" class="font-medium text-gray-700"></span></span>
+                <span>판매량: <span th:text="${product.salesCount}" class="font-medium text-gray-700"></span></span>
+                <span>조회수: <span th:text="${product.viewCount}" class="font-medium text-gray-700"></span></span>
+                <span class="flex items-center gap-1">
+                    상태:
+                    <span th:if="${product.isActive}" class="inline-block w-2 h-2 bg-green-500 rounded-full"></span>
+                    <span th:unless="${product.isActive}" class="inline-block w-2 h-2 bg-red-500 rounded-full"></span>
+                    <span th:text="${product.isActive ? '활성' : '비활성'}" class="font-medium text-gray-700"></span>
+                </span>
+            </div>
+
+            <th:block th:replace="~{admin/product-form :: formFields(${request}, ${categories})}"/>
+
+            <div class="flex justify-end gap-3 pt-4 border-t">
+                <a th:href="@{/admin/products}" class="px-6 py-2.5 border rounded-lg text-gray-700 hover:bg-gray-50">취소</a>
+                <button type="submit" class="px-6 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium">수정 완료</button>
+            </div>
+        </form>
+
+        <form th:unless="${editMode}"
+              th:action="@{/admin/products}" method="post"
+              th:object="${request}"
+              class="bg-white rounded-lg shadow p-6 space-y-6">
+            <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}"/>
+
+            <th:block th:replace="~{admin/product-form :: formFields(${request}, ${categories})}"/>
+
+            <div class="flex justify-end gap-3 pt-4 border-t">
+                <a th:href="@{/admin/products}" class="px-6 py-2.5 border rounded-lg text-gray-700 hover:bg-gray-50">취소</a>
+                <button type="submit" class="px-6 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium">상품 등록</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- 공통 폼 필드 프래그먼트 -->
+<th:block th:fragment="formFields(request, categories)">
+    <!-- 상품명 -->
+    <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">상품명 <span class="text-red-500">*</span></label>
+        <input type="text" th:field="*{productName}" required maxlength="200"
+               placeholder="상품명을 입력하세요"
+               class="w-full border rounded-lg px-3 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"/>
+        <p th:if="${#fields.hasErrors('productName')}" th:errors="*{productName}"
+           class="text-sm text-red-500 mt-1"></p>
+    </div>
+
+    <!-- 카테고리 -->
+    <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">카테고리 <span class="text-red-500">*</span></label>
+        <select th:field="*{categoryId}" required
+                class="w-full border rounded-lg px-3 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+            <option value="">카테고리를 선택하세요</option>
+            <option th:each="cat : ${categories}"
+                    th:value="${cat.categoryId}"
+                    th:text="${cat.level > 1 ? (cat.level == 2 ? '└ ' : '&nbsp;&nbsp;└ ') + cat.categoryName : cat.categoryName}">
+            </option>
+        </select>
+        <p th:if="${#fields.hasErrors('categoryId')}" th:errors="*{categoryId}"
+           class="text-sm text-red-500 mt-1"></p>
+    </div>
+
+    <!-- 가격 -->
+    <div class="grid grid-cols-2 gap-4">
+        <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">판매가 <span class="text-red-500">*</span></label>
+            <div class="relative">
+                <input type="number" th:field="*{price}" required min="1" step="1"
+                       placeholder="0"
+                       class="w-full border rounded-lg px-3 py-2.5 pr-8 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"/>
+                <span class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">원</span>
+            </div>
+            <p th:if="${#fields.hasErrors('price')}" th:errors="*{price}"
+               class="text-sm text-red-500 mt-1"></p>
+        </div>
+        <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">원가 (정가)</label>
+            <div class="relative">
+                <input type="number" th:field="*{originalPrice}" min="1" step="1"
+                       placeholder="할인 전 가격 (선택)"
+                       class="w-full border rounded-lg px-3 py-2.5 pr-8 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"/>
+                <span class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">원</span>
+            </div>
+            <p th:if="${#fields.hasErrors('originalPrice')}" th:errors="*{originalPrice}"
+               class="text-sm text-red-500 mt-1"></p>
+        </div>
+    </div>
+
+    <!-- 재고 -->
+    <div class="w-1/2">
+        <label class="block text-sm font-medium text-gray-700 mb-1">재고 수량 <span class="text-red-500">*</span></label>
+        <input type="number" th:field="*{stockQuantity}" required min="0" step="1"
+               placeholder="0"
+               class="w-full border rounded-lg px-3 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"/>
+        <p th:if="${#fields.hasErrors('stockQuantity')}" th:errors="*{stockQuantity}"
+           class="text-sm text-red-500 mt-1"></p>
+    </div>
+
+    <!-- 상품 설명 -->
+    <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">상품 설명</label>
+        <textarea th:field="*{description}" rows="6"
+                  placeholder="상품 설명을 입력하세요"
+                  class="w-full border rounded-lg px-3 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 resize-y"></textarea>
+    </div>
+</th:block>
+</body>
+</html>
