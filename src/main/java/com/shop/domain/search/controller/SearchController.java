@@ -18,6 +18,8 @@ import org.springframework.web.bind.annotation.RequestParam;
 @RequestMapping("/search")
 public class SearchController {
 
+    private static final int MAX_KEYWORD_LENGTH = 200;
+
     private final ProductService productService;
     private final SearchService searchService;
 
@@ -33,6 +35,10 @@ public class SearchController {
                          HttpServletRequest request,
                          Model model) {
         keyword = (keyword == null) ? "" : keyword.trim();
+        if (keyword.length() > MAX_KEYWORD_LENGTH) {
+            keyword = keyword.substring(0, MAX_KEYWORD_LENGTH);
+            model.addAttribute("keywordValidationMessage", "검색어는 최대 200자까지 입력할 수 있어 앞부분만 검색했어요.");
+        }
         model.addAttribute("keyword", keyword);
 
         if (keyword.isEmpty()) {
