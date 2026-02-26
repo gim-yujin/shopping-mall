@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -71,15 +72,21 @@ class TierSchedulerUnitTest {
         when(userTierRepository.findByTierLevel(1)).thenReturn(Optional.of(tier));
         when(userTierRepository.findFirstByMinSpentLessThanEqualOrderByTierLevelDesc(any())).thenReturn(Optional.of(tier));
 
-        when(userRepository.findAll(PageRequest.of(0, 1)))
-                .thenReturn(new PageImpl<>(List.of(firstUser), PageRequest.of(0, 1), 2));
-        when(userRepository.findAll(PageRequest.of(1, 1)))
-                .thenReturn(new PageImpl<>(List.of(secondUser), PageRequest.of(1, 1), 2));
+        // [BUG FIX] keyset pagination으로 변경됨 — chunkSize=1이므로
+        // 첫 호출: lastUserId=0 → firstUser 반환 (1건, chunkSize와 같으므로 다음 청크 존재)
+        // 두 번째: lastUserId=1 → secondUser 반환 (1건, chunkSize와 같으므로 다음 청크 존재)
+        // 세 번째: lastUserId=2 → 빈 리스트 반환 → 루프 종료
+        when(userRepository.findUsersAfterIdWithTier(eq(0L), any()))
+                .thenReturn(List.of(firstUser));
+        when(userRepository.findUsersAfterIdWithTier(eq(1L), any()))
+                .thenReturn(List.of(secondUser));
+        when(userRepository.findUsersAfterIdWithTier(eq(2L), any()))
+                .thenReturn(Collections.emptyList());
 
         tierScheduler.recalculateTiers();
 
-        verify(userRepository).findAll(PageRequest.of(0, 1));
-        verify(userRepository).findAll(PageRequest.of(1, 1));
+        verify(userRepository).findUsersAfterIdWithTier(eq(0L), any());
+        verify(userRepository).findUsersAfterIdWithTier(eq(1L), any());
         verify(entityManager, times(2)).flush();
         verify(entityManager, times(2)).clear();
         verify(tierHistoryRepository, never()).save(any());

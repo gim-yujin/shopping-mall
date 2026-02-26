@@ -105,31 +105,39 @@ public class TierScheduler {
                         .orElseThrow(() -> new RuntimeException("기본 등급이 존재하지 않습니다.")));
 
         TierProcessingResult totalResult = new TierProcessingResult();
-        int pageNumber = 0;
+        // [BUG FIX] offset 페이징 → keyset(cursor) 페이징으로 교체.
+        // offset 방식: PageRequest.of(pageNumber, 1000) → OFFSET 999000이면
+        //   PostgreSQL이 999,000행을 스캔 후 버림 → 마지막 청크가 수십 초 소요.
+        // keyset 방식: WHERE user_id > :lastUserId ORDER BY user_id LIMIT 1000 →
+        //   PK 인덱스 range scan으로 어느 청크든 일정한 O(chunkSize) 성능 보장.
+        long lastUserId = 0L;
+        int chunkNumber = 0;
 
         while (true) {
-            Pageable pageable = PageRequest.of(pageNumber, userChunkSize);
+            final long cursorId = lastUserId;
+            final int currentChunk = chunkNumber;
+            Pageable chunkPageable = PageRequest.of(0, userChunkSize);
 
-            // 3) 사용자 청크 로드 — 읽기 전용 트랜잭션
-            Page<User> userPage = txReadOnlyTemplate.execute(status -> loadUserChunk(pageable));
-            if (userPage == null || !userPage.hasContent()) {
+            // 3) 사용자 청크 로드 — keyset 기반, 읽기 전용 트랜잭션
+            List<User> users = txReadOnlyTemplate.execute(status ->
+                    loadUserChunkByCursor(cursorId, chunkPageable));
+            if (users == null || users.isEmpty()) {
                 break;
             }
 
             // 4) 청크별 등급 갱신 — 독립 쓰기 트랜잭션 (실패 시 해당 청크만 롤백)
             long chunkStartedAt = System.nanoTime();
-            boolean hasNext = userPage.hasNext();
-            List<User> users = userPage.getContent();
+            List<User> chunkUsers = users;
 
             TierProcessingResult chunkResult = txTemplate.execute(status -> {
                 try {
-                    return processTierChunk(lastYear, yearlySpentMap, defaultTier, users);
+                    return processTierChunk(lastYear, yearlySpentMap, defaultTier, chunkUsers);
                 } catch (Exception e) {
                     status.setRollbackOnly();
-                    log.error("등급 재산정 청크 실패 - page={}", pageable.getPageNumber(), e);
+                    log.error("등급 재산정 청크 실패 - chunkNumber={}, cursorId={}", currentChunk, cursorId, e);
                     TierProcessingResult errorResult = new TierProcessingResult();
-                    errorResult.errors = users.size();
-                    errorResult.processed = users.size();
+                    errorResult.errors = chunkUsers.size();
+                    errorResult.processed = chunkUsers.size();
                     return errorResult;
                 }
             });
@@ -139,8 +147,8 @@ public class TierScheduler {
             if (chunkResult != null) {
                 totalResult.merge(chunkResult);
             }
-            log.info("등급 재산정 청크 완료 - page={}, chunkSize={}, processed={}, upgraded={}, downgraded={}, unchanged={}, errors={}, elapsedMs={}",
-                    pageNumber,
+            log.info("등급 재산정 청크 완료 - chunk={}, chunkSize={}, processed={}, upgraded={}, downgraded={}, unchanged={}, errors={}, elapsedMs={}",
+                    chunkNumber,
                     userChunkSize,
                     chunkResult != null ? chunkResult.processed : 0,
                     chunkResult != null ? chunkResult.upgraded : 0,
@@ -149,10 +157,14 @@ public class TierScheduler {
                     chunkResult != null ? chunkResult.errors : 0,
                     chunkElapsedMs);
 
-            if (!hasNext) {
+            // 다음 청크의 커서 갱신 — 마지막 사용자의 ID
+            lastUserId = users.get(users.size() - 1).getUserId();
+            chunkNumber++;
+
+            // 청크 크기보다 적게 반환되면 마지막 청크
+            if (users.size() < userChunkSize) {
                 break;
             }
-            pageNumber++;
         }
 
         long totalElapsedMs = Duration.between(startedAt, LocalDateTime.now()).toMillis();
@@ -170,6 +182,15 @@ public class TierScheduler {
      */
     protected Page<User> loadUserChunk(Pageable pageable) {
         return userRepository.findAll(pageable);
+    }
+
+    /**
+     * [BUG FIX] Keyset(cursor) 기반 사용자 청크 로드.
+     * offset 페이징 대신 WHERE user_id > :lastUserId 조건으로 조회하여
+     * 100만+ 사용자에서도 모든 청크가 일정한 O(chunkSize) 성능을 보장한다.
+     */
+    protected List<User> loadUserChunkByCursor(long lastUserId, Pageable pageable) {
+        return userRepository.findUsersAfterIdWithTier(lastUserId, pageable);
     }
 
     protected TierProcessingResult processTierChunk(int lastYear,

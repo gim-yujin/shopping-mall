@@ -338,12 +338,15 @@ public class OrderService {
         BigDecimal finalAmount = order.getFinalAmount();
         user.addTotalSpent(finalAmount.negate());
 
-        user.addPoints(-order.getEarnedPointsSnapshot());
-
-        // 주문 시 사용한 포인트 환불
-        if (order.getUsedPoints() > 0) {
-            user.addPoints(order.getUsedPoints());
-        }
+        // [BUG FIX] 포인트 적립 차감과 사용 환불을 net 값으로 한 번에 처리.
+        // 이전: addPoints(-earned) → addPoints(+used) 순차 호출 시,
+        //   addPoints 내부의 음수→0 클램핑이 중간 단계에서 발생하여
+        //   예) 잔액 100P, 적립 500P, 사용 300P → 100-500=→0 → 0+300=300P (오류)
+        //   올바른 결과: 100 - 500 + 300 = -100 → 0P
+        // 이후: net = usedPoints - earnedPoints 를 한 번에 addPoints 호출하여
+        //   중간 클램핑으로 인한 부당 지급을 방지한다.
+        int netPointChange = order.getUsedPoints() - order.getEarnedPointsSnapshot();
+        user.addPoints(netPointChange);
 
         userTierRepository.findFirstByMinSpentLessThanEqualOrderByTierLevelDesc(user.getTotalSpent())
                 .ifPresent(user::updateTier);
