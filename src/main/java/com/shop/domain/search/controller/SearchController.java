@@ -4,6 +4,7 @@ import com.shop.domain.product.entity.Product;
 import com.shop.domain.product.service.ProductService;
 import com.shop.domain.search.service.SearchService;
 import com.shop.global.common.PagingParams;
+import com.shop.global.security.ClientIpResolver;
 import com.shop.global.security.SecurityUtil;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.data.domain.Page;
@@ -22,10 +23,12 @@ public class SearchController {
 
     private final ProductService productService;
     private final SearchService searchService;
+    private final ClientIpResolver clientIpResolver;
 
-    public SearchController(ProductService productService, SearchService searchService) {
+    public SearchController(ProductService productService, SearchService searchService, ClientIpResolver clientIpResolver) {
         this.productService = productService;
         this.searchService = searchService;
+        this.clientIpResolver = clientIpResolver;
     }
 
     @GetMapping
@@ -55,8 +58,9 @@ public class SearchController {
         // 첫 페이지에서만 검색 로그 기록 (페이지네이션 시 중복 기록 방지)
         if (normalizedPage == 0) {
             Long userId = SecurityUtil.getCurrentUserId().orElse(null);
+            String clientIp = clientIpResolver.resolveClientIp(request);
             searchService.logSearch(userId, keyword, (int) results.getTotalElements(),
-                    request.getRemoteAddr(), request.getHeader("User-Agent"));
+                    clientIp, request.getHeader("User-Agent"));
         }
 
         return "product/search";
