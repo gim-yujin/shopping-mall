@@ -4,6 +4,7 @@ import com.shop.domain.product.entity.Product;
 import com.shop.domain.product.repository.ProductRepository;
 import com.shop.domain.product.service.ProductService;
 import com.shop.domain.order.entity.OrderItem;
+import com.shop.domain.order.entity.OrderStatus;
 import com.shop.domain.order.repository.OrderItemRepository;
 import com.shop.domain.review.dto.ReviewCreateRequest;
 import com.shop.domain.review.entity.Review;
@@ -124,7 +125,7 @@ public class ReviewService {
             );
         }
 
-        if (!"DELIVERED".equals(orderItem.getOrder().getOrderStatus())) {
+        if (orderItem.getOrder().getOrderStatus() != OrderStatus.DELIVERED) {
             throw new BusinessException(
                     "REVIEW_ORDER_STATUS_NOT_ALLOWED",
                     "배송 완료된 주문만 리뷰를 작성할 수 있습니다."
