@@ -22,6 +22,8 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DataIntegrityViolationException;
 
+import jakarta.validation.Validation;
+import jakarta.validation.Validator;
 import java.math.BigDecimal;
 import java.util.Optional;
 import java.util.Set;
@@ -390,6 +392,42 @@ class ReviewServiceUnitTest {
         verify(reviewRepository, never()).decrementHelpfulCount(any());
         verify(reviewHelpfulRepository).existsByReviewIdAndUserId(reviewId, userId);
         verifyNoInteractions(productService);
+    }
+
+
+    @Test
+    @DisplayName("ReviewCreateRequest - 제목 길이 200자 초과면 검증 실패")
+    void reviewCreateRequest_titleTooLong_validationFails() {
+        Validator validator = Validation.buildDefaultValidatorFactory().getValidator();
+        String overTitle = "a".repeat(201);
+        ReviewCreateRequest request = new ReviewCreateRequest(1L, 2L, 5, overTitle, "정상 내용");
+
+        assertThat(validator.validate(request))
+                .extracting("message")
+                .contains("리뷰 제목은 200자 이하로 입력해주세요.");
+    }
+
+    @Test
+    @DisplayName("ReviewCreateRequest - 내용 길이 5,000자 초과면 검증 실패")
+    void reviewCreateRequest_contentTooLong_validationFails() {
+        Validator validator = Validation.buildDefaultValidatorFactory().getValidator();
+        String overContent = "a".repeat(5001);
+        ReviewCreateRequest request = new ReviewCreateRequest(1L, 2L, 5, "정상 제목", overContent);
+
+        assertThat(validator.validate(request))
+                .extracting("message")
+                .contains("리뷰 내용은 5,000자 이하로 입력해주세요.");
+    }
+
+    @Test
+    @DisplayName("ReviewCreateRequest - 제목/내용 공백만 입력하면 검증 실패")
+    void reviewCreateRequest_blankOnlyTitleAndContent_validationFails() {
+        Validator validator = Validation.buildDefaultValidatorFactory().getValidator();
+        ReviewCreateRequest request = new ReviewCreateRequest(1L, 2L, 5, "   ", "\t\n");
+
+        assertThat(validator.validate(request))
+                .extracting("message")
+                .contains("리뷰 제목은 공백만 입력할 수 없습니다.", "리뷰 내용은 공백만 입력할 수 없습니다.");
     }
 
 }
