@@ -118,43 +118,6 @@ spring:
 - 표준 삽입 구문: `<input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}"/>`
 - 신규 폼 추가/수정 시 누락 여부를 코드 리뷰 체크리스트에 포함하세요.
 
-## DB 마이그레이션 전략
-
-- 현재 기준 마이그레이션 도구(Flyway/Liquibase)는 **도입하지 않았습니다**.
-- 운영/개발 공통으로 DB 스키마는 `src/main/resources/schema.sql`을 단일 기준(single source of truth)으로 수동 적용합니다.
-- 애플리케이션은 스키마 검증만 수행합니다.
-  - `spring.jpa.hibernate.ddl-auto=validate`
-  - `spring.sql.init.mode=never`
-- 따라서 빈 DB에서는 아래처럼 스키마를 먼저 반영한 뒤 애플리케이션을 실행해야 합니다.
-
-```bash
-psql -U postgres -d shopping_mall_db -f src/main/resources/schema.sql
-```
-
-> 참고: `data.sql` 기반 자동 초기 데이터 적재는 현재 사용하지 않습니다.
-
-### 주문 포인트 스냅샷 컬럼 마이그레이션 가이드
-
-`orders`에 `point_earn_rate_snapshot`, `earned_points_snapshot` 컬럼을 추가할 때는 아래 순서를 권장합니다.
-
-1. **DDL 추가 (안전한 기본값)**
-   - 두 컬럼을 `NOT NULL DEFAULT 0`으로 추가해 배포 직후 기존 주문 데이터도 읽기/취소 로직이 깨지지 않게 합니다.
-2. **백필(Backfill)**
-   - `earned_points_snapshot = FLOOR(final_amount * point_earn_rate_snapshot / 100)` 규칙으로 채웁니다.
-   - `point_earn_rate_snapshot`을 정확히 알 수 없으면 보수적으로 `0`을 유지해 과차감(사용자 포인트 마이너스) 위험을 방지합니다.
-3. **애플리케이션 배포**
-   - 신규 주문은 생성 시점의 스냅샷 값으로 저장하고, 취소 시에도 해당 스냅샷을 사용해 포인트를 회수합니다.
-4. **선택적 정합성 점검 쿼리**
-   - `earned_points_snapshot != FLOOR(final_amount * point_earn_rate_snapshot / 100)` 건수를 모니터링해 백필 품질을 검증합니다.
-
-## 온보딩 검증 체크리스트 (빈 DB)
-
-- [ ] PostgreSQL에 `shopping_mall_db` 데이터베이스를 생성했다.
-- [ ] `schema.sql`을 적용해 테이블/인덱스를 생성했다.
-- [ ] `src/main/resources/application.yml`의 DB 접속 정보를 로컬 환경과 일치시켰다.
-- [ ] `./gradlew bootRun` 실행 시 `ddl-auto=validate` 검증이 통과한다.
-- [ ] 애플리케이션(`http://localhost:8080`) 접속이 정상 동작한다.
-
 ## 프로젝트 구조
 
 ```
