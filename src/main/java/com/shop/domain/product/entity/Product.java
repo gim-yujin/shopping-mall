@@ -80,6 +80,15 @@ public class Product {
         this.updatedAt = LocalDateTime.now();
     }
 
+    public void increaseStockAndRollbackSales(int quantity) {
+        if (this.salesCount < quantity) {
+            throw new IllegalStateException("판매량은 0보다 작아질 수 없습니다.");
+        }
+        this.stockQuantity += quantity;
+        this.salesCount -= quantity;
+        this.updatedAt = LocalDateTime.now();
+    }
+
     public void updateRating(BigDecimal newAvg, int newCount) {
         this.ratingAvg = newAvg;
         this.reviewCount = newCount;

@@ -318,6 +318,9 @@ class OrderServiceIntegrationTest {
         int stockBeforeOrder = jdbcTemplate.queryForObject(
                 "SELECT stock_quantity FROM products WHERE product_id = ?",
                 Integer.class, testProductId);
+        int salesBeforeOrder = jdbcTemplate.queryForObject(
+                "SELECT sales_count FROM products WHERE product_id = ?",
+                Integer.class, testProductId);
         int pointsBeforeOrder = jdbcTemplate.queryForObject(
                 "SELECT point_balance FROM users WHERE user_id = ?",
                 Integer.class, testUserId);
@@ -328,6 +331,9 @@ class OrderServiceIntegrationTest {
 
         int stockAfterOrder = jdbcTemplate.queryForObject(
                 "SELECT stock_quantity FROM products WHERE product_id = ?",
+                Integer.class, testProductId);
+        int salesAfterOrder = jdbcTemplate.queryForObject(
+                "SELECT sales_count FROM products WHERE product_id = ?",
                 Integer.class, testProductId);
         int pointsAfterOrder = jdbcTemplate.queryForObject(
                 "SELECT point_balance FROM users WHERE user_id = ?",
@@ -351,12 +357,17 @@ class OrderServiceIntegrationTest {
         int stockAfterCancel = jdbcTemplate.queryForObject(
                 "SELECT stock_quantity FROM products WHERE product_id = ?",
                 Integer.class, testProductId);
+        int salesAfterCancel = jdbcTemplate.queryForObject(
+                "SELECT sales_count FROM products WHERE product_id = ?",
+                Integer.class, testProductId);
         int pointsAfterCancel = jdbcTemplate.queryForObject(
                 "SELECT point_balance FROM users WHERE user_id = ?",
                 Integer.class, testUserId);
 
         assertThat(stockAfterOrder).isEqualTo(stockBeforeOrder - 3);
         assertThat(stockAfterCancel).isEqualTo(stockBeforeOrder);
+        assertThat(salesAfterOrder).isEqualTo(salesBeforeOrder + 3);
+        assertThat(salesAfterCancel).isEqualTo(salesBeforeOrder);
         assertThat(pointsAfterCancel).isEqualTo(pointsBeforeOrder);
 
         // 주문 상태 확인
@@ -372,6 +383,7 @@ class OrderServiceIntegrationTest {
         assertThat(returnHistory).isGreaterThanOrEqualTo(1);
 
         System.out.println("  [PASS] 주문-취소 왕복: 재고 " + stockBeforeOrder + " → " + stockAfterOrder + " → " + stockAfterCancel
+                + ", 판매량 " + salesBeforeOrder + " → " + salesAfterOrder + " → " + salesAfterCancel
                 + ", 포인트 " + pointsBeforeOrder + " → " + pointsAfterOrder + " → " + pointsAfterCancel
                 + ", 적립 스냅샷=" + earnedPointsSnapshot + "P");
     }
