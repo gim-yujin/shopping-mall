@@ -85,6 +85,33 @@ chmod +x setup.sh
 ./setup.sh
 ```
 
+### 프록시/미러 환경에서 Gradle 실패 시
+
+사내망/프록시 환경에서 `./gradlew`가 배포본 또는 플러그인 다운로드에 실패하면 아래 순서로 설정하세요.
+
+1. 템플릿 복사
+```bash
+cp gradle.properties.example gradle.properties
+```
+
+2. `gradle.properties`에서 프록시/인증 정보 입력
+- `systemProp.http.proxyHost`, `systemProp.http.proxyPort`
+- `systemProp.https.proxyHost`, `systemProp.https.proxyPort`
+- 필요 시 `systemProp.http.nonProxyHosts`
+
+3. 네트워크 점검
+```bash
+./gradlew --version
+./gradlew test --tests com.shop.global.security.LoginAuthenticationSuccessHandlerTest
+```
+
+4. 허용(allowlist) 필요 도메인
+- `services.gradle.org` (Gradle distribution)
+- `plugins.gradle.org` (Gradle plugins)
+- `repo.maven.apache.org` (Maven Central)
+
+> 내부 Artifactory/Nexus를 사용하는 경우, 위 외부 도메인 대신 내부 미러만 허용해도 됩니다.
+
 ### 4. 애플리케이션 실행
 
 ```bash

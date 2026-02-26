@@ -1,0 +1,28 @@
+# Copy this file to ./gradle.properties (project local) or ~/.gradle/gradle.properties (user global)
+# and adjust values for your environment.
+
+# ---- Proxy (if your network requires outbound proxy) ----
+# systemProp.http.proxyHost=proxy.company.local
+# systemProp.http.proxyPort=8080
+# systemProp.https.proxyHost=proxy.company.local
+# systemProp.https.proxyPort=8080
+
+# Proxy bypass list (comma or | separated)
+# systemProp.http.nonProxyHosts=localhost|127.0.0.1|*.company.local
+
+# Optional proxy auth
+# systemProp.http.proxyUser=your_id
+# systemProp.http.proxyPassword=your_password
+# systemProp.https.proxyUser=your_id
+# systemProp.https.proxyPassword=your_password
+
+# ---- Gradle network stability ----
+org.gradle.daemon=true
+org.gradle.parallel=true
+org.gradle.caching=true
+org.gradle.jvmargs=-Xmx2g -Dfile.encoding=UTF-8
+org.gradle.internal.http.connectionTimeout=120000
+org.gradle.internal.http.socketTimeout=120000
+
+# ---- Force Java toolchain auto-download off if blocked ----
+org.gradle.java.installations.auto-download=false
