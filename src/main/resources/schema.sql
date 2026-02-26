@@ -498,6 +498,9 @@ CREATE INDEX idx_review_product ON reviews(product_id, created_at DESC);
 CREATE INDEX idx_review_user ON reviews(user_id, created_at DESC);
 CREATE INDEX idx_review_rating ON reviews(product_id, rating);
 CREATE INDEX idx_review_content_gin ON reviews USING gin(to_tsvector('simple', content));
+CREATE UNIQUE INDEX uk_review_user_product_without_order_item
+    ON reviews(user_id, product_id)
+    WHERE order_item_id IS NULL;
 
 -- Product_Inventory_History 인덱스 ⭐️
 CREATE INDEX idx_inventory_product ON product_inventory_history(product_id, created_at DESC);

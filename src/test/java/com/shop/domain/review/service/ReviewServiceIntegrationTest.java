@@ -16,6 +16,11 @@ import org.springframework.test.context.TestPropertySource;
 
 import java.math.BigDecimal;
 import java.util.*;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.*;
 
@@ -56,7 +61,7 @@ class ReviewServiceIntegrationTest {
     private int originalActualReviewCount;
 
     // 테스트 중 생성된 데이터 추적
-    private final List<Long> createdReviewIds = new ArrayList<>();
+    private final List<Long> createdReviewIds = Collections.synchronizedList(new ArrayList<>());
     private final List<Long> createdOrderIds = new ArrayList<>();
 
     @BeforeEach
@@ -244,6 +249,67 @@ class ReviewServiceIntegrationTest {
                 .hasMessageContaining("이미 리뷰를 작성");
 
         System.out.println("  [PASS] 동일 orderItem 중복 리뷰 → BusinessException");
+    }
+
+    @Test
+    @DisplayName("createReview 실패 — orderItemId가 null이어도 동일 user/product 중복")
+    void createReview_duplicateWithoutOrderItem_throwsException() {
+        Review first = reviewService.createReview(testUserId,
+                new ReviewCreateRequest(testProductId, null, 4, "첫 리뷰", null));
+        createdReviewIds.add(first.getReviewId());
+
+        assertThatThrownBy(() -> reviewService.createReview(testUserId,
+                new ReviewCreateRequest(testProductId, null, 5, "중복", null)))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("이미 리뷰를 작성");
+    }
+
+    @Test
+    @DisplayName("createReview 동시성 — orderItemId가 null인 동일 user/product 요청은 1건만 성공")
+    void createReview_duplicateWithoutOrderItem_concurrentOnlyOneSuccess() throws InterruptedException {
+        int threadCount = 8;
+
+        ExecutorService executor = Executors.newFixedThreadPool(threadCount);
+        CountDownLatch ready = new CountDownLatch(threadCount);
+        CountDownLatch start = new CountDownLatch(1);
+        CountDownLatch done = new CountDownLatch(threadCount);
+
+        AtomicInteger success = new AtomicInteger();
+        AtomicInteger duplicate = new AtomicInteger();
+
+        for (int i = 0; i < threadCount; i++) {
+            executor.submit(() -> {
+                ready.countDown();
+                try {
+                    start.await();
+                    Review review = reviewService.createReview(testUserId,
+                            new ReviewCreateRequest(testProductId, null, 5, "동시성", "테스트"));
+                    createdReviewIds.add(review.getReviewId());
+                    success.incrementAndGet();
+                } catch (BusinessException e) {
+                    if (e.getMessage() != null && e.getMessage().contains("이미 리뷰를 작성")) {
+                        duplicate.incrementAndGet();
+                    }
+                } catch (Exception ignored) {
+                    // 테스트 본문에서 성공/중복 외 예외는 집계하지 않음
+                } finally {
+                    done.countDown();
+                }
+            });
+        }
+
+        ready.await(5, TimeUnit.SECONDS);
+        start.countDown();
+        done.await(20, TimeUnit.SECONDS);
+        executor.shutdown();
+
+        Integer reviewCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM reviews WHERE user_id = ? AND product_id = ? AND order_item_id IS NULL",
+                Integer.class, testUserId, testProductId);
+
+        assertThat(success.get()).isEqualTo(1);
+        assertThat(duplicate.get()).isEqualTo(threadCount - 1);
+        assertThat(reviewCount).isEqualTo(1);
     }
 
     @Test
@@ -516,10 +582,17 @@ class ReviewServiceIntegrationTest {
     @DisplayName("getHelpedReviewIds — 도움돼요 누른 리뷰 ID 반환")
     void getHelpedReviewIds_returnsCorrectIds() {
         // Given
+        Long anotherProductId = jdbcTemplate.queryForObject(
+                "SELECT product_id FROM products WHERE is_active = true AND product_id <> ? ORDER BY product_id LIMIT 1",
+                Long.class,
+                testProductId
+        );
+        assertThat(anotherProductId).as("테스트용 다른 상품이 필요합니다.").isNotNull();
+
         Review r1 = reviewService.createReview(testUserId,
                 new ReviewCreateRequest(testProductId, null, 5, "리뷰A", null));
         Review r2 = reviewService.createReview(testUserId,
-                new ReviewCreateRequest(testProductId, null, 4, "리뷰B", null));
+                new ReviewCreateRequest(anotherProductId, null, 4, "리뷰B", null));
         createdReviewIds.add(r1.getReviewId());
         createdReviewIds.add(r2.getReviewId());
 
