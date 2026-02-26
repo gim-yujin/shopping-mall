@@ -66,3 +66,12 @@ security:
       - 10.0.0.0/8
       - 192.168.0.0/16
     trusted-hop-count: 1
+
+app:
+  async:
+    # graceful shutdown 대기 시간(초): 배포/재시작 시 비동기 로그 flush를 위한 설정
+    await-termination-seconds: 30
+    metrics:
+      logging-enabled: true
+      log-interval-ms: 30000
+
