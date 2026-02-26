@@ -73,6 +73,29 @@ class ProductEntityUnitTest {
         assertThat(product.getStockQuantity()).isEqualTo(150);
     }
 
+
+
+    @Test
+    @DisplayName("increaseStockAndRollbackSales — 재고 증가 + 판매량 롤백")
+    void increaseStockAndRollbackSales_success() throws Exception {
+        Product product = createProduct(100, 50);
+
+        product.increaseStockAndRollbackSales(20);
+
+        assertThat(product.getStockQuantity()).isEqualTo(120);
+        assertThat(product.getSalesCount()).isEqualTo(30);
+    }
+
+    @Test
+    @DisplayName("increaseStockAndRollbackSales — 판매량보다 큰 롤백은 예외")
+    void increaseStockAndRollbackSales_overRollback_throwsException() throws Exception {
+        Product product = createProduct(100, 3);
+
+        assertThatThrownBy(() -> product.increaseStockAndRollbackSales(4))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("판매량은 0보다 작아질 수 없습니다");
+    }
+
     // ==================== incrementViewCount ====================
 
     @Test

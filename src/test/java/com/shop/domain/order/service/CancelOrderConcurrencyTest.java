@@ -173,6 +173,9 @@ class CancelOrderConcurrencyTest {
         int stockAfterOrder = jdbcTemplate.queryForObject(
                 "SELECT stock_quantity FROM products WHERE product_id = ?",
                 Integer.class, testProductId);
+        int salesAfterOrder = jdbcTemplate.queryForObject(
+                "SELECT sales_count FROM products WHERE product_id = ?",
+                Integer.class, testProductId);
 
         System.out.println("========================================");
         System.out.println("[이중 취소 테스트]");
@@ -224,6 +227,9 @@ class CancelOrderConcurrencyTest {
         Integer finalStock = jdbcTemplate.queryForObject(
                 "SELECT stock_quantity FROM products WHERE product_id = ?",
                 Integer.class, testProductId);
+        Integer finalSalesCount = jdbcTemplate.queryForObject(
+                "SELECT sales_count FROM products WHERE product_id = ?",
+                Integer.class, testProductId);
 
         String orderStatus = jdbcTemplate.queryForObject(
                 "SELECT order_status FROM orders WHERE order_id = ?",
@@ -241,6 +247,8 @@ class CancelOrderConcurrencyTest {
         System.out.println("  원본 재고:        " + originalStock);
         System.out.println("  주문 후 재고:     " + stockAfterOrder);
         System.out.println("  취소 후 최종 재고: " + finalStock);
+        System.out.println("  주문 후 판매량:     " + salesAfterOrder);
+        System.out.println("  취소 후 최종 판매량: " + finalSalesCount);
         System.out.println("  재고 복구 횟수:    " + restoredCount + "회 (기대: 1회)");
         System.out.println("  주문 상태:         " + orderStatus);
         if (!errors.isEmpty()) {
@@ -260,12 +268,17 @@ class CancelOrderConcurrencyTest {
                 .as("재고는 정확히 1번만 복구되어야 합니다")
                 .isEqualTo(1);
 
-        // ③ 주문 상태는 CANCELLED
+        // ③ 판매량은 원본으로 정확히 복구
+        assertThat(finalSalesCount)
+                .as("판매량은 원본값(%d)으로 정확히 복구되어야 합니다", originalSalesCount)
+                .isEqualTo(originalSalesCount);
+
+        // ④ 주문 상태는 CANCELLED
         assertThat(orderStatus)
                 .as("주문 상태는 CANCELLED여야 합니다")
                 .isEqualTo("CANCELLED");
 
-        // ④ 기타 예외 없음
+        // ⑤ 기타 예외 없음
         assertThat(otherFailCount.get())
                 .as("예상치 못한 예외가 발생하면 안 됩니다: %s", errors)
                 .isEqualTo(0);
@@ -293,6 +306,9 @@ class CancelOrderConcurrencyTest {
 
         int stockAfterOrderA = jdbcTemplate.queryForObject(
                 "SELECT stock_quantity FROM products WHERE product_id = ?",
+                Integer.class, testProductId);
+        int salesAfterOrderA = jdbcTemplate.queryForObject(
+                "SELECT sales_count FROM products WHERE product_id = ?",
                 Integer.class, testProductId);
 
         // User B 준비 (다른 사용자가 같은 상품 주문)
@@ -381,12 +397,16 @@ class CancelOrderConcurrencyTest {
         Integer finalStock = jdbcTemplate.queryForObject(
                 "SELECT stock_quantity FROM products WHERE product_id = ?",
                 Integer.class, testProductId);
+        Integer finalSalesCount = jdbcTemplate.queryForObject(
+                "SELECT sales_count FROM products WHERE product_id = ?",
+                Integer.class, testProductId);
 
         System.out.println("========================================");
         System.out.println("[테스트 결과]");
         System.out.println("  취소 성공: " + cancelSuccess.get());
         System.out.println("  생성 성공: " + createSuccess.get());
         System.out.println("  최종 재고: " + finalStock + " (기대: " + stockAfterOrderA + ")");
+        System.out.println("  최종 판매량: " + finalSalesCount + " (기대: " + salesAfterOrderA + ")");
         if (!errors.isEmpty()) {
             System.out.println("  에러:");
             errors.forEach(e -> System.out.println("    → " + e));
@@ -406,7 +426,12 @@ class CancelOrderConcurrencyTest {
                 .as("취소(+1)와 생성(-1)이 상쇄되어 주문A 후 재고(%d)와 같아야 합니다", stockAfterOrderA)
                 .isEqualTo(stockAfterOrderA);
 
-        // ③ 예상치 못한 에러 없음
+        // ③ 최종 판매량 = 주문A 후 판매량 (취소 -1, 생성 +1 = 상쇄 → 변화 없음)
+        assertThat(finalSalesCount)
+                .as("취소(-1)와 생성(+1)이 상쇄되어 주문A 후 판매량(%d)과 같아야 합니다", salesAfterOrderA)
+                .isEqualTo(salesAfterOrderA);
+
+        // ④ 예상치 못한 에러 없음
         assertThat(errors)
                 .as("예상치 못한 에러가 없어야 합니다")
                 .isEmpty();
