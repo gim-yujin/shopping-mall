@@ -25,7 +25,15 @@ public class ReviewController {
                                BindingResult bindingResult,
                                RedirectAttributes redirectAttributes) {
         if (bindingResult.hasErrors()) {
-            redirectAttributes.addFlashAttribute("errorMessage", "리뷰 입력값을 확인해주세요. (제목 200자/내용 5,000자 이내, 공백만 입력 불가)");
+            if (request.productId() == null) {
+                redirectAttributes.addFlashAttribute("errorMessage", "리뷰 등록에 실패했습니다. 상품 정보가 누락되었습니다.");
+                redirectAttributes.addFlashAttribute("org.springframework.validation.BindingResult.reviewCreateRequest", bindingResult);
+                redirectAttributes.addFlashAttribute("reviewCreateRequest", request);
+                return "redirect:/products";
+            }
+
+            redirectAttributes.addFlashAttribute("errorMessage",
+                    "리뷰 등록에 실패했습니다. 입력값을 확인해주세요. (제목 200자/내용 5,000자 이내, 공백만 입력 불가)");
             redirectAttributes.addFlashAttribute("org.springframework.validation.BindingResult.reviewCreateRequest", bindingResult);
             redirectAttributes.addFlashAttribute("reviewCreateRequest", request);
             return "redirect:/products/" + request.productId();
