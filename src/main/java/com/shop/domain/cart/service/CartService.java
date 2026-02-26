@@ -59,6 +59,10 @@ public class CartService {
 
     @Transactional
     public void updateQuantity(Long userId, Long productId, int quantity) {
+        // 락 획득 순서 규칙: 사용자 락을 가장 먼저 획득한 뒤 조회/검증/수정 로직을 수행한다.
+        // 다른 트랜잭션도 동일 순서를 지켜 교차 대기(Deadlock) 가능성을 낮춘다.
+        cartRepository.acquireUserCartLock(userId);
+
         Cart cart = cartRepository.findByUserIdAndProduct_ProductId(userId, productId)
                 .orElseThrow(() -> new ResourceNotFoundException("장바구니 항목", productId));
         if (quantity <= 0) {
@@ -87,11 +91,15 @@ public class CartService {
 
     @Transactional
     public void removeFromCart(Long userId, Long productId) {
+        // 락 획득 순서 규칙: 사용자 락을 가장 먼저 획득한 뒤 삭제를 수행한다.
+        cartRepository.acquireUserCartLock(userId);
         cartRepository.deleteByUserIdAndProduct_ProductId(userId, productId);
     }
 
     @Transactional
     public void clearCart(Long userId) {
+        // 락 획득 순서 규칙: 사용자 락을 가장 먼저 획득한 뒤 삭제를 수행한다.
+        cartRepository.acquireUserCartLock(userId);
         cartRepository.deleteByUserId(userId);
     }
 
