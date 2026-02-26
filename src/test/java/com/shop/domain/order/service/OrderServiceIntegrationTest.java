@@ -308,6 +308,48 @@ class OrderServiceIntegrationTest {
                 + ", 할인=" + order.getDiscountAmount() + ", 최종=" + order.getFinalAmount());
     }
 
+    @Test
+    @DisplayName("createOrder — 클라이언트 배송비 전달값과 무관하게 서버 계산 배송비 저장")
+    void createOrder_ignoresClientShippingFeeAndStoresServerCalculatedFee() {
+        // Given
+        int quantity = 1;
+        addCartItem(testUserId, testProductId, quantity);
+
+        BigDecimal productPrice = jdbcTemplate.queryForObject(
+                "SELECT price FROM products WHERE product_id = ?",
+                BigDecimal.class, testProductId);
+        BigDecimal expectedTotalAmount = productPrice.multiply(BigDecimal.valueOf(quantity));
+
+        BigDecimal freeShippingThreshold = jdbcTemplate.queryForObject(
+                """
+                SELECT t.free_shipping_threshold
+                FROM users u
+                JOIN user_tiers t ON t.tier_id = u.tier_id
+                WHERE u.user_id = ?
+                """,
+                BigDecimal.class, testUserId);
+        BigDecimal expectedShippingFee = expectedTotalAmount.compareTo(freeShippingThreshold) >= 0
+                ? BigDecimal.ZERO
+                : new BigDecimal("3000");
+
+        OrderCreateRequest tamperedRequest = new OrderCreateRequest(
+                "서울시 강남구 테스트로 123", "테스트수령인", "010-0000-0000",
+                "CARD", new BigDecimal("999999"), null, null);
+
+        // When
+        Order order = orderService.createOrder(testUserId, tamperedRequest);
+        createdOrderIds.add(order.getOrderId());
+
+        // Then
+        assertThat(order.getShippingFee()).isEqualByComparingTo(expectedShippingFee);
+
+        BigDecimal persistedShippingFee = jdbcTemplate.queryForObject(
+                "SELECT shipping_fee FROM orders WHERE order_id = ?",
+                BigDecimal.class, order.getOrderId());
+        assertThat(persistedShippingFee).isEqualByComparingTo(expectedShippingFee);
+        assertThat(persistedShippingFee).isNotEqualByComparingTo("999999");
+    }
+
     // ==================== cancelOrder ====================
 
     @Test
