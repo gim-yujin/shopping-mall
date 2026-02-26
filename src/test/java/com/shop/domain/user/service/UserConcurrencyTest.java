@@ -93,7 +93,7 @@ class UserConcurrencyTest {
             final SignupRequest request = new SignupRequest(
                     username,
                     baseEmail + attempt + "@test.com",
-                    "password1234",
+                    "password1234!",
                     "테스트유저" + attempt,
                     "010-0000-000" + attempt
             );
@@ -192,7 +192,7 @@ class UserConcurrencyTest {
             final SignupRequest request = new SignupRequest(
                     baseUsername + attempt,
                     email,
-                    "password1234",
+                    "password1234!",
                     "테스트유저" + attempt,
                     "010-1111-000" + attempt
             );

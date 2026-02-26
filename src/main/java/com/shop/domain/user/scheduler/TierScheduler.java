@@ -15,6 +15,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
@@ -38,6 +39,7 @@ public class TierScheduler {
     private final EntityManager entityManager;
     private final int userChunkSize;
 
+    @Autowired
     public TierScheduler(UserRepository userRepository,
                          UserTierRepository userTierRepository,
                          UserTierHistoryRepository tierHistoryRepository,
