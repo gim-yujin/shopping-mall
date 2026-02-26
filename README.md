@@ -142,6 +142,32 @@ spring:
 
 
 
+
+## 캐시 정책 (Source of Truth)
+
+아래 표는 `CacheConfig`(`src/main/java/com/shop/global/config/CacheConfig.java`) 기준 운영 캐시 TTL 정책입니다.
+
+| Cache Name | TTL | Max Size | 비고 |
+|---|---:|---:|---|
+| `bestSellers` | 1분 | 200 | 홈 집계 |
+| `newArrivals` | 1분 | 200 | 홈 집계 |
+| `deals` | 1분 | 200 | 홈 집계 |
+| `topCategories` | 1분 | 100 | 홈 집계 |
+| `popularKeywords` | 1분 | 100 | 홈 집계 |
+| `subCategories` | 30분 | 500 | 카테고리 트리 |
+| `categoryDescendants` | 30분 | 500 | 카테고리 트리 |
+| `categoryBreadcrumb` | 30분 | 500 | 카테고리 트리 |
+| `categoryById` | 30분 | 500 | 카테고리 트리 |
+| `productList` | 2분 | 300 | 상품 목록/검색 |
+| `searchResults` | 2분 | 300 | 상품 목록/검색 |
+| `categoryProducts` | 2분 | 300 | 상품 목록/검색 |
+| `productDetail` | 2분 | 500 | 상품 상세 |
+| `productReviews` | 30초 | 500 | 리뷰 목록 |
+| `productReviewVersion` | 60분 | 10000 | 리뷰 버전 관리 |
+| `userDetails` | 1분 | 1000 | 인증 사용자 정보 |
+| `loginAttempts` | 15분 | 50000 | 로그인 실패 상태 |
+| `activeCoupons` | 10초 | 200 | 활성 쿠폰 |
+
 ## 운영 보안 설정 (Trusted Proxy)
 
 `security.login-attempt.trusted-proxy-cidrs`와 `security.login-attempt.trusted-hop-count`는 **로그인 차단 IP 계산뿐 아니라 검색 로그(`searchService.logSearch`)의 클라이언트 IP 해석에도 동일하게 적용**됩니다.
