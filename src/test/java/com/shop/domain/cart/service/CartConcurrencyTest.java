@@ -436,9 +436,11 @@ class CartConcurrencyTest {
 
         jdbcTemplate.update("DELETE FROM carts WHERE user_id = ? AND product_id = ?", testUserId, productId);
 
+        // removeFromCart가 먼저 수행되면 updateQuantity는 조회 시점에 항목을 찾지 못해
+        // ResourceNotFoundException이 발생할 수 있다. 이는 동시성 시나리오에서 허용되는 결과다.
         assertThat(errors)
-                .as("예상치 못한 예외가 없어야 합니다")
-                .isEmpty();
+                .as("허용되지 않는 예외가 없어야 합니다")
+                .allMatch(error -> error.startsWith("updateQuantity: ResourceNotFoundException"));
 
         assertThat(finalQuantity)
                 .as("최종 수량은 직렬화 결과에 따라 10 또는 11이어야 합니다")
@@ -512,9 +514,11 @@ class CartConcurrencyTest {
 
         jdbcTemplate.update("DELETE FROM carts WHERE user_id = ? AND product_id = ?", testUserId, productId);
 
+        // removeFromCart가 먼저 반영되면 updateQuantity는 대상을 찾지 못해
+        // ResourceNotFoundException이 발생할 수 있으며, 이는 허용 가능한 경합 결과다.
         assertThat(errors)
-                .as("예상치 못한 예외가 없어야 합니다")
-                .isEmpty();
+                .as("허용되지 않는 예외가 없어야 합니다")
+                .allMatch(error -> error.startsWith("updateQuantity: ResourceNotFoundException"));
 
         assertThat(rowCount)
                 .as("최종 행 수는 0 또는 1이어야 합니다")

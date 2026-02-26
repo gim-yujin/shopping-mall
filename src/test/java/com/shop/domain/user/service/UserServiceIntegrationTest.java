@@ -194,6 +194,25 @@ class UserServiceIntegrationTest {
     }
 
     @Test
+    @DisplayName("signup 실패 — username 대소문자만 다른 경우도 중복")
+    void signup_duplicateUsername_caseInsensitive_throwsException() {
+        String suffix = uniqueSuffix();
+        SignupRequest first = new SignupRequest(
+                "CaseUser_" + suffix, "first_case_" + suffix + "@test.com",
+                "password123!", "첫번째", null);
+        User user = userService.signup(first);
+        createdUserIds.add(user.getUserId());
+
+        SignupRequest duplicate = new SignupRequest(
+                "caseuser_" + suffix, "second_case_" + suffix + "@test.com",
+                "password123!", "두번째", null);
+
+        assertThatThrownBy(() -> userService.signup(duplicate))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("이미 사용 중인 아이디");
+    }
+
+    @Test
     @DisplayName("signup 실패 — 중복 email")
     void signup_duplicateEmail_throwsException() {
         // Given
@@ -251,6 +270,23 @@ class UserServiceIntegrationTest {
         assertThat(user.getUserId()).isEqualTo(existingUserId);
 
         System.out.println("  [PASS] findByUsername: " + username);
+    }
+
+    @Test
+    @DisplayName("findByUsername 는 대소문자를 무시하고 조회한다")
+    void findByUsername_caseInsensitive_success() {
+        String suffix = uniqueSuffix();
+        User user = userService.signup(new SignupRequest(
+                "LoginUser_" + suffix,
+                "login_" + suffix + "@example.com",
+                "password123!",
+                "로그인유저",
+                "010-1111-2222"
+        ));
+        createdUserIds.add(user.getUserId());
+
+        User found = userService.findByUsername("loginuser_" + suffix);
+        assertThat(found.getUserId()).isEqualTo(user.getUserId());
     }
 
     @Test
@@ -358,6 +394,30 @@ class UserServiceIntegrationTest {
         assertThat(passwordEncoder.matches("new_password_456!", after.getPassword())).isTrue();
         assertThat(passwordEncoder.matches(knownPassword, after.getPassword())).isFalse();
         assertThat(after.getPassword()).isNotEqualTo(before.getPassword());
+    }
+
+    @Test
+    @DisplayName("loadUserByUsername 는 대소문자와 무관하게 동일 캐시 키를 사용한다")
+    void loadUserByUsername_caseInsensitive_cacheKeyUnified() {
+        String suffix = uniqueSuffix();
+        User created = userService.signup(new SignupRequest(
+                "CacheUser_" + suffix,
+                "cache_" + suffix + "@example.com",
+                "password123!",
+                "캐시유저",
+                "010-3333-4444"
+        ));
+        createdUserIds.add(created.getUserId());
+
+        UserDetails upper = customUserDetailsService.loadUserByUsername("CACHEUSER_" + suffix);
+        UserDetails lower = customUserDetailsService.loadUserByUsername("cacheuser_" + suffix);
+
+        assertThat(upper.getUsername()).isEqualTo(created.getUsername());
+        assertThat(lower.getUsername()).isEqualTo(created.getUsername());
+
+        var cache = cacheManager.getCache("userDetails");
+        assertThat(cache).isNotNull();
+        assertThat(cache.get(("cacheuser_" + suffix).toLowerCase())).isNotNull();
     }
 
     @Test
