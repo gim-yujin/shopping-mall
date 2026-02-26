@@ -151,6 +151,26 @@ class UserServiceIntegrationTest {
     }
 
     @Test
+    @DisplayName("signup 실패 — 약한 비밀번호")
+    void signup_weakPassword_throwsException() {
+        // Given
+        String suffix = uniqueSuffix();
+        SignupRequest weakPassword = new SignupRequest(
+                "weakuser_" + suffix,
+                "weak_" + suffix + "@test.com",
+                "password",
+                "약한비밀번호유저",
+                "010-1234-5678");
+
+        // When & Then
+        assertThatThrownBy(() -> userService.signup(weakPassword))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("비밀번호는 영문, 숫자, 특수문자를 포함해야 합니다.");
+
+        System.out.println("  [PASS] 약한 비밀번호 → BusinessException");
+    }
+
+    @Test
     @DisplayName("signup 실패 — 중복 username")
     void signup_duplicateUsername_throwsException() {
         // Given: 먼저 가입

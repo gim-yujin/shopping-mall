@@ -47,6 +47,9 @@ public class UserService {
         if (userRepository.existsByEmail(request.email())) {
             throw new BusinessException("DUPLICATE", "이미 사용 중인 이메일입니다.");
         }
+        if (request.password() == null || !PASSWORD_PATTERN.matcher(request.password()).matches()) {
+            throw new BusinessException("INVALID_INPUT", "비밀번호는 영문, 숫자, 특수문자를 포함해야 합니다.");
+        }
 
         UserTier defaultTier = tierRepository.findByTierLevel(1)
                 .orElseThrow(() -> new ResourceNotFoundException("기본 등급", 1));
