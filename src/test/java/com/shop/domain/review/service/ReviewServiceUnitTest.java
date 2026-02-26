@@ -5,6 +5,7 @@ import com.shop.domain.product.repository.ProductRepository;
 import com.shop.domain.product.service.ProductService;
 import com.shop.domain.order.entity.Order;
 import com.shop.domain.order.entity.OrderItem;
+import com.shop.domain.order.entity.OrderStatus;
 import com.shop.domain.order.repository.OrderItemRepository;
 import com.shop.domain.review.dto.ReviewCreateRequest;
 import com.shop.domain.review.entity.Review;
@@ -73,7 +74,7 @@ class ReviewServiceUnitTest {
         when(orderItem.getOrder()).thenReturn(order);
         when(order.getUserId()).thenReturn(userId);
         when(orderItem.getProductId()).thenReturn(productId);
-        when(order.getOrderStatus()).thenReturn("DELIVERED");
+        when(order.getOrderStatus()).thenReturn(OrderStatus.DELIVERED);
     }
 
     @Test
@@ -192,7 +193,7 @@ class ReviewServiceUnitTest {
         when(orderItem.getOrder()).thenReturn(order);
         when(order.getUserId()).thenReturn(userId);
         when(orderItem.getProductId()).thenReturn(productId);
-        when(order.getOrderStatus()).thenReturn("SHIPPED");
+        when(order.getOrderStatus()).thenReturn(OrderStatus.SHIPPED);
 
         assertThatThrownBy(() -> reviewService.createReview(userId, request))
                 .isInstanceOf(BusinessException.class)

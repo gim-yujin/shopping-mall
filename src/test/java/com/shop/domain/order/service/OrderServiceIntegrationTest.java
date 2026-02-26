@@ -2,6 +2,7 @@ package com.shop.domain.order.service;
 
 import com.shop.domain.order.dto.OrderCreateRequest;
 import com.shop.domain.order.entity.Order;
+import com.shop.domain.order.entity.OrderStatus;
 import com.shop.global.exception.BusinessException;
 import com.shop.global.exception.InsufficientStockException;
 import org.junit.jupiter.api.*;
@@ -165,7 +166,7 @@ class OrderServiceIntegrationTest {
 
         // Then: 주문 생성 확인
         assertThat(order.getOrderId()).isNotNull();
-        assertThat(order.getOrderStatus()).isEqualTo("PAID");
+        assertThat(order.getOrderStatus()).isEqualTo(OrderStatus.PAID);
         assertThat(order.getUserId()).isEqualTo(testUserId);
         assertThat(order.getItems()).hasSize(1);
         assertThat(order.getItems().get(0).getQuantity()).isEqualTo(quantity);
@@ -485,7 +486,7 @@ class OrderServiceIntegrationTest {
                 .anyMatch(o -> o.getOrderId().equals(order.getOrderId()));
         assertThat(paidPage.getContent())
                 .as("상태별 조회 결과는 요청한 상태와 일치해야 함")
-                .allMatch(o -> "PAID".equals(o.getOrderStatus()));
+                .allMatch(o -> o.getOrderStatus() == OrderStatus.PAID);
 
         System.out.println("  [PASS] 상태별 주문 조회(PAID): total=" + paidPage.getTotalElements());
     }

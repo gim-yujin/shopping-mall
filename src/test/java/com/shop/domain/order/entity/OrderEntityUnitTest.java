@@ -1,4 +1,5 @@
 package com.shop.domain.order.entity;
+import com.shop.domain.order.entity.OrderStatus;
 
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -26,7 +27,7 @@ class OrderEntityUnitTest {
     @DisplayName("생성 직후 상태는 PENDING이다")
     void newOrder_statusIsPending() {
         Order order = createOrder();
-        assertThat(order.getOrderStatus()).isEqualTo("PENDING");
+        assertThat(order.getOrderStatus()).isEqualTo(OrderStatus.PENDING);
         assertThat(order.getOrderDate()).isNotNull();
         assertThat(order.getPointEarnRateSnapshot()).isEqualByComparingTo("1.5");
         assertThat(order.getEarnedPointsSnapshot()).isEqualTo(795);
@@ -40,7 +41,7 @@ class OrderEntityUnitTest {
         Order order = createOrder();
         order.markPaid();
 
-        assertThat(order.getOrderStatus()).isEqualTo("PAID");
+        assertThat(order.getOrderStatus()).isEqualTo(OrderStatus.PAID);
         assertThat(order.getPaidAt()).isNotNull();
     }
 
@@ -51,7 +52,7 @@ class OrderEntityUnitTest {
         order.markPaid();
         order.markShipped();
 
-        assertThat(order.getOrderStatus()).isEqualTo("SHIPPED");
+        assertThat(order.getOrderStatus()).isEqualTo(OrderStatus.SHIPPED);
         assertThat(order.getShippedAt()).isNotNull();
     }
 
@@ -63,7 +64,7 @@ class OrderEntityUnitTest {
         order.markShipped();
         order.markDelivered();
 
-        assertThat(order.getOrderStatus()).isEqualTo("DELIVERED");
+        assertThat(order.getOrderStatus()).isEqualTo(OrderStatus.DELIVERED);
         assertThat(order.getDeliveredAt()).isNotNull();
     }
 
@@ -73,7 +74,7 @@ class OrderEntityUnitTest {
         Order order = createOrder();
         order.cancel();
 
-        assertThat(order.getOrderStatus()).isEqualTo("CANCELLED");
+        assertThat(order.getOrderStatus()).isEqualTo(OrderStatus.CANCELLED);
         assertThat(order.getCancelledAt()).isNotNull();
     }
 

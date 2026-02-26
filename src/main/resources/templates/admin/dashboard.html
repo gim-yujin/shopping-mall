@@ -49,10 +49,8 @@
                             <td class="text-gray-500" th:text="${#temporals.format(order.orderDate, 'MM.dd HH:mm')}">날짜</td>
                             <td th:text="${#numbers.formatDecimal(order.finalAmount,0,'COMMA',0,'POINT')} + '원'">0원</td>
                             <td><span class="px-2 py-0.5 text-xs rounded-full"
-                                      th:classappend="${order.orderStatus == 'DELIVERED' ? 'bg-green-100 text-green-700' :
-                                                       order.orderStatus == 'CANCELLED' ? 'bg-red-100 text-red-700' :
-                                                       'bg-yellow-100 text-yellow-700'}"
-                                      th:text="${order.orderStatus}">STATUS</span></td>
+                                      th:classappend="${order.orderStatus.badgeClass}"
+                                      th:text="${order.orderStatus.label}">STATUS</span></td>
                         </tr>
                         </tbody>
                     </table>

@@ -10,6 +10,7 @@ import com.shop.domain.order.dto.OrderCreateRequest;
 import com.shop.domain.order.entity.Order;
 import com.shop.domain.order.entity.PaymentMethod;
 import com.shop.domain.order.entity.OrderItem;
+import com.shop.domain.order.entity.OrderStatus;
 import com.shop.domain.order.repository.OrderRepository;
 import com.shop.domain.product.entity.Product;
 import com.shop.domain.product.repository.ProductRepository;
@@ -30,9 +31,7 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
-import java.util.Map;
 import java.util.List;
-import java.util.Set;
 import java.util.UUID;
 
 @Service
@@ -245,7 +244,8 @@ public class OrderService {
     }
 
     public Page<Order> getOrdersByStatus(String status, Pageable pageable) {
-        Page<Order> orders = orderRepository.findByStatus(status, pageable);
+        OrderStatus orderStatus = OrderStatus.fromOrThrow(status);
+        Page<Order> orders = orderRepository.findByStatus(orderStatus, pageable);
         orders.getContent().forEach(order -> order.getItems().size());
         return orders;
     }
@@ -255,39 +255,29 @@ public class OrderService {
         Order order = orderRepository.findByIdWithLock(orderId)
                 .orElseThrow(() -> new ResourceNotFoundException("주문", orderId));
 
-        Set<String> supportedStatuses = Set.of("PENDING", "PAID", "SHIPPED", "DELIVERED", "CANCELLED");
-        if (!supportedStatuses.contains(status)) {
-            throw new BusinessException("INVALID_STATUS", "잘못된 주문 상태입니다.");
-        }
+        OrderStatus targetStatus = OrderStatus.fromOrThrow(status);
+        OrderStatus currentStatus = order.getOrderStatus();
 
-        String currentStatus = order.getOrderStatus();
-        Map<String, Set<String>> allowedTransitions = Map.of(
-                "PENDING", Set.of("PENDING", "PAID", "CANCELLED"),
-                "PAID", Set.of("PAID", "SHIPPED", "CANCELLED"),
-                "SHIPPED", Set.of("SHIPPED", "DELIVERED"),
-                "DELIVERED", Set.of("DELIVERED"),
-                "CANCELLED", Set.of("CANCELLED")
-        );
-
-        Set<String> nextStatuses = allowedTransitions.get(currentStatus);
-        if (nextStatuses == null || !nextStatuses.contains(status)) {
+        if (!currentStatus.canTransitionTo(targetStatus)) {
             throw new BusinessException(
                     "INVALID_STATUS_TRANSITION",
-                    "허용되지 않는 주문 상태 전이입니다. [" + currentStatus + " -> " + status + "]"
+                    "허용되지 않는 주문 상태 전이입니다. [" + currentStatus + " -> " + targetStatus + "]"
             );
         }
 
-        if ("CANCELLED".equals(status) && !order.isCancellable()) {
+        if (targetStatus == OrderStatus.CANCELLED && !order.isCancellable()) {
             throw new BusinessException("INVALID_STATUS_TRANSITION",
-                    "취소할 수 없는 주문 상태입니다. [" + currentStatus + " -> " + status + "]");
+                    "취소할 수 없는 주문 상태입니다. [" + currentStatus + " -> " + targetStatus + "]");
         }
 
-        switch (status) {
-            case "PAID" -> order.markPaid();
-            case "SHIPPED" -> order.markShipped();
-            case "DELIVERED" -> order.markDelivered();
-            case "CANCELLED" -> cancelOrderInternal(order, order.getUserId());
-            default -> throw new BusinessException("INVALID_STATUS", "잘못된 주문 상태입니다.");
+        switch (targetStatus) {
+            case PAID -> order.markPaid();
+            case SHIPPED -> order.markShipped();
+            case DELIVERED -> order.markDelivered();
+            case CANCELLED -> cancelOrderInternal(order, order.getUserId());
+            case PENDING -> {
+                // no-op
+            }
         }
     }
 

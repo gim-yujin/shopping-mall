@@ -22,8 +22,8 @@
                         <span class="font-medium text-sm" th:text="${order.orderNumber}">ORD-001</span>
                     </div>
                     <span class="px-3 py-1 text-xs font-medium rounded-full"
-                          th:classappend="${orderStatusBadgeClasses.getOrDefault(order.orderStatus, 'bg-yellow-100 text-yellow-700')}"
-                          th:text="${orderStatusLabels.getOrDefault(order.orderStatus, order.orderStatus)}">상태</span>
+                          th:classappend="${orderStatusBadgeClasses.getOrDefault(order.orderStatusCode, 'bg-yellow-100 text-yellow-700')}"
+                          th:text="${orderStatusLabels.getOrDefault(order.orderStatusCode, order.orderStatusCode)}">상태</span>
                 </div>
                 <div class="px-6 py-4">
                     <div th:each="item : ${order.items}" class="flex items-center gap-4 py-2">
