@@ -64,4 +64,25 @@ class CartServiceUnitTest {
         verify(cartRepository).acquireUserCartLock(1L);
         verify(cartRepository, never()).save(any());
     }
+
+
+    @Test
+    @DisplayName("수량 수정 시 요청 수량이 재고를 초과하면 실패해야 한다")
+    void updateQuantity_rejectsWhenRequestedQuantityExceedsStock() {
+        Product product = mock(Product.class);
+        when(productRepository.findById(10L)).thenReturn(Optional.of(product));
+        when(product.getIsActive()).thenReturn(true);
+        when(product.getStockQuantity()).thenReturn(3);
+
+        Cart existingCart = new Cart(1L, product, 1);
+        when(cartRepository.findByUserIdAndProduct_ProductId(1L, 10L)).thenReturn(Optional.of(existingCart));
+
+        Throwable thrown = catchThrowable(() -> cartService.updateQuantity(1L, 10L, 4));
+
+        assertThat(thrown)
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("재고가 부족합니다");
+
+        verify(cartRepository, never()).delete(existingCart);
+    }
 }

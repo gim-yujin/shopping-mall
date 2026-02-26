@@ -36,12 +36,7 @@ public class CartService {
             throw new BusinessException("INVALID_QUANTITY", "수량은 1개 이상이어야 합니다.");
         }
 
-        Product product = productRepository.findById(productId)
-                .orElseThrow(() -> new ResourceNotFoundException("상품", productId));
-
-        if (!product.getIsActive()) {
-            throw new BusinessException("INACTIVE", "판매 중지된 상품입니다.");
-        }
+        Product product = findProduct(productId);
 
         // 사용자별 Advisory Lock → 같은 사용자의 동시 장바구니 작업을 직렬화
         // 트랜잭션 종료 시 자동 해제됨
@@ -49,9 +44,7 @@ public class CartService {
 
         Optional<Cart> existing = cartRepository.findByUserIdAndProduct_ProductId(userId, productId);
         int requestedQuantity = existing.map(cart -> cart.getQuantity() + quantity).orElse(quantity);
-        if (product.getStockQuantity() < requestedQuantity) {
-            throw new BusinessException("STOCK", "재고가 부족합니다.");
-        }
+        validateProductForQuantity(product, requestedQuantity);
 
         if (existing.isPresent()) {
             existing.get().updateQuantity(requestedQuantity);
@@ -71,7 +64,24 @@ public class CartService {
         if (quantity <= 0) {
             cartRepository.delete(cart);
         } else {
+            Product product = findProduct(productId);
+            validateProductForQuantity(product, quantity);
             cart.updateQuantity(quantity);
+        }
+    }
+
+    private Product findProduct(Long productId) {
+        return productRepository.findById(productId)
+                .orElseThrow(() -> new ResourceNotFoundException("상품", productId));
+    }
+
+    private void validateProductForQuantity(Product product, int quantity) {
+        if (!product.getIsActive()) {
+            throw new BusinessException("INACTIVE", "판매 중지된 상품입니다.");
+        }
+
+        if (product.getStockQuantity() < quantity) {
+            throw new BusinessException("STOCK", "재고가 부족합니다.");
         }
     }
 

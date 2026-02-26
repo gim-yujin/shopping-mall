@@ -4,10 +4,13 @@ import com.shop.domain.user.dto.SignupRequest;
 import com.shop.domain.user.entity.User;
 import com.shop.global.exception.BusinessException;
 import com.shop.global.exception.ResourceNotFoundException;
+import com.shop.global.security.CustomUserDetailsService;
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.cache.CacheManager;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.TestPropertySource;
 
@@ -44,6 +47,12 @@ class UserServiceIntegrationTest {
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
+    @Autowired
+    private CustomUserDetailsService customUserDetailsService;
+
+    @Autowired
+    private CacheManager cacheManager;
+
     private final List<Long> createdUserIds = new ArrayList<>();
 
     // 기존 사용자 (프로필/비밀번호 테스트용)
@@ -68,6 +77,7 @@ class UserServiceIntegrationTest {
         existingOriginalPhone = (String) state.get("phone");
         existingOriginalPasswordHash = (String) state.get("password_hash");
 
+        clearUserDetailsCache();
         System.out.println("  [setUp] 기존 사용자 ID: " + existingUserId);
     }
 
@@ -84,6 +94,13 @@ class UserServiceIntegrationTest {
                 "UPDATE users SET email = ?, name = ?, phone = ?, password_hash = ? WHERE user_id = ?",
                 existingOriginalEmail, existingOriginalName, existingOriginalPhone,
                 existingOriginalPasswordHash, existingUserId);
+    }
+
+    private void clearUserDetailsCache() {
+        var cache = cacheManager.getCache("userDetails");
+        if (cache != null) {
+            cache.clear();
+        }
     }
 
     private String uniqueSuffix() {
@@ -131,6 +148,26 @@ class UserServiceIntegrationTest {
         assertThat(passwordEncoder.matches("password123!", storedHash)).isTrue();
 
         System.out.println("  [PASS] 회원가입 성공: " + user.getUsername());
+    }
+
+    @Test
+    @DisplayName("signup 실패 — 약한 비밀번호")
+    void signup_weakPassword_throwsException() {
+        // Given
+        String suffix = uniqueSuffix();
+        SignupRequest weakPassword = new SignupRequest(
+                "weakuser_" + suffix,
+                "weak_" + suffix + "@test.com",
+                "password",
+                "약한비밀번호유저",
+                "010-1234-5678");
+
+        // When & Then
+        assertThatThrownBy(() -> userService.signup(weakPassword))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("비밀번호는 영문, 숫자, 특수문자를 포함해야 합니다.");
+
+        System.out.println("  [PASS] 약한 비밀번호 → BusinessException");
     }
 
     @Test
@@ -250,7 +287,7 @@ class UserServiceIntegrationTest {
     @DisplayName("updateProfile — 이메일 변경 없이 다른 정보만 변경")
     void updateProfile_sameEmail_success() {
         // When: 기존 이메일 그대로, 이름만 변경
-        userService.updateProfile(existingUserId, "이름만변경", existingOriginalPhone, existingOriginalEmail);
+        userService.updateProfile(existingUserId, "이름만변경", "010-0000-0000", existingOriginalEmail);
 
         // Then
         String updatedName = jdbcTemplate.queryForObject(
@@ -303,10 +340,31 @@ class UserServiceIntegrationTest {
     }
 
     @Test
+    @DisplayName("changePassword 후 userDetails 캐시가 즉시 무효화되어 새 비밀번호만 유효")
+    void changePassword_evictsUserDetailsCache_immediately() {
+        String username = jdbcTemplate.queryForObject(
+                "SELECT username FROM users WHERE user_id = ?",
+                String.class, existingUserId);
+
+        String knownPassword = "known_password_123!";
+        jdbcTemplate.update("UPDATE users SET password_hash = ? WHERE user_id = ?",
+                passwordEncoder.encode(knownPassword), existingUserId);
+
+        UserDetails before = customUserDetailsService.loadUserByUsername(username);
+
+        userService.changePassword(existingUserId, knownPassword, "new_password_456!");
+
+        UserDetails after = customUserDetailsService.loadUserByUsername(username);
+        assertThat(passwordEncoder.matches("new_password_456!", after.getPassword())).isTrue();
+        assertThat(passwordEncoder.matches(knownPassword, after.getPassword())).isFalse();
+        assertThat(after.getPassword()).isNotEqualTo(before.getPassword());
+    }
+
+    @Test
     @DisplayName("changePassword 실패 — 현재 비밀번호 불일치")
     void changePassword_wrongCurrentPassword_throwsException() {
         assertThatThrownBy(() ->
-                userService.changePassword(existingUserId, "wrong_password_999", "new_password"))
+                userService.changePassword(existingUserId, "wrong_password_999", "new_password_456!"))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("현재 비밀번호가 일치하지 않습니다");
 

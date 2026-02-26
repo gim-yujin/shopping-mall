@@ -36,6 +36,12 @@ public class Order {
     @Column(name = "final_amount", nullable = false, precision = 15, scale = 2)
     private BigDecimal finalAmount;
 
+    @Column(name = "point_earn_rate_snapshot", nullable = false, precision = 5, scale = 2)
+    private BigDecimal pointEarnRateSnapshot;
+
+    @Column(name = "earned_points_snapshot", nullable = false)
+    private Integer earnedPointsSnapshot;
+
     @Column(name = "payment_method", length = 20)
     private String paymentMethod;
 
@@ -69,7 +75,9 @@ public class Order {
     protected Order() {}
 
     public Order(String orderNumber, Long userId, BigDecimal totalAmount, BigDecimal discountAmount,
-                 BigDecimal shippingFee, BigDecimal finalAmount, String paymentMethod,
+                 BigDecimal shippingFee, BigDecimal finalAmount,
+                 BigDecimal pointEarnRateSnapshot, Integer earnedPointsSnapshot,
+                 String paymentMethod,
                  String shippingAddress, String recipientName, String recipientPhone) {
         this.orderNumber = orderNumber;
         this.userId = userId;
@@ -78,6 +86,8 @@ public class Order {
         this.discountAmount = discountAmount;
         this.shippingFee = shippingFee;
         this.finalAmount = finalAmount;
+        this.pointEarnRateSnapshot = pointEarnRateSnapshot;
+        this.earnedPointsSnapshot = earnedPointsSnapshot;
         this.paymentMethod = paymentMethod;
         this.shippingAddress = shippingAddress;
         this.recipientName = recipientName;
@@ -123,6 +133,8 @@ public class Order {
     public BigDecimal getDiscountAmount() { return discountAmount; }
     public BigDecimal getShippingFee() { return shippingFee; }
     public BigDecimal getFinalAmount() { return finalAmount; }
+    public BigDecimal getPointEarnRateSnapshot() { return pointEarnRateSnapshot; }
+    public Integer getEarnedPointsSnapshot() { return earnedPointsSnapshot; }
     public String getPaymentMethod() { return paymentMethod; }
     public String getShippingAddress() { return shippingAddress; }
     public String getRecipientName() { return recipientName; }

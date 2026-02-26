@@ -2,12 +2,13 @@ package com.shop.domain.product.service;
 
 import com.shop.domain.product.entity.Product;
 import com.shop.domain.product.repository.ProductRepository;
+import com.shop.global.common.PagingParams;
 import com.shop.global.exception.ResourceNotFoundException;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
@@ -43,6 +44,12 @@ public class ProductService {
         return product;
     }
 
+    @Transactional
+    @CacheEvict(value = "productDetail", key = "#productId")
+    public void evictProductDetailCache(Long productId) {
+        // 캐시 evict 전용 진입점
+    }
+
     public Page<Product> findByCategory(Integer categoryId, Pageable pageable) {
         return productRepository.findByCategoryId(categoryId, pageable);
     }
@@ -56,11 +63,15 @@ public class ProductService {
     @Cacheable(value = "categoryProducts",
                key = "#categoryIds.hashCode() + ':' + #page + ':' + #size + ':' + #sort")
     public Page<Product> findByCategoryIdsSorted(List<Integer> categoryIds, int page, int size, String sort) {
-        return productRepository.findByCategoryIds(categoryIds, PageRequest.of(page, size, mapSort(sort)));
+        int normalizedPage = PagingParams.normalizePage(page);
+        int normalizedSize = PagingParams.normalizeSize(size);
+        String normalizedSort = PagingParams.normalizeProductSort(sort);
+        return productRepository.findByCategoryIds(categoryIds,
+                PageRequest.of(normalizedPage, normalizedSize, PagingParams.toProductSort(normalizedSort)));
     }
 
     @Cacheable(value = "searchResults",
-               key = "#keyword + ':' + #pageable.pageNumber + ':' + #pageable.pageSize")
+               key = "T(com.shop.global.cache.CacheKeyGenerator).pageableWithPrefix(#keyword, #pageable)")
     public Page<Product> search(String keyword, Pageable pageable) {
         Page<Product> results = productRepository.searchByKeyword(keyword, pageable);
         if (results.isEmpty()) {
@@ -90,17 +101,10 @@ public class ProductService {
 
     @Cacheable(value = "productList", key = "#page + ':' + #size + ':' + #sort")
     public Page<Product> findAllSorted(int page, int size, String sort) {
-        return productRepository.findByIsActiveTrue(PageRequest.of(page, size, mapSort(sort)));
-    }
-
-    private Sort mapSort(String sort) {
-        return switch (sort) {
-            case "price_asc" -> Sort.by("price").ascending();
-            case "price_desc" -> Sort.by("price").descending();
-            case "newest" -> Sort.by("createdAt").descending();
-            case "rating" -> Sort.by("ratingAvg").descending();
-            case "review" -> Sort.by("reviewCount").descending();
-            default -> Sort.by("salesCount").descending();
-        };
+        int normalizedPage = PagingParams.normalizePage(page);
+        int normalizedSize = PagingParams.normalizeSize(size);
+        String normalizedSort = PagingParams.normalizeProductSort(sort);
+        return productRepository.findByIsActiveTrue(
+                PageRequest.of(normalizedPage, normalizedSize, PagingParams.toProductSort(normalizedSort)));
     }
 }

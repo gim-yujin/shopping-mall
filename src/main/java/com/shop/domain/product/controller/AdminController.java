@@ -2,6 +2,8 @@ package com.shop.domain.product.controller;
 
 import com.shop.domain.order.service.OrderService;
 import com.shop.domain.product.service.ProductService;
+import com.shop.global.common.PagingParams;
+import com.shop.global.exception.BusinessException;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
@@ -35,9 +37,11 @@ public class AdminController {
                               @RequestParam(required = false) String status,
                               Model model) {
         if (status != null && !status.isBlank()) {
-            model.addAttribute("orders", orderService.getOrdersByStatus(status, PageRequest.of(page, 20)));
+            int normalizedPage = PagingParams.normalizePage(page);
+            model.addAttribute("orders", orderService.getOrdersByStatus(status, PageRequest.of(normalizedPage, 20)));
         } else {
-            model.addAttribute("orders", orderService.getAllOrders(PageRequest.of(page, 20)));
+            int normalizedPage = PagingParams.normalizePage(page);
+            model.addAttribute("orders", orderService.getAllOrders(PageRequest.of(normalizedPage, 20)));
         }
         model.addAttribute("currentStatus", status);
         model.addAttribute("orderStatuses", List.of("PENDING", "PAID", "SHIPPED", "DELIVERED", "CANCELLED"));
@@ -49,14 +53,19 @@ public class AdminController {
     @PostMapping("/orders/{orderId}/status")
     public String updateOrderStatus(@PathVariable Long orderId, @RequestParam String status,
                                     RedirectAttributes redirectAttributes) {
-        orderService.updateOrderStatus(orderId, status);
-        redirectAttributes.addFlashAttribute("successMessage", "주문 상태가 변경되었습니다.");
+        try {
+            orderService.updateOrderStatus(orderId, status);
+            redirectAttributes.addFlashAttribute("successMessage", "주문 상태가 변경되었습니다.");
+        } catch (BusinessException e) {
+            redirectAttributes.addFlashAttribute("errorMessage", e.getMessage());
+        }
         return "redirect:/admin/orders";
     }
 
     @GetMapping("/products")
     public String adminProducts(@RequestParam(defaultValue = "0") int page, Model model) {
-        model.addAttribute("products", productService.findAll(PageRequest.of(page, 20)));
+        int normalizedPage = PagingParams.normalizePage(page);
+        model.addAttribute("products", productService.findAll(PageRequest.of(normalizedPage, 20)));
         return "admin/products";
     }
     private Map<String, String> orderStatusLabels() {

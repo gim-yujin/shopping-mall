@@ -3,7 +3,9 @@ package com.shop.domain.user.controller;
 import com.shop.domain.user.dto.SignupRequest;
 import com.shop.domain.user.service.UserService;
 import com.shop.global.exception.BusinessException;
+import com.shop.global.exception.DuplicateConstraintMessageResolver;
 import jakarta.validation.Valid;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.validation.BindingResult;
@@ -18,9 +20,12 @@ import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 public class AuthController {
 
     private final UserService userService;
+    private final DuplicateConstraintMessageResolver duplicateConstraintMessageResolver;
 
-    public AuthController(UserService userService) {
+    public AuthController(UserService userService,
+                          DuplicateConstraintMessageResolver duplicateConstraintMessageResolver) {
         this.userService = userService;
+        this.duplicateConstraintMessageResolver = duplicateConstraintMessageResolver;
     }
 
     @GetMapping("/login")
@@ -47,6 +52,9 @@ public class AuthController {
             return "redirect:/auth/login";
         } catch (BusinessException e) {
             redirectAttributes.addFlashAttribute("errorMessage", e.getMessage());
+            return "redirect:/auth/signup";
+        } catch (DataIntegrityViolationException e) {
+            redirectAttributes.addFlashAttribute("errorMessage", duplicateConstraintMessageResolver.resolve(e));
             return "redirect:/auth/signup";
         }
     }

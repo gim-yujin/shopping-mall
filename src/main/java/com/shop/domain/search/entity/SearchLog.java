@@ -7,6 +7,8 @@ import java.time.LocalDateTime;
 @Table(name = "search_logs")
 public class SearchLog {
 
+    private static final int MAX_SEARCH_KEYWORD_LENGTH = 200;
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     @Column(name = "log_id")
@@ -37,11 +39,25 @@ public class SearchLog {
 
     public SearchLog(Long userId, String searchKeyword, int resultCount, String ipAddress, String userAgent) {
         this.userId = userId;
-        this.searchKeyword = searchKeyword;
+        this.searchKeyword = normalizeSearchKeyword(searchKeyword);
         this.resultCount = resultCount;
         this.ipAddress = ipAddress;
         this.userAgent = userAgent;
         this.searchedAt = LocalDateTime.now();
+    }
+
+
+    private String normalizeSearchKeyword(String keyword) {
+        if (keyword == null) {
+            return "";
+        }
+
+        String trimmedKeyword = keyword.trim();
+        if (trimmedKeyword.length() <= MAX_SEARCH_KEYWORD_LENGTH) {
+            return trimmedKeyword;
+        }
+
+        return trimmedKeyword.substring(0, MAX_SEARCH_KEYWORD_LENGTH);
     }
 
     public Long getLogId() { return logId; }

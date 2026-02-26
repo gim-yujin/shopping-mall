@@ -75,25 +75,14 @@
                 <div class="bg-white rounded-lg shadow p-6">
                     <h2 class="text-lg font-bold mb-4">결제 수단</h2>
                     <div class="grid grid-cols-2 gap-3">
-                        <label class="border rounded-lg p-3 cursor-pointer hover:border-blue-500 flex items-center gap-2 has-[:checked]:border-blue-600 has-[:checked]:bg-blue-50">
-                            <input type="radio" name="paymentMethod" value="CARD" checked class="text-blue-600"/>
-                            <span>신용/체크카드</span>
-                        </label>
-                        <label class="border rounded-lg p-3 cursor-pointer hover:border-blue-500 flex items-center gap-2 has-[:checked]:border-blue-600 has-[:checked]:bg-blue-50">
-                            <input type="radio" name="paymentMethod" value="BANK" class="text-blue-600"/>
-                            <span>계좌이체</span>
-                        </label>
-                        <label class="border rounded-lg p-3 cursor-pointer hover:border-blue-500 flex items-center gap-2 has-[:checked]:border-blue-600 has-[:checked]:bg-blue-50">
-                            <input type="radio" name="paymentMethod" value="KAKAO" class="text-blue-600"/>
-                            <span>카카오페이</span>
-                        </label>
-                        <label class="border rounded-lg p-3 cursor-pointer hover:border-blue-500 flex items-center gap-2 has-[:checked]:border-blue-600 has-[:checked]:bg-blue-50">
-                            <input type="radio" name="paymentMethod" value="NAVER" class="text-blue-600"/>
-                            <span>네이버페이</span>
-                        </label>
-                        <label class="border rounded-lg p-3 cursor-pointer hover:border-blue-500 flex items-center gap-2 has-[:checked]:border-blue-600 has-[:checked]:bg-blue-50">
-                            <input type="radio" name="paymentMethod" value="PAYCO" class="text-blue-600"/>
-                            <span>페이코</span>
+                        <label th:each="method, stat : ${paymentMethods}"
+                               class="border rounded-lg p-3 cursor-pointer hover:border-blue-500 flex items-center gap-2 has-[:checked]:border-blue-600 has-[:checked]:bg-blue-50">
+                            <input type="radio"
+                                   name="paymentMethod"
+                                   th:value="${method.code}"
+                                   th:checked="${stat.index == 0}"
+                                   class="text-blue-600"/>
+                            <span th:text="${method.displayName}">결제수단</span>
                         </label>
                     </div>
                 </div>
@@ -110,7 +99,11 @@
                         </div>
                         <div class="flex justify-between">
                             <span class="text-gray-500">배송비</span>
-                            <span class="text-green-600">무료</span>
+                            <span id="shippingFeeDisplay"
+                                  th:text="${estimatedShippingFee.compareTo(T(java.math.BigDecimal).ZERO) == 0
+                                  ? '무료'
+                                  : #numbers.formatDecimal(estimatedShippingFee,0,'COMMA',0,'POINT') + '원'}"
+                                  th:classappend="${estimatedShippingFee.compareTo(T(java.math.BigDecimal).ZERO) == 0 ? ' text-green-600' : ''}">0원</span>
                         </div>
                         <div class="flex justify-between">
                             <span class="text-gray-500">쿠폰 할인</span>
@@ -120,7 +113,7 @@
                     <hr class="my-4"/>
                     <div class="flex justify-between font-bold text-lg mb-6">
                         <span>총 결제금액</span>
-                        <span id="finalPriceDisplay" class="text-blue-600" th:text="${#numbers.formatDecimal(totalPrice,0,'COMMA',0,'POINT')} + '원'">0원</span>
+                        <span id="finalPriceDisplay" class="text-blue-600" th:text="${#numbers.formatDecimal(estimatedFinalAmount,0,'COMMA',0,'POINT')} + '원'">0원</span>
                     </div>
                     <button type="submit" class="w-full bg-blue-600 text-white py-3 rounded-lg font-medium hover:bg-blue-700">결제하기</button>
                     <a th:href="@{/cart}" class="block mt-2 text-center text-sm text-gray-500 hover:text-gray-700">장바구니로 돌아가기</a>
@@ -132,6 +125,7 @@
 
 <script th:inline="javascript">
     const totalPrice = /*[[${totalPrice}]]*/ 0;
+    const shippingFee = /*[[${estimatedShippingFee}]]*/ 0;
 
     function formatNumber(n) {
         return Math.floor(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
@@ -150,7 +144,7 @@
             const maxDiscount = opt.dataset.maxDiscount ? parseFloat(opt.dataset.maxDiscount) : null;
 
             if (totalPrice < minOrder) {
-                msg.textContent = '최소 주문금액 ' + formatNumber(minOrder) + '원 이상이어야 사용 가능합니다.';
+                msg.textContent = '최소 주문금액(상품금액 기준) ' + formatNumber(minOrder) + '원 이상이어야 사용 가능합니다.';
                 msg.className = 'text-sm mt-2 text-red-500';
                 select.value = '';
                 discount = 0;
@@ -172,7 +166,7 @@
         }
 
         document.getElementById('discountDisplay').textContent = discount > 0 ? '-' + formatNumber(discount) + '원' : '0원';
-        const finalPrice = Math.max(0, totalPrice - discount);
+        const finalPrice = Math.max(0, totalPrice - discount + shippingFee);
         document.getElementById('finalPriceDisplay').textContent = formatNumber(finalPrice) + '원';
     }
 </script>

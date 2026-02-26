@@ -7,18 +7,24 @@ import com.shop.domain.coupon.entity.Coupon;
 import com.shop.domain.coupon.entity.UserCoupon;
 import com.shop.domain.order.dto.OrderCreateRequest;
 import com.shop.domain.order.entity.Order;
+import com.shop.domain.order.entity.PaymentMethod;
 import com.shop.domain.order.service.OrderService;
 import com.shop.domain.user.entity.User;
 import com.shop.domain.user.service.UserService;
+import com.shop.global.common.PagingParams;
 import com.shop.global.exception.BusinessException;
 import com.shop.global.security.SecurityUtil;
 import jakarta.validation.Valid;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Controller;
+import org.springframework.validation.BindingResult;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.support.RedirectAttributes;
+
+import java.math.BigDecimal;
 import java.text.NumberFormat;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -49,17 +55,33 @@ public class OrderController {
             return "redirect:/cart";
         }
         User user = userService.findById(userId);
+        BigDecimal totalPrice = cartService.calculateTotal(items);
+        BigDecimal estimatedShippingFee = orderService.calculateShippingFee(user.getTier(), totalPrice);
+        BigDecimal estimatedFinalAmount = orderService.calculateFinalAmount(totalPrice, BigDecimal.ZERO, estimatedShippingFee);
+
         model.addAttribute("cartItems", items);
-        model.addAttribute("totalPrice", cartService.calculateTotal(items));
+        model.addAttribute("totalPrice", totalPrice);
+        model.addAttribute("estimatedShippingFee", estimatedShippingFee);
+        model.addAttribute("estimatedFinalAmount", estimatedFinalAmount);
         model.addAttribute("user", user);
         List<UserCoupon> availableCoupons = couponService.getAvailableCoupons(userId);
         model.addAttribute("availableCoupons", availableCoupons);
         model.addAttribute("couponDisplayNames", buildCouponDisplayNames(availableCoupons));
+        model.addAttribute("paymentMethods", Arrays.asList(PaymentMethod.values()));
         return "order/checkout";
     }
 
     @PostMapping
-    public String createOrder(@Valid OrderCreateRequest request, RedirectAttributes redirectAttributes) {
+    public String createOrder(@Valid OrderCreateRequest request,
+                              BindingResult bindingResult,
+                              RedirectAttributes redirectAttributes) {
+        if (bindingResult.hasErrors()) {
+            redirectAttributes.addFlashAttribute("errorMessage", "입력값을 확인해주세요.");
+            redirectAttributes.addFlashAttribute("org.springframework.validation.BindingResult.orderCreateRequest", bindingResult);
+            redirectAttributes.addFlashAttribute("orderCreateRequest", request);
+            return "redirect:/orders/checkout";
+        }
+
         Long userId = SecurityUtil.getCurrentUserId().orElseThrow();
         try {
             Order order = orderService.createOrder(userId, request);
@@ -74,7 +96,8 @@ public class OrderController {
     @GetMapping
     public String orderList(@RequestParam(defaultValue = "0") int page, Model model) {
         Long userId = SecurityUtil.getCurrentUserId().orElseThrow();
-        model.addAttribute("orders", orderService.getOrdersByUser(userId, PageRequest.of(page, 10)));
+        int normalizedPage = PagingParams.normalizePage(page);
+        model.addAttribute("orders", orderService.getOrdersByUser(userId, PageRequest.of(normalizedPage, 10)));
         model.addAttribute("orderStatusLabels", orderStatusLabels());
         model.addAttribute("orderStatusBadgeClasses", orderStatusBadgeClasses());
         return "order/list";
@@ -130,7 +153,7 @@ public class OrderController {
 
             String displayName = coupon.getCouponName()
                     + " (" + discountText
-                    + " 할인, 최소주문 " + numberFormat.format(coupon.getMinOrderAmount()) + "원)";
+                    + " 할인, 최소주문(상품금액 기준) " + numberFormat.format(coupon.getMinOrderAmount()) + "원)";
 
             displayNames.put(userCoupon.getUserCouponId(), displayName);
         }

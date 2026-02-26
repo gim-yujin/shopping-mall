@@ -176,6 +176,8 @@ CREATE TABLE orders (
     discount_amount DECIMAL(15, 2) DEFAULT 0 NOT NULL,
     shipping_fee DECIMAL(8, 2) DEFAULT 0 NOT NULL,
     final_amount DECIMAL(15, 2) NOT NULL,
+    point_earn_rate_snapshot DECIMAL(5, 2) DEFAULT 0 NOT NULL,
+    earned_points_snapshot INT DEFAULT 0 NOT NULL,
     payment_method VARCHAR(20),
     shipping_address TEXT,
     recipient_name VARCHAR(100),
@@ -197,6 +199,8 @@ CREATE TABLE orders (
 
 COMMENT ON TABLE orders IS '주문 헤더 (예상: 2천만 건)';
 COMMENT ON COLUMN orders.order_number IS '주문 번호 (예: 20240101-XXXXX)';
+COMMENT ON COLUMN orders.point_earn_rate_snapshot IS '주문 시점 사용자 등급의 포인트 적립률 스냅샷(%)';
+COMMENT ON COLUMN orders.earned_points_snapshot IS '주문 생성 시 실제 적립된 포인트 스냅샷';
 
 -- ============================================================================
 -- 8. ORDER_ITEMS (주문 상세) ⭐️ 1억 건 주인공
@@ -494,6 +498,9 @@ CREATE INDEX idx_review_product ON reviews(product_id, created_at DESC);
 CREATE INDEX idx_review_user ON reviews(user_id, created_at DESC);
 CREATE INDEX idx_review_rating ON reviews(product_id, rating);
 CREATE INDEX idx_review_content_gin ON reviews USING gin(to_tsvector('simple', content));
+CREATE UNIQUE INDEX uk_review_user_product_without_order_item
+    ON reviews(user_id, product_id)
+    WHERE order_item_id IS NULL;
 
 -- Product_Inventory_History 인덱스 ⭐️
 CREATE INDEX idx_inventory_product ON product_inventory_history(product_id, created_at DESC);

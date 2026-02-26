@@ -8,6 +8,7 @@ import com.shop.domain.inventory.entity.ProductInventoryHistory;
 import com.shop.domain.inventory.repository.ProductInventoryHistoryRepository;
 import com.shop.domain.order.dto.OrderCreateRequest;
 import com.shop.domain.order.entity.Order;
+import com.shop.domain.order.entity.PaymentMethod;
 import com.shop.domain.order.entity.OrderItem;
 import com.shop.domain.order.repository.OrderRepository;
 import com.shop.domain.product.entity.Product;
@@ -29,7 +30,9 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Map;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 @Service
@@ -63,8 +66,27 @@ public class OrderService {
 
     private static final BigDecimal SHIPPING_FEE_BASE = new BigDecimal("3000");
 
+    public BigDecimal calculateShippingFee(UserTier tier, BigDecimal itemTotalAmount) {
+        BigDecimal freeThreshold = tier.getFreeShippingThreshold();
+        if (freeThreshold.compareTo(BigDecimal.ZERO) == 0 || itemTotalAmount.compareTo(freeThreshold) >= 0) {
+            return BigDecimal.ZERO;
+        }
+        return SHIPPING_FEE_BASE;
+    }
+
+    public BigDecimal calculateFinalAmount(BigDecimal itemTotalAmount, BigDecimal totalDiscount, BigDecimal shippingFee) {
+        BigDecimal finalAmount = itemTotalAmount.subtract(totalDiscount).add(shippingFee);
+        if (finalAmount.compareTo(BigDecimal.ZERO) < 0) {
+            return BigDecimal.ZERO;
+        }
+        return finalAmount;
+    }
+
     @Transactional
     public Order createOrder(Long userId, OrderCreateRequest request) {
+        PaymentMethod paymentMethod = PaymentMethod.fromCode(request.paymentMethod())
+                .orElseThrow(() -> new BusinessException("UNSUPPORTED_PAYMENT_METHOD", "지원하지 않는 결제수단"));
+
         List<Cart> cartItems = cartRepository.findByUserIdWithProduct(userId);
         if (cartItems.isEmpty()) {
             throw new BusinessException("EMPTY_CART", "장바구니가 비어있습니다.");
@@ -123,13 +145,11 @@ public class OrderService {
             ));
         }
 
-        // 2) 쿠폰 할인 적용 (등급 할인 후 금액 기준)
+        // 2) 쿠폰 할인 적용 (상품 금액 기준)
         BigDecimal couponDiscount = BigDecimal.ZERO;
         UserCoupon userCoupon = null;
-        BigDecimal afterTierAmount = totalAmount.subtract(tierDiscountTotal);
-
         if (request.userCouponId() != null) {
-            userCoupon = userCouponRepository.findById(request.userCouponId())
+            userCoupon = userCouponRepository.findByIdWithLock(request.userCouponId())
                     .orElseThrow(() -> new BusinessException("COUPON_NOT_FOUND", "쿠폰을 찾을 수 없습니다."));
 
             if (!userCoupon.getUserId().equals(userId)) {
@@ -139,29 +159,26 @@ public class OrderService {
                 throw new BusinessException("COUPON_EXPIRED", "사용할 수 없는 쿠폰입니다.");
             }
 
-            couponDiscount = userCoupon.getCoupon().calculateDiscount(afterTierAmount);
+            // 쿠폰 최소 주문 기준은 "상품 금액(등급 할인/쿠폰 할인 전)" 기준으로 적용한다.
+            couponDiscount = userCoupon.getCoupon().calculateDiscount(totalAmount);
         }
 
         BigDecimal totalDiscount = tierDiscountTotal.add(couponDiscount);
 
         // 3) 배송비 계산 (등급별 무료배송 기준)
-        BigDecimal shippingFee;
-        BigDecimal freeThreshold = tier.getFreeShippingThreshold();
-        if (freeThreshold.compareTo(BigDecimal.ZERO) == 0 || totalAmount.compareTo(freeThreshold) >= 0) {
-            shippingFee = BigDecimal.ZERO;
-        } else {
-            shippingFee = SHIPPING_FEE_BASE;
-        }
+        BigDecimal shippingFee = calculateShippingFee(tier, totalAmount);
 
         // 4) 최종 금액 & 주문 생성
-        BigDecimal finalAmount = totalAmount.subtract(totalDiscount).add(shippingFee);
-        if (finalAmount.compareTo(BigDecimal.ZERO) < 0) {
-            finalAmount = BigDecimal.ZERO;
-        }
+        BigDecimal finalAmount = calculateFinalAmount(totalAmount, totalDiscount, shippingFee);
+
+        BigDecimal pointRateSnapshot = tier.getPointEarnRate(); // e.g. 1.50 = 1.5%
+        int earnedPointsSnapshot = finalAmount.multiply(pointRateSnapshot)
+                .divide(BigDecimal.valueOf(100), 0, java.math.RoundingMode.FLOOR).intValue();
 
         Order order = new Order(orderNumber, userId, totalAmount, totalDiscount,
-                shippingFee, finalAmount, request.paymentMethod(),
-                request.shippingAddress(), request.recipientName(), request.recipientPhone());
+                shippingFee, finalAmount, pointRateSnapshot, earnedPointsSnapshot,
+                paymentMethod.getCode(), request.shippingAddress(),
+                request.recipientName(), request.recipientPhone());
 
         for (OrderLine orderLine : orderLines) {
             OrderItem item = new OrderItem(orderLine.productId(), orderLine.productName(),
@@ -172,17 +189,21 @@ public class OrderService {
         order.markPaid();
         Order savedOrder = orderRepository.save(order);
 
-        // 5) 쿠폰 사용 처리
+        // 5) 쿠폰 사용 처리 (DB 레벨 원자적 전환 보장)
         if (userCoupon != null) {
-            userCoupon.use(savedOrder.getOrderId());
+            int updatedRows = userCouponRepository.markAsUsedIfUnused(
+                    userCoupon.getUserCouponId(),
+                    savedOrder.getOrderId(),
+                    LocalDateTime.now()
+            );
+            if (updatedRows != 1) {
+                throw new BusinessException("COUPON_ALREADY_USED", "이미 사용된 쿠폰입니다.");
+            }
         }
 
         // 6) 포인트 적립 (등급별 적립률 적용)
         user.addTotalSpent(finalAmount);
-        BigDecimal pointRate = tier.getPointEarnRate(); // e.g. 1.50 = 1.5%
-        int earnedPoints = finalAmount.multiply(pointRate)
-                .divide(BigDecimal.valueOf(100), 0, java.math.RoundingMode.FLOOR).intValue();
-        user.addPoints(earnedPoints);
+        user.addPoints(earnedPointsSnapshot);
 
         // 7) 등급 재계산
         userTierRepository.findFirstByMinSpentLessThanEqualOrderByTierLevelDesc(user.getTotalSpent())
@@ -211,9 +232,68 @@ public class OrderService {
         // 이중 취소 방지를 위해 Order에 비관적 락 적용
         Order order = orderRepository.findByIdAndUserIdWithLock(orderId, userId)
                 .orElseThrow(() -> new ResourceNotFoundException("주문", orderId));
+        cancelOrderInternal(order, userId);
+    }
+
+    public Page<Order> getAllOrders(Pageable pageable) {
+        Page<Order> orders = orderRepository.findAllByOrderByOrderDateDesc(pageable);
+        orders.getContent().forEach(order -> order.getItems().size());
+        return orders;
+    }
+
+    public Page<Order> getOrdersByStatus(String status, Pageable pageable) {
+        Page<Order> orders = orderRepository.findByStatus(status, pageable);
+        orders.getContent().forEach(order -> order.getItems().size());
+        return orders;
+    }
+
+    @Transactional
+    public void updateOrderStatus(Long orderId, String status) {
+        Order order = orderRepository.findByIdWithLock(orderId)
+                .orElseThrow(() -> new ResourceNotFoundException("주문", orderId));
+
+        Set<String> supportedStatuses = Set.of("PENDING", "PAID", "SHIPPED", "DELIVERED", "CANCELLED");
+        if (!supportedStatuses.contains(status)) {
+            throw new BusinessException("INVALID_STATUS", "잘못된 주문 상태입니다.");
+        }
+
+        String currentStatus = order.getOrderStatus();
+        Map<String, Set<String>> allowedTransitions = Map.of(
+                "PENDING", Set.of("PENDING", "PAID", "CANCELLED"),
+                "PAID", Set.of("PAID", "SHIPPED", "CANCELLED"),
+                "SHIPPED", Set.of("SHIPPED", "DELIVERED"),
+                "DELIVERED", Set.of("DELIVERED"),
+                "CANCELLED", Set.of("CANCELLED")
+        );
+
+        Set<String> nextStatuses = allowedTransitions.get(currentStatus);
+        if (nextStatuses == null || !nextStatuses.contains(status)) {
+            throw new BusinessException(
+                    "INVALID_STATUS_TRANSITION",
+                    "허용되지 않는 주문 상태 전이입니다. [" + currentStatus + " -> " + status + "]"
+            );
+        }
+
+        if ("CANCELLED".equals(status) && !order.isCancellable()) {
+            throw new BusinessException("INVALID_STATUS_TRANSITION",
+                    "취소할 수 없는 주문 상태입니다. [" + currentStatus + " -> " + status + "]");
+        }
+
+        switch (status) {
+            case "PAID" -> order.markPaid();
+            case "SHIPPED" -> order.markShipped();
+            case "DELIVERED" -> order.markDelivered();
+            case "CANCELLED" -> cancelOrderInternal(order, order.getUserId());
+            default -> throw new BusinessException("INVALID_STATUS", "잘못된 주문 상태입니다.");
+        }
+    }
+
+    private void cancelOrderInternal(Order order, Long userId) {
         if (!order.isCancellable()) {
             throw new BusinessException("CANCEL_FAIL", "취소할 수 없는 주문 상태입니다.");
         }
+
+        Long orderId = order.getOrderId();
 
         // 1) 재고 복구 — 데드락 예방을 위해 상품 ID 순으로 정렬
         List<OrderItem> sortedItems = order.getItems().stream()
@@ -239,45 +319,15 @@ public class OrderService {
         BigDecimal finalAmount = order.getFinalAmount();
         user.addTotalSpent(finalAmount.negate());
 
-        BigDecimal pointRate = user.getTier().getPointEarnRate();
-        int earnedPoints = finalAmount.multiply(pointRate)
-                .divide(BigDecimal.valueOf(100), 0, java.math.RoundingMode.FLOOR).intValue();
-        user.addPoints(-earnedPoints);
+        user.addPoints(-order.getEarnedPointsSnapshot());
 
         userTierRepository.findFirstByMinSpentLessThanEqualOrderByTierLevelDesc(user.getTotalSpent())
                 .ifPresent(user::updateTier);
 
         // 3) 쿠폰 복원
-        userCouponRepository.findByOrderId(orderId).ifPresent(uc -> {
-            uc.cancelUse();
-        });
+        userCouponRepository.findByOrderId(orderId).ifPresent(UserCoupon::cancelUse);
 
         order.cancel();
-    }
-
-    public Page<Order> getAllOrders(Pageable pageable) {
-        Page<Order> orders = orderRepository.findAllByOrderByOrderDateDesc(pageable);
-        orders.getContent().forEach(order -> order.getItems().size());
-        return orders;
-    }
-
-    public Page<Order> getOrdersByStatus(String status, Pageable pageable) {
-        Page<Order> orders = orderRepository.findByStatus(status, pageable);
-        orders.getContent().forEach(order -> order.getItems().size());
-        return orders;
-    }
-
-    @Transactional
-    public void updateOrderStatus(Long orderId, String status) {
-        Order order = orderRepository.findById(orderId)
-                .orElseThrow(() -> new ResourceNotFoundException("주문", orderId));
-        switch (status) {
-            case "PAID" -> order.markPaid();
-            case "SHIPPED" -> order.markShipped();
-            case "DELIVERED" -> order.markDelivered();
-            case "CANCELLED" -> order.cancel();
-            default -> throw new BusinessException("INVALID_STATUS", "잘못된 주문 상태입니다.");
-        }
     }
 
     private String generateOrderNumber() {

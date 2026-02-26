@@ -70,6 +70,8 @@ com.shop
 CREATE DATABASE shopping_mall_db;
 ```
 
+> 스키마 생성은 애플리케이션 시작 시 자동 실행되지 않습니다. (`spring.jpa.hibernate.ddl-auto=validate`, `spring.sql.init.mode=never`)
+
 ### 3. Gradle Wrapper 초기화
 
 프로젝트에 Gradle이 설치되어 있다면:
@@ -88,6 +90,8 @@ chmod +x setup.sh
 ```bash
 ./gradlew bootRun
 ```
+
+실행 전, 아래 **DB 마이그레이션 전략**에 따라 스키마를 먼저 준비해야 합니다.
 
 ### 5. 접속
 
@@ -130,7 +134,6 @@ shopping-mall/
 │   └── resources/
 │       ├── application.yml
 │       ├── schema.sql      (DDL - 테이블, 인덱스)
-│       ├── data.sql         (초기 데이터)
 │       └── templates/       (Thymeleaf 22개 템플릿)
 └── README.md
 ```

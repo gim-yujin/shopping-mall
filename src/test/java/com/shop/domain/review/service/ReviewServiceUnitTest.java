@@ -2,6 +2,10 @@ package com.shop.domain.review.service;
 
 import com.shop.domain.product.entity.Product;
 import com.shop.domain.product.repository.ProductRepository;
+import com.shop.domain.product.service.ProductService;
+import com.shop.domain.order.entity.Order;
+import com.shop.domain.order.entity.OrderItem;
+import com.shop.domain.order.repository.OrderItemRepository;
 import com.shop.domain.review.dto.ReviewCreateRequest;
 import com.shop.domain.review.entity.Review;
 import com.shop.domain.review.repository.ReviewHelpfulRepository;
@@ -10,10 +14,12 @@ import com.shop.global.exception.BusinessException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.springframework.cache.CacheManager;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 
 import java.math.BigDecimal;
 import java.util.Optional;
@@ -37,11 +43,37 @@ class ReviewServiceUnitTest {
     @Mock
     private ProductRepository productRepository;
 
+    @Mock
+    private ProductService productService;
+
+    @Mock
+    private OrderItemRepository orderItemRepository;
+
+    @Mock
+    private CacheManager cacheManager;
+
     private ReviewService reviewService;
 
     @BeforeEach
     void setUp() {
-        reviewService = new ReviewService(reviewRepository, reviewHelpfulRepository, productRepository);
+        reviewService = new ReviewService(
+                reviewRepository,
+                reviewHelpfulRepository,
+                productRepository,
+                productService,
+                orderItemRepository,
+                cacheManager);
+    }
+
+    private void mockValidDeliveredOrderItem(Long orderItemId, Long userId, Long productId) {
+        Order order = mock(Order.class);
+        OrderItem orderItem = mock(OrderItem.class);
+
+        when(orderItemRepository.findById(orderItemId)).thenReturn(Optional.of(orderItem));
+        when(orderItem.getOrder()).thenReturn(order);
+        when(order.getUserId()).thenReturn(userId);
+        when(orderItem.getProductId()).thenReturn(productId);
+        when(order.getOrderStatus()).thenReturn("DELIVERED");
     }
 
     @Test
@@ -52,6 +84,8 @@ class ReviewServiceUnitTest {
         Long orderItemId = 1001L;
         ReviewCreateRequest request = new ReviewCreateRequest(productId, orderItemId, 5, "중복", "내용");
 
+        mockValidDeliveredOrderItem(orderItemId, userId, productId);
+
         when(reviewRepository.existsByUserIdAndOrderItemId(userId, orderItemId)).thenReturn(true);
 
         assertThatThrownBy(() -> reviewService.createReview(userId, request))
@@ -61,6 +95,133 @@ class ReviewServiceUnitTest {
 
         verify(reviewRepository, never()).save(any());
         verify(productRepository, never()).findById(any());
+        verifyNoInteractions(productService);
+    }
+
+    @Test
+    @DisplayName("createReview - orderItemId가 null이어도 user/product 중복이면 예외")
+    void createReview_duplicateWithoutOrderItem_throwsBeforeSave() {
+        Long userId = 11L;
+        Long productId = 101L;
+        ReviewCreateRequest request = new ReviewCreateRequest(productId, null, 5, "중복", "내용");
+
+        when(reviewRepository.existsByUserIdAndProductId(userId, productId)).thenReturn(true);
+
+        assertThatThrownBy(() -> reviewService.createReview(userId, request))
+                .as("비구매 리뷰도 동일 사용자/상품 기준 중복이 차단되어야 함")
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("이미 리뷰를 작성");
+
+        verify(reviewRepository, never()).save(any());
+        verify(productRepository, never()).findById(any());
+        verifyNoInteractions(productService);
+    }
+
+    @Test
+    @DisplayName("createReview - 저장 시점 unique 충돌도 DUPLICATE_REVIEW로 변환")
+    void createReview_duplicateAtDatabaseLevel_throwsBusinessException() {
+        Long userId = 11L;
+        Long productId = 101L;
+        ReviewCreateRequest request = new ReviewCreateRequest(productId, null, 5, "중복", "내용");
+
+        when(reviewRepository.existsByUserIdAndProductId(userId, productId)).thenReturn(false);
+        when(reviewRepository.save(any(Review.class))).thenThrow(new DataIntegrityViolationException("duplicate key"));
+
+        assertThatThrownBy(() -> reviewService.createReview(userId, request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("이미 리뷰를 작성");
+
+        verify(productRepository, never()).findById(any());
+        verifyNoInteractions(productService);
+    }
+
+    @Test
+    @DisplayName("createReview - 타인 주문 항목이면 예외")
+    void createReview_orderItemOwnedByOtherUser_throwsException() {
+        Long userId = 11L;
+        Long productId = 101L;
+        Long orderItemId = 1001L;
+        ReviewCreateRequest request = new ReviewCreateRequest(productId, orderItemId, 5, "권한", "내용");
+        Order order = mock(Order.class);
+        OrderItem orderItem = mock(OrderItem.class);
+
+        when(orderItemRepository.findById(orderItemId)).thenReturn(Optional.of(orderItem));
+        when(orderItem.getOrder()).thenReturn(order);
+        when(order.getUserId()).thenReturn(999L);
+
+        assertThatThrownBy(() -> reviewService.createReview(userId, request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("본인 주문");
+
+        verify(reviewRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("createReview - 주문 상품과 요청 상품이 다르면 예외")
+    void createReview_orderItemProductMismatch_throwsException() {
+        Long userId = 11L;
+        Long productId = 101L;
+        Long orderItemId = 1001L;
+        ReviewCreateRequest request = new ReviewCreateRequest(productId, orderItemId, 5, "불일치", "내용");
+        Order order = mock(Order.class);
+        OrderItem orderItem = mock(OrderItem.class);
+
+        when(orderItemRepository.findById(orderItemId)).thenReturn(Optional.of(orderItem));
+        when(orderItem.getOrder()).thenReturn(order);
+        when(order.getUserId()).thenReturn(userId);
+        when(orderItem.getProductId()).thenReturn(202L);
+
+        assertThatThrownBy(() -> reviewService.createReview(userId, request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("일치하지 않습니다");
+
+        verify(reviewRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("createReview - 배송 완료 전 주문이면 예외")
+    void createReview_orderStatusNotDelivered_throwsException() {
+        Long userId = 11L;
+        Long productId = 101L;
+        Long orderItemId = 1001L;
+        ReviewCreateRequest request = new ReviewCreateRequest(productId, orderItemId, 5, "미배송", "내용");
+        Order order = mock(Order.class);
+        OrderItem orderItem = mock(OrderItem.class);
+
+        when(orderItemRepository.findById(orderItemId)).thenReturn(Optional.of(orderItem));
+        when(orderItem.getOrder()).thenReturn(order);
+        when(order.getUserId()).thenReturn(userId);
+        when(orderItem.getProductId()).thenReturn(productId);
+        when(order.getOrderStatus()).thenReturn("SHIPPED");
+
+        assertThatThrownBy(() -> reviewService.createReview(userId, request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("배송 완료");
+
+        verify(reviewRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("createReview - 배송 완료된 본인 주문 항목이면 생성 성공")
+    void createReview_validOrderItem_succeeds() {
+        Long userId = 11L;
+        Long productId = 101L;
+        Long orderItemId = 1001L;
+        ReviewCreateRequest request = new ReviewCreateRequest(productId, orderItemId, 5, "정상", "내용");
+        Product product = mock(Product.class);
+
+        mockValidDeliveredOrderItem(orderItemId, userId, productId);
+        when(reviewRepository.existsByUserIdAndOrderItemId(userId, orderItemId)).thenReturn(false);
+        when(reviewRepository.save(any(Review.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(productRepository.findById(productId)).thenReturn(Optional.of(product));
+        when(reviewRepository.findAverageRatingByProductId(productId)).thenReturn(Optional.of(5.0));
+        when(reviewRepository.countByProductId(productId)).thenReturn(1);
+
+        Review saved = reviewService.createReview(userId, request);
+
+        assertThat(saved.getOrderItemId()).isEqualTo(orderItemId);
+        verify(reviewRepository).save(any(Review.class));
+        verify(productService).evictProductDetailCache(productId);
     }
 
     @Test
@@ -83,6 +244,7 @@ class ReviewServiceUnitTest {
         assertThat(avgCaptor.getValue())
                 .as("평균 평점은 소수 둘째 자리 반올림 값이어야 함")
                 .isEqualByComparingTo("4.67");
+        verify(productService).evictProductDetailCache(productId);
     }
 
     @Test
@@ -121,6 +283,27 @@ class ReviewServiceUnitTest {
                 .as("신규 도움이 돼요 추가면 true 반환")
                 .isTrue();
         verify(reviewRepository).incrementHelpfulCount(reviewId);
+        verifyNoInteractions(productService);
+    }
+
+    @Test
+    @DisplayName("deleteReview - 삭제 성공 시 productDetail 캐시 evict 호출")
+    void deleteReview_success_evictsProductDetailCache() {
+        Long reviewId = 1L;
+        Long userId = 2L;
+        Long productId = 100L;
+        Review review = new Review(productId, userId, null, 5, "삭제", "대상");
+
+        when(reviewRepository.findById(reviewId)).thenReturn(Optional.of(review));
+        Product product = mock(Product.class);
+        when(productRepository.findById(productId)).thenReturn(Optional.of(product));
+        when(reviewRepository.findAverageRatingByProductId(productId)).thenReturn(Optional.of(0.0));
+        when(reviewRepository.countByProductId(productId)).thenReturn(0);
+
+        reviewService.deleteReview(reviewId, userId);
+
+        verify(reviewRepository).delete(review);
+        verify(productService).evictProductDetailCache(productId);
     }
 
     @Test
@@ -156,6 +339,7 @@ class ReviewServiceUnitTest {
         assertThat(avgCaptor.getValue())
                 .as("리뷰 평균값이 없으면 기본 평점 0.00으로 갱신되어야 함")
                 .isEqualByComparingTo("0.00");
+        verify(productService).evictProductDetailCache(productId);
     }
 
     @Test
@@ -195,6 +379,7 @@ class ReviewServiceUnitTest {
                 .isTrue();
         verify(reviewRepository, never()).incrementHelpfulCount(any());
         verify(reviewRepository, never()).decrementHelpfulCount(any());
+        verifyNoInteractions(productService);
     }
 
 }
