@@ -7,6 +7,7 @@ import com.shop.domain.product.entity.Product;
 import com.shop.domain.product.repository.ProductRepository;
 import com.shop.global.common.PagingParams;
 import com.shop.global.exception.ResourceNotFoundException;
+import org.springframework.cache.annotation.Caching;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.Page;
@@ -136,6 +137,14 @@ public class ProductService {
     }
 
     @Transactional
+    @Caching(evict = {
+            @CacheEvict(value = "productList", allEntries = true),
+            @CacheEvict(value = "categoryProducts", allEntries = true),
+            @CacheEvict(value = "searchResults", allEntries = true),
+            @CacheEvict(value = "bestSellers", allEntries = true),
+            @CacheEvict(value = "newArrivals", allEntries = true),
+            @CacheEvict(value = "deals", allEntries = true)
+    })
     public Product createProduct(AdminProductRequest request) {
         Category category = categoryService.findById(request.getCategoryId());
         Product product = Product.create(
@@ -150,7 +159,15 @@ public class ProductService {
     }
 
     @Transactional
-    @CacheEvict(value = "productDetail", key = "#productId")
+    @Caching(evict = {
+            @CacheEvict(value = "productDetail", key = "#productId"),
+            @CacheEvict(value = "productList", allEntries = true),
+            @CacheEvict(value = "categoryProducts", allEntries = true),
+            @CacheEvict(value = "searchResults", allEntries = true),
+            @CacheEvict(value = "bestSellers", allEntries = true),
+            @CacheEvict(value = "newArrivals", allEntries = true),
+            @CacheEvict(value = "deals", allEntries = true)
+    })
     public Product updateProduct(Long productId, AdminProductRequest request) {
         Product product = productRepository.findById(productId)
                 .orElseThrow(() -> new ResourceNotFoundException("상품", productId));
@@ -167,7 +184,15 @@ public class ProductService {
     }
 
     @Transactional
-    @CacheEvict(value = "productDetail", key = "#productId")
+    @Caching(evict = {
+            @CacheEvict(value = "productDetail", key = "#productId"),
+            @CacheEvict(value = "productList", allEntries = true),
+            @CacheEvict(value = "categoryProducts", allEntries = true),
+            @CacheEvict(value = "searchResults", allEntries = true),
+            @CacheEvict(value = "bestSellers", allEntries = true),
+            @CacheEvict(value = "newArrivals", allEntries = true),
+            @CacheEvict(value = "deals", allEntries = true)
+    })
     public void toggleProductActive(Long productId) {
         Product product = productRepository.findById(productId)
                 .orElseThrow(() -> new ResourceNotFoundException("상품", productId));
