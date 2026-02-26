@@ -1,6 +1,9 @@
 package com.shop.global.config;
 
 import com.shop.global.security.CustomUserDetailsService;
+import com.shop.global.security.LoginAuthenticationFailureHandler;
+import com.shop.global.security.LoginAuthenticationSuccessHandler;
+import com.shop.global.security.LoginBlockPreAuthenticationFilter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -11,6 +14,7 @@ import org.springframework.security.config.annotation.web.configuration.EnableWe
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
 
@@ -19,9 +23,18 @@ import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
 public class SecurityConfig {
 
     private final CustomUserDetailsService userDetailsService;
+    private final LoginAuthenticationFailureHandler loginAuthenticationFailureHandler;
+    private final LoginAuthenticationSuccessHandler loginAuthenticationSuccessHandler;
+    private final LoginBlockPreAuthenticationFilter loginBlockPreAuthenticationFilter;
 
-    public SecurityConfig(CustomUserDetailsService userDetailsService) {
+    public SecurityConfig(CustomUserDetailsService userDetailsService,
+                          LoginAuthenticationFailureHandler loginAuthenticationFailureHandler,
+                          LoginAuthenticationSuccessHandler loginAuthenticationSuccessHandler,
+                          LoginBlockPreAuthenticationFilter loginBlockPreAuthenticationFilter) {
         this.userDetailsService = userDetailsService;
+        this.loginAuthenticationFailureHandler = loginAuthenticationFailureHandler;
+        this.loginAuthenticationSuccessHandler = loginAuthenticationSuccessHandler;
+        this.loginBlockPreAuthenticationFilter = loginBlockPreAuthenticationFilter;
     }
 
     @Bean
@@ -59,8 +72,8 @@ public class SecurityConfig {
             .formLogin(form -> form
                 .loginPage("/auth/login")
                 .loginProcessingUrl("/auth/login")
-                .defaultSuccessUrl("/", true)
-                .failureUrl("/auth/login?error=true")
+                .successHandler(loginAuthenticationSuccessHandler)
+                .failureHandler(loginAuthenticationFailureHandler)
                 .usernameParameter("username")
                 .passwordParameter("password")
                 .permitAll()
@@ -80,7 +93,8 @@ public class SecurityConfig {
                 .key("shopping-mall-remember-key")
                 .tokenValiditySeconds(86400 * 7)
                 .userDetailsService(userDetailsService)
-            );
+            )
+            .addFilterBefore(loginBlockPreAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
     }
