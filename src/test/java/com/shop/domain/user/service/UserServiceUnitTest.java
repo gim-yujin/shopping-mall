@@ -22,6 +22,7 @@ import java.util.Optional;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -51,7 +52,8 @@ class UserServiceUnitTest {
     void signup_normalizesFields_forDuplicateCheckAndSave() {
         when(userRepository.existsByUsername("tester")).thenReturn(false);
         when(userRepository.existsByEmail("test@a.com")).thenReturn(false);
-        when(userTierRepository.findByTierLevel(1)).thenReturn(Optional.of(new UserTier("BASIC", 1, BigDecimal.ZERO, 0.01)));
+        UserTier defaultTier = mock(UserTier.class);
+        when(userTierRepository.findByTierLevel(1)).thenReturn(Optional.of(defaultTier));
         when(passwordEncoder.encode("Pass1234!")).thenReturn("encoded");
         when(userRepository.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
