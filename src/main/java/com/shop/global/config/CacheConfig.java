@@ -49,6 +49,9 @@ public class CacheConfig {
                 // 인증 사용자 정보: 권한/계정 상태 변경 전파를 빠르게 반영하기 위해 1분.
                 cacheMinutes("userDetails", 1, 1000),
 
+                // 로그인 실패 상태(사용자명+IP): 지수 백오프 기반 재시도 제한 state 저장.
+                cacheMinutes("loginAttempts", 15, 50000),
+
                 // 활성 쿠폰: 프로모션 on/off, 유효기간 경계, 선착순 소진 등 민감도가 높아 10초.
                 cacheSeconds("activeCoupons", 10, 200)
         ));
