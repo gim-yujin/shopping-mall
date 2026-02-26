@@ -77,6 +77,8 @@ class ReviewCachePerformanceIntegrationTest {
                 jdbcTemplate.update("DELETE FROM reviews WHERE review_id = ?", createdReviewId);
             }
         }
+        jdbcTemplate.update("DELETE FROM order_items WHERE order_id IN (SELECT order_id FROM orders WHERE order_number LIKE 'TEST-CACHE-%')");
+        jdbcTemplate.update("DELETE FROM orders WHERE order_number LIKE 'TEST-CACHE-%'");
     }
 
     @Test
@@ -105,7 +107,7 @@ class ReviewCachePerformanceIntegrationTest {
                 .isEqualTo(queriesAfterFirstB);
 
         Review created = reviewService.createReview(userId,
-                new ReviewCreateRequest(productA, null, 5, "cache-regression", "product scoped eviction"));
+                new ReviewCreateRequest(productA, createOrderItemForReview(userId, productA), 5, "cache-regression", "product scoped eviction"));
         createdReviewId = created.getReviewId();
 
         reviewService.getProductReviews(productA, pageable);
@@ -127,6 +129,37 @@ class ReviewCachePerformanceIntegrationTest {
         assertThat(stats.missCount())
                 .as("초기 조회 및 상품 A 변경 이후 재조회로 miss도 기록되어야 함")
                 .isGreaterThan(0L);
+    }
+
+    private Long createOrderItemForReview(Long reviewUserId, Long reviewProductId) {
+        String orderNumber = "TEST-CACHE-" + java.util.UUID.randomUUID();
+        Long orderId = jdbcTemplate.queryForObject(
+                """
+                INSERT INTO orders (
+                    order_number, user_id, order_status, total_amount, discount_amount,
+                    shipping_fee, final_amount, payment_method, shipping_address,
+                    recipient_name, recipient_phone, order_date
+                )
+                VALUES (?, ?, 'DELIVERED', 10000, 0, 0, 10000, 'CARD', '테스트주소', '테스터', '010-0000-0000', CURRENT_TIMESTAMP)
+                RETURNING order_id
+                """,
+                Long.class,
+                orderNumber, reviewUserId
+        );
+
+        return jdbcTemplate.queryForObject(
+                """
+                INSERT INTO order_items (
+                    order_id, product_id, product_name, quantity, unit_price, discount_rate, subtotal, created_at
+                )
+                VALUES (?, ?, ?, 1, 10000, 0, 10000, CURRENT_TIMESTAMP)
+                RETURNING order_item_id
+                """,
+                Long.class,
+                orderId,
+                reviewProductId,
+                "리뷰테스트상품"
+        );
     }
 
     private Statistics statistics() {

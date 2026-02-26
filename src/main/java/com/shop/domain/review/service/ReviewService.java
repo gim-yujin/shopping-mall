@@ -93,9 +93,7 @@ public class ReviewService {
     }
 
     private void validateDuplicateReview(Long userId, ReviewCreateRequest request) {
-        boolean duplicated = request.orderItemId() == null
-                ? reviewRepository.existsByUserIdAndProductIdAndOrderItemIdIsNull(userId, request.productId())
-                : reviewRepository.existsByUserIdAndOrderItemId(userId, request.orderItemId());
+        boolean duplicated = reviewRepository.existsByUserIdAndOrderItemId(userId, request.orderItemId());
 
         if (duplicated) {
             throw new BusinessException("DUPLICATE_REVIEW", "이미 리뷰를 작성하였습니다.");
@@ -103,10 +101,6 @@ public class ReviewService {
     }
 
     private void validateOrderItemForReview(Long userId, ReviewCreateRequest request) {
-        if (request.orderItemId() == null) {
-            return;
-        }
-
         OrderItem orderItem = orderItemRepository.findById(request.orderItemId())
                 .orElseThrow(() -> new BusinessException(
                         "REVIEW_ORDER_ITEM_NOT_FOUND",

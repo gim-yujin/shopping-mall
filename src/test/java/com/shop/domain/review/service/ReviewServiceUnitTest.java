@@ -102,25 +102,6 @@ class ReviewServiceUnitTest {
     }
 
     @Test
-    @DisplayName("createReview - orderItemId가 null이면 user/product 중복 기준으로 검증")
-    void createReview_withoutOrderItem_usesUserProductDuplicatePolicy() {
-        Long userId = 11L;
-        Long productId = 101L;
-        ReviewCreateRequest request = new ReviewCreateRequest(productId, null, 5, "중복", "내용");
-
-        when(reviewRepository.existsByUserIdAndProductIdAndOrderItemIdIsNull(userId, productId)).thenReturn(true);
-
-        assertThatThrownBy(() -> reviewService.createReview(userId, request))
-                .isInstanceOf(BusinessException.class)
-                .hasMessageContaining("이미 리뷰를 작성");
-
-        verify(reviewRepository, never()).existsByUserIdAndOrderItemId(any(), any());
-        verify(reviewRepository, never()).save(any());
-        verify(productRepository, never()).findById(any());
-        verifyNoInteractions(productService);
-    }
-
-    @Test
     @DisplayName("createReview - 저장 시점 unique 충돌도 DUPLICATE_REVIEW로 변환")
     void createReview_duplicateAtDatabaseLevel_throwsBusinessException() {
         Long userId = 11L;
@@ -405,6 +386,17 @@ class ReviewServiceUnitTest {
         assertThat(validator.validate(request))
                 .extracting("message")
                 .contains("리뷰 제목은 200자 이하로 입력해주세요.");
+    }
+
+    @Test
+    @DisplayName("ReviewCreateRequest - orderItemId가 null이면 검증 실패")
+    void reviewCreateRequest_nullOrderItem_validationFails() {
+        Validator validator = Validation.buildDefaultValidatorFactory().getValidator();
+        ReviewCreateRequest request = new ReviewCreateRequest(1L, null, 5, "정상 제목", "정상 내용");
+
+        assertThat(validator.validate(request))
+                .extracting("message")
+                .contains("주문 항목 정보가 누락되었습니다.");
     }
 
     @Test
