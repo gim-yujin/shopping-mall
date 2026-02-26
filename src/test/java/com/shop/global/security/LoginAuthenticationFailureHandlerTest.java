@@ -49,7 +49,7 @@ class LoginAuthenticationFailureHandlerTest {
         assertThat(response.getRedirectedUrl()).isEqualTo("/auth/login?error=true");
         assertThat(listAppender.list).hasSize(1);
 
-        ILoggingEvent event = listAppender.list.getFirst();
+        ILoggingEvent event = listAppender.list.get(0);
         assertThat(event.getLevel()).isEqualTo(Level.WARN);
         assertThat(event.getFormattedMessage())
                 .isEqualTo("event=login_fail username=al*** ip=10.0.0.8 reason=bad_credentials next_delay_sec=8");
@@ -75,7 +75,7 @@ class LoginAuthenticationFailureHandlerTest {
         assertThat(response.getRedirectedUrl()).isEqualTo("/auth/login?error=true");
         assertThat(listAppender.list).hasSize(1);
 
-        ILoggingEvent event = listAppender.list.getFirst();
+        ILoggingEvent event = listAppender.list.get(0);
         assertThat(event.getLevel()).isEqualTo(Level.WARN);
         assertThat(event.getFormattedMessage())
                 .isEqualTo("event=login_blocked username=a*** ip=10.0.0.9 reason=throttled_before_auth retry_after_sec=120");
@@ -100,7 +100,7 @@ class LoginAuthenticationFailureHandlerTest {
 
         assertThat(response.getRedirectedUrl()).isEqualTo("/auth/login?error=true");
         assertThat(listAppender.list).hasSize(1);
-        assertThat(listAppender.list.getFirst().getFormattedMessage())
+        assertThat(listAppender.list.get(0).getFormattedMessage())
                 .contains("event=login_fail")
                 .contains("username=anonymous")
                 .contains("ip=10.0.0.10")
