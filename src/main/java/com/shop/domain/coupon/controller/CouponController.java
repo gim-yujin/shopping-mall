@@ -1,6 +1,7 @@
 package com.shop.domain.coupon.controller;
 
 import com.shop.domain.coupon.service.CouponService;
+import com.shop.global.common.PagingParams;
 import com.shop.global.exception.BusinessException;
 import com.shop.global.security.SecurityUtil;
 import org.springframework.data.domain.PageRequest;
@@ -22,7 +23,8 @@ public class CouponController {
     @GetMapping
     public String couponPage(@RequestParam(defaultValue = "0") int page, Model model) {
         Long userId = SecurityUtil.getCurrentUserId().orElseThrow();
-        model.addAttribute("availableCoupons", couponService.getActiveCoupons(PageRequest.of(page, 20)));
+        int normalizedPage = PagingParams.normalizePage(page);
+        model.addAttribute("availableCoupons", couponService.getActiveCoupons(PageRequest.of(normalizedPage, 20)));
         model.addAttribute("myCoupons", couponService.getUserCoupons(userId, PageRequest.of(0, 20)));
         model.addAttribute("issuedCouponIds", couponService.getUserIssuedCouponIds(userId));
         return "coupon/index";

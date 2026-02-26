@@ -7,6 +7,7 @@ import com.shop.domain.product.service.ProductService;
 import com.shop.domain.review.service.ReviewService;
 import com.shop.domain.review.entity.Review;
 import com.shop.domain.wishlist.service.WishlistService;
+import com.shop.global.common.PagingParams;
 import com.shop.global.security.SecurityUtil;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -39,9 +40,13 @@ public class ProductController {
                                @RequestParam(defaultValue = "20") int size,
                                @RequestParam(defaultValue = "best") String sort,
                                Model model) {
-        model.addAttribute("products", productService.findAllSorted(page, size, sort));
+        int normalizedPage = PagingParams.normalizePage(page);
+        int normalizedSize = PagingParams.normalizeSize(size);
+        String normalizedSort = PagingParams.normalizeProductSort(sort);
+
+        model.addAttribute("products", productService.findAllSorted(normalizedPage, normalizedSize, normalizedSort));
         model.addAttribute("categories", categoryService.getTopLevelCategories());
-        model.addAttribute("currentSort", sort);
+        model.addAttribute("currentSort", normalizedSort);
         model.addAttribute("baseUrl", "/products");
         return "product/list";
     }
@@ -51,7 +56,8 @@ public class ProductController {
                                 @RequestParam(defaultValue = "0") int reviewPage,
                                 Model model) {
         Product product = productService.findByIdAndIncrementView(productId);
-        Page<Review> reviews = reviewService.getProductReviews(productId, PageRequest.of(reviewPage, 10));
+        int normalizedReviewPage = PagingParams.normalizePage(reviewPage);
+        Page<Review> reviews = reviewService.getProductReviews(productId, PageRequest.of(normalizedReviewPage, 10));
 
         model.addAttribute("product", product);
         model.addAttribute("reviews", reviews);

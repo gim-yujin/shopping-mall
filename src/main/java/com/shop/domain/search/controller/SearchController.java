@@ -3,6 +3,7 @@ package com.shop.domain.search.controller;
 import com.shop.domain.product.entity.Product;
 import com.shop.domain.product.service.ProductService;
 import com.shop.domain.search.service.SearchService;
+import com.shop.global.common.PagingParams;
 import com.shop.global.security.SecurityUtil;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.data.domain.Page;
@@ -39,11 +40,14 @@ public class SearchController {
             return "product/search";
         }
 
-        Page<Product> results = productService.search(keyword, PageRequest.of(page, size));
+        int normalizedPage = PagingParams.normalizePage(page);
+        int normalizedSize = PagingParams.normalizeSize(size);
+
+        Page<Product> results = productService.search(keyword, PageRequest.of(normalizedPage, normalizedSize));
         model.addAttribute("products", results);
 
         // 첫 페이지에서만 검색 로그 기록 (페이지네이션 시 중복 기록 방지)
-        if (page == 0) {
+        if (normalizedPage == 0) {
             Long userId = SecurityUtil.getCurrentUserId().orElse(null);
             searchService.logSearch(userId, keyword, (int) results.getTotalElements(),
                     request.getRemoteAddr(), request.getHeader("User-Agent"));

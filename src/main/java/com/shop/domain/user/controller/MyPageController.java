@@ -7,6 +7,7 @@ import com.shop.domain.user.dto.PasswordChangeRequest;
 import com.shop.domain.user.dto.ProfileUpdateRequest;
 import com.shop.domain.user.entity.User;
 import com.shop.domain.user.service.UserService;
+import com.shop.global.common.PagingParams;
 import com.shop.global.exception.BusinessException;
 import com.shop.global.exception.DuplicateConstraintMessageResolver;
 import com.shop.global.security.SecurityUtil;
@@ -111,7 +112,8 @@ public class MyPageController {
     @GetMapping("/reviews")
     public String myReviews(@RequestParam(defaultValue = "0") int page, Model model) {
         Long userId = SecurityUtil.getCurrentUserId().orElseThrow();
-        model.addAttribute("reviews", reviewService.getUserReviews(userId, PageRequest.of(page, 10)));
+        int normalizedPage = PagingParams.normalizePage(page);
+        model.addAttribute("reviews", reviewService.getUserReviews(userId, PageRequest.of(normalizedPage, 10)));
         return "mypage/reviews";
     }
 
