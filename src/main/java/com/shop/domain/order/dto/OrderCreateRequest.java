@@ -20,6 +20,9 @@ public record OrderCreateRequest(
     @ValidPaymentMethod
     String paymentMethod,
 
+    /**
+     * 클라이언트 요청값은 신뢰하지 않으며, 배송비는 항상 서버 정책으로 재계산됩니다.
+     */
     BigDecimal shippingFee,
 
     Long userCouponId,
@@ -33,7 +36,7 @@ public record OrderCreateRequest(
         } else {
             paymentMethod = paymentMethod.trim().toUpperCase(Locale.ROOT);
         }
-        if (shippingFee == null) shippingFee = BigDecimal.ZERO;
+        shippingFee = BigDecimal.ZERO;
         if (usePoints == null) usePoints = 0;
     }
 }

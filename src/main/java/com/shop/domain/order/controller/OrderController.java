@@ -85,6 +85,7 @@ public class OrderController {
         }
 
         Long userId = SecurityUtil.getCurrentUserId().orElseThrow();
+        // 배송비는 클라이언트 입력을 무시하고 OrderService에서 서버 정책으로 재계산한다.
         try {
             Order order = orderService.createOrder(userId, request);
             redirectAttributes.addFlashAttribute("successMessage", "주문이 완료되었습니다.");

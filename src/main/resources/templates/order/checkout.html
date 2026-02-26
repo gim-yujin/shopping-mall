@@ -126,7 +126,7 @@
                             <span id="totalPriceDisplay" th:text="${#numbers.formatDecimal(totalPrice,0,'COMMA',0,'POINT')} + '원'">0원</span>
                         </div>
                         <div class="flex justify-between">
-                            <span class="text-gray-500">배송비</span>
+                            <span class="text-gray-500">배송비 (서버 정책 자동 계산)</span>
                             <span id="shippingFeeDisplay"
                                   th:text="${estimatedShippingFee.compareTo(T(java.math.BigDecimal).ZERO) == 0
                                   ? '무료'
@@ -157,7 +157,7 @@
 
 <script th:inline="javascript">
     const totalPrice = /*[[${totalPrice}]]*/ 0;
-    const shippingFee = /*[[${estimatedShippingFee}]]*/ 0;
+    const serverShippingFee = /*[[${estimatedShippingFee}]]*/ 0;
     const maxPoints = /*[[${pointBalance}]]*/ 0;
 
     function formatNumber(n) {
@@ -242,7 +242,7 @@
         document.getElementById('pointsDiscountDisplay').textContent =
             pointsUsed > 0 ? '-' + formatNumber(pointsUsed) + '원' : '0원';
 
-        const finalPrice = Math.max(0, totalPrice - couponDiscount - pointsUsed + shippingFee);
+        const finalPrice = Math.max(0, totalPrice - couponDiscount - pointsUsed + serverShippingFee);
         document.getElementById('finalPriceDisplay').textContent = formatNumber(finalPrice) + '원';
     }
 </script>
