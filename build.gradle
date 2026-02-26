@@ -13,6 +13,12 @@ java {
     }
 }
 
+tasks.withType(JavaCompile).configureEach {
+    // Spring/테스트 라이브러리 호환성을 위해 class file은 LTS(17) 타깃으로 유지하고,
+    // 런타임 JDK는 25를 사용한다.
+    options.release = 17
+}
+
 repositories {
     mavenCentral()
 }
@@ -42,6 +48,9 @@ dependencies {
     // Test
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testImplementation 'org.springframework.security:spring-security-test'
+    // Java 25 런타임에서 Mockito inline instrumentation 호환성 보강
+    testRuntimeOnly 'net.bytebuddy:byte-buddy:1.17.5'
+    testRuntimeOnly 'net.bytebuddy:byte-buddy-agent:1.17.5'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
 

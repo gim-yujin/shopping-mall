@@ -4,7 +4,7 @@
 
 ## 기술 스택
 
-- **Backend**: Java 25, Spring Boot 3.4.1, Spring Security 6, Spring Data JPA
+- **Backend**: Java 25 런타임 (컴파일 타깃 17), Spring Boot 3.4.1, Spring Security 6, Spring Data JPA
 - **Database**: PostgreSQL (1억 건 이상 대응 설계)
 - **Frontend**: Thymeleaf + Tailwind CSS (CDN)
 - **Build**: Gradle 8.12
@@ -61,7 +61,9 @@ com.shop
 
 ### 1. 사전 준비
 
-- JDK 25 이상
+- JDK 25 이상 (Gradle toolchain)
+
+> 참고: 현재 코드베이스는 Java 25로 실행하되, 프레임워크/테스트 라이브러리 호환성을 위해 컴파일 타깃(class file)은 Java 17로 유지합니다.
 - PostgreSQL 14 이상
 
 ### 2. 데이터베이스 설정
