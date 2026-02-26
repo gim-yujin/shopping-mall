@@ -12,8 +12,6 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
-import jakarta.persistence.EntityManager;
-
 import java.time.LocalDateTime;
 import java.util.Optional;
 
@@ -30,9 +28,6 @@ class CouponServiceUnitTest {
     @Mock
     private UserCouponRepository userCouponRepository;
 
-    @Mock
-    private EntityManager entityManager;
-
     @InjectMocks
     private CouponService couponService;
 
@@ -43,15 +38,15 @@ class CouponServiceUnitTest {
         Integer couponId = 10;
         Coupon coupon = mock(Coupon.class);
 
-        when(couponRepository.findByIdWithLock(couponId)).thenReturn(Optional.of(coupon));
+        when(couponRepository.findById(couponId)).thenReturn(Optional.of(coupon));
         when(coupon.isValid()).thenReturn(false);
 
         assertThatThrownBy(() -> couponService.issueCouponById(userId, couponId))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("유효하지 않은 쿠폰");
 
-        verify(entityManager).refresh(coupon);
         verify(coupon).isValid();
+        verify(couponRepository, never()).incrementUsedQuantityIfAvailable(any());
         verify(userCouponRepository, never()).save(any(UserCoupon.class));
         verify(coupon, never()).incrementUsed();
     }
@@ -64,17 +59,18 @@ class CouponServiceUnitTest {
         Coupon coupon = mock(Coupon.class);
         LocalDateTime validUntil = LocalDateTime.now().plusDays(1);
 
-        when(couponRepository.findByIdWithLock(couponId)).thenReturn(Optional.of(coupon));
+        when(couponRepository.findById(couponId)).thenReturn(Optional.of(coupon));
         when(coupon.isValid()).thenReturn(true);
         when(coupon.getCouponId()).thenReturn(couponId);
         when(coupon.getValidUntil()).thenReturn(validUntil);
+        when(couponRepository.incrementUsedQuantityIfAvailable(couponId)).thenReturn(1);
         when(userCouponRepository.existsByUserIdAndCoupon_CouponId(userId, couponId)).thenReturn(false);
 
         couponService.issueCouponById(userId, couponId);
 
-        verify(entityManager).refresh(coupon);
         verify(coupon).isValid();
-        verify(coupon).incrementUsed();
+        verify(couponRepository).incrementUsedQuantityIfAvailable(couponId);
         verify(userCouponRepository).save(any(UserCoupon.class));
+        verify(coupon, never()).incrementUsed();
     }
 }
