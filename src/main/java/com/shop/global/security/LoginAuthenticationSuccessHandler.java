@@ -20,7 +20,6 @@ public class LoginAuthenticationSuccessHandler implements AuthenticationSuccessH
         this.loginAttemptService = loginAttemptService;
         this.delegate = new SavedRequestAwareAuthenticationSuccessHandler();
         this.delegate.setDefaultTargetUrl("/");
-        this.delegate.setAlwaysUseDefaultTargetUrl(true);
     }
 
     @Override
