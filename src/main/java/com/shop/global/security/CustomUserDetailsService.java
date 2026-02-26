@@ -10,6 +10,7 @@ import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Locale;
 import java.util.Collections;
 
 @Service
@@ -28,10 +29,11 @@ public class CustomUserDetailsService implements UserDetailsService {
      * TTL 5분 (CacheConfig 공통) → 비밀번호 변경 시 최대 5분 후 반영.
      */
     @Override
-    @Cacheable(value = "userDetails", key = "#username")
+    @Cacheable(value = "userDetails", key = "#root.target.userDetailsCacheKey(#username)")
     @Transactional(readOnly = true)
     public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
-        User user = userRepository.findByUsername(username)
+        String normalizedUsername = normalizeUsername(username);
+        User user = userRepository.findByUsernameIgnoreCase(normalizedUsername)
                 .orElseThrow(() -> new UsernameNotFoundException("사용자를 찾을 수 없습니다: " + username));
 
         if (!user.getIsActive()) {
@@ -46,5 +48,13 @@ public class CustomUserDetailsService implements UserDetailsService {
                 user.getRole(),
                 Collections.singletonList(new SimpleGrantedAuthority(user.getRole()))
         );
+    }
+
+    String userDetailsCacheKey(String username) {
+        return normalizeUsername(username);
+    }
+
+    private String normalizeUsername(String username) {
+        return username == null ? "" : username.trim().toLowerCase(Locale.ROOT);
     }
 }
