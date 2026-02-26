@@ -67,10 +67,7 @@ public class ReviewService {
     public Review createReview(Long userId, ReviewCreateRequest request) {
         validateOrderItemForReview(userId, request);
 
-        if (request.orderItemId() != null &&
-            reviewRepository.existsByUserIdAndOrderItemId(userId, request.orderItemId())) {
-            throw new BusinessException("DUPLICATE_REVIEW", "이미 리뷰를 작성하였습니다.");
-        }
+        validateDuplicateReview(userId, request);
 
         Review review = new Review(request.productId(), userId, request.orderItemId(),
                 request.rating(), request.title(), request.content());
@@ -80,6 +77,19 @@ public class ReviewService {
         productService.evictProductDetailCache(request.productId());
         bumpProductReviewVersion(request.productId());
         return saved;
+    }
+
+    private void validateDuplicateReview(Long userId, ReviewCreateRequest request) {
+        if (request.orderItemId() == null) {
+            if (reviewRepository.existsByUserIdAndProductId(userId, request.productId())) {
+                throw new BusinessException("DUPLICATE_REVIEW", "이미 리뷰를 작성하였습니다.");
+            }
+            return;
+        }
+
+        if (reviewRepository.existsByUserIdAndOrderItemId(userId, request.orderItemId())) {
+            throw new BusinessException("DUPLICATE_REVIEW", "이미 리뷰를 작성하였습니다.");
+        }
     }
 
     private void validateOrderItemForReview(Long userId, ReviewCreateRequest request) {
