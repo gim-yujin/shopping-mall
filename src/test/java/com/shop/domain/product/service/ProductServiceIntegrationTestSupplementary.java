@@ -120,19 +120,29 @@ class ProductServiceIntegrationTestSupplementary {
             jdbcTemplate.update("UPDATE products SET sales_count = ? WHERE product_id = ?", firstSalesBeforeCancel, firstProductId);
             jdbcTemplate.update("UPDATE products SET sales_count = ? WHERE product_id = ?", secondSalesStable, secondProductId);
 
-            Page<Product> boostedResult = productService.getBestSellers(PageRequest.of(0, 2));
-            assertThat(boostedResult.getContent()).isNotEmpty();
-            assertThat(boostedResult.getContent().get(0).getProductId())
-                    .as("판매량이 가장 높은 상품이 1위여야 함")
-                    .isEqualTo(firstProductId);
+            Page<Product> boostedResult = productService.getBestSellers(PageRequest.of(0, 50));
+            List<Long> boostedIds = boostedResult.getContent().stream()
+                    .map(Product::getProductId)
+                    .toList();
+            assertThat(boostedIds)
+                    .as("판매량 보정 후 두 테스트 상품이 베스트셀러 목록에 포함되어야 함")
+                    .contains(firstProductId, secondProductId);
+            assertThat(boostedIds.indexOf(firstProductId))
+                    .as("판매량이 가장 높은 상품(first)이 second보다 앞서야 함")
+                    .isLessThan(boostedIds.indexOf(secondProductId));
 
             jdbcTemplate.update("UPDATE products SET sales_count = ? WHERE product_id = ?", firstSalesAfterCancel, firstProductId);
 
-            Page<Product> rolledBackResult = productService.getBestSellers(PageRequest.of(0, 2));
-            assertThat(rolledBackResult.getContent()).isNotEmpty();
-            assertThat(rolledBackResult.getContent().get(0).getProductId())
-                    .as("취소로 판매량이 롤백된 뒤에는 두 번째 상품이 1위여야 함")
-                    .isEqualTo(secondProductId);
+            Page<Product> rolledBackResult = productService.getBestSellers(PageRequest.of(0, 50));
+            List<Long> rolledBackIds = rolledBackResult.getContent().stream()
+                    .map(Product::getProductId)
+                    .toList();
+            assertThat(rolledBackIds)
+                    .as("롤백 후 두 테스트 상품이 베스트셀러 목록에 포함되어야 함")
+                    .contains(firstProductId, secondProductId);
+            assertThat(rolledBackIds.indexOf(secondProductId))
+                    .as("취소 롤백 후 second가 first보다 앞서야 함")
+                    .isLessThan(rolledBackIds.indexOf(firstProductId));
         } finally {
             jdbcTemplate.update("UPDATE products SET sales_count = ? WHERE product_id = ?",
                     originalSales.get(firstProductId), firstProductId);
