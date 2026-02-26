@@ -4,7 +4,7 @@
 
 ## 기술 스택
 
-- **Backend**: Java 17, Spring Boot 3.4.1, Spring Security 6, Spring Data JPA
+- **Backend**: Java 25, Spring Boot 3.4.1, Spring Security 6, Spring Data JPA
 - **Database**: PostgreSQL (1억 건 이상 대응 설계)
 - **Frontend**: Thymeleaf + Tailwind CSS (CDN)
 - **Build**: Gradle 8.12
@@ -61,7 +61,7 @@ com.shop
 
 ### 1. 사전 준비
 
-- JDK 17 이상
+- JDK 25 이상
 - PostgreSQL 14 이상
 
 ### 2. 데이터베이스 설정
