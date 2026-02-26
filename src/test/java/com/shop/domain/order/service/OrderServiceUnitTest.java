@@ -200,8 +200,6 @@ class OrderServiceUnitTest {
         Order order = mock(Order.class);
 
         when(orderRepository.findByIdWithLock(orderId)).thenReturn(Optional.of(order));
-        when(order.getOrderStatus()).thenReturn(OrderStatus.PAID);
-
         assertThatThrownBy(() -> orderService.updateOrderStatus(orderId, "INVALID"))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("잘못된 주문 상태");

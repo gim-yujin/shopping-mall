@@ -376,10 +376,11 @@ class ReviewServiceUnitTest {
         boolean result = reviewService.markHelpful(reviewId, userId);
 
         assertThat(result)
-                .as("서비스 구현상 insert 충돌(0건)도 true를 반환해야 함")
-                .isTrue();
+                .as("insert 충돌 시에는 기존 도움 여부 조회 결과를 반환해야 함")
+                .isFalse();
         verify(reviewRepository, never()).incrementHelpfulCount(any());
         verify(reviewRepository, never()).decrementHelpfulCount(any());
+        verify(reviewHelpfulRepository).existsByReviewIdAndUserId(reviewId, userId);
         verifyNoInteractions(productService);
     }
 
