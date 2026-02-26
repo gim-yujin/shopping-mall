@@ -53,6 +53,9 @@ public class CouponService {
     }
 
     private void issueToUser(Long userId, Coupon coupon) {
+        if (coupon.isQuantityExhausted()) {
+            throw new BusinessException("COUPON_SOLD_OUT", "쿠폰 수량이 모두 소진되었습니다.");
+        }
         if (!coupon.isValid()) {
             throw new BusinessException("INVALID_COUPON", "유효하지 않은 쿠폰입니다.");
         }

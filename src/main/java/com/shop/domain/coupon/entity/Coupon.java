@@ -51,6 +51,10 @@ public class Coupon {
 
     protected Coupon() {}
 
+    public boolean isQuantityExhausted() {
+        return totalQuantity != null && usedQuantity >= totalQuantity;
+    }
+
     public boolean isValid() {
         LocalDateTime now = LocalDateTime.now();
         return isActive
