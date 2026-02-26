@@ -43,6 +43,12 @@ public class LoginAuthenticationFailureHandler implements AuthenticationFailureH
     }
 
     private String mask(String username) {
-        return username == null || username.isBlank() ? "anonymous" : username;
+        if (username == null || username.isBlank()) {
+            return "anonymous";
+        }
+
+        String normalized = username.trim();
+        int visibleChars = Math.min(2, normalized.length());
+        return normalized.substring(0, visibleChars) + "***";
     }
 }

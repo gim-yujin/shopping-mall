@@ -180,6 +180,16 @@ spring:
 
 운영 환경에서는 실제 L4/L7 프록시 CIDR만 등록하고, hop 수(`trusted-hop-count`)를 인프라 체인과 일치시켜야 합니다.
 
+## 로그인 실패/차단 로그 정책
+
+로그 포맷은 기존 운영 대시보드 필터/집계를 깨지 않도록 아래 필드명을 고정합니다.
+
+- 실패: `event=login_fail username=<masked> ip=<ip> reason=bad_credentials next_delay_sec=<sec>`
+- 차단: `event=login_blocked username=<masked> ip=<ip> reason=throttled_before_auth retry_after_sec=<sec>`
+
+`username`은 로그에 평문을 남기지 않고 마스킹(`앞 2글자 + ***`, 1글자 아이디는 `1글자 + ***`)으로 기록합니다.
+원문 식별자가 운영 분석/감사를 위해 반드시 필요할 경우, 애플리케이션 로그가 아닌 **별도 보안 저장소 또는 감사 채널**(접근통제·암호화·열람감사 적용)로 분리 저장해야 합니다.
+
 ## 보안 템플릿 규칙
 
 - 모든 Thymeleaf 템플릿의 `method="post"` 폼에는 CSRF hidden input을 **반드시** 포함해야 합니다.
