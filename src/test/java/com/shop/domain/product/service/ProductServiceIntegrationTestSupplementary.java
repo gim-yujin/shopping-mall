@@ -1,5 +1,6 @@
 package com.shop.domain.product.service;
 
+import com.shop.domain.product.dto.AdminProductRequest;
 import com.shop.domain.product.entity.Product;
 import com.shop.global.cache.CacheKeyGenerator;
 import org.junit.jupiter.api.*;
@@ -182,6 +183,59 @@ class ProductServiceIntegrationTestSupplementary {
         assertThat(result).isNotNull();
         System.out.println("  [PASS] getDeals: " + result.getTotalElements() + "개");
     }
+
+
+    @Test
+    @DisplayName("updateProduct 이후 productList 캐시는 비워져 다음 조회가 miss 처리된다")
+    void updateProduct_evictsProductListCache() {
+        Cache productListCache = cacheManager.getCache("productList");
+        assertThat(productListCache).isNotNull();
+
+        productListCache.clear();
+
+        int page = 0;
+        int size = 8;
+        String sort = "best";
+        String cacheKey = page + ":" + size + ":" + sort;
+
+        productService.findAllSorted(page, size, sort);
+        assertThat(productListCache.get(cacheKey))
+                .as("초기 조회 후 productList 캐시 엔트리가 생성되어야 함")
+                .isNotNull();
+
+        Map<String, Object> row = jdbcTemplate.queryForMap(
+                """
+                SELECT p.product_id, p.category_id, p.product_name, p.description,
+                       p.price, p.original_price, p.stock_quantity
+                FROM products p
+                WHERE p.is_active = true
+                ORDER BY p.product_id
+                LIMIT 1
+                """);
+
+        Long productId = ((Number) row.get("product_id")).longValue();
+
+        AdminProductRequest request = new AdminProductRequest();
+        request.setCategoryId(((Number) row.get("category_id")).intValue());
+        request.setProductName(row.get("product_name") + " (캐시무효화)");
+        request.setDescription((String) row.get("description"));
+        request.setPrice((java.math.BigDecimal) row.get("price"));
+        request.setOriginalPrice((java.math.BigDecimal) row.get("original_price"));
+        request.setStockQuantity(((Number) row.get("stock_quantity")).intValue());
+
+        productService.updateProduct(productId, request);
+
+        assertThat(productListCache.get(cacheKey))
+                .as("상품 수정 후 productList 캐시가 제거되어야 함")
+                .isNull();
+
+        productService.findAllSorted(page, size, sort);
+
+        assertThat(productListCache.get(cacheKey))
+                .as("캐시 miss 이후 재조회 시 productList 캐시가 다시 채워져야 함")
+                .isNotNull();
+    }
+
     @Test
     @DisplayName("홈 화면 pageable(0,8) 규격과 캐시 키가 일치해야 한다")
     void homePageableSpec_matchesCacheKey() {
