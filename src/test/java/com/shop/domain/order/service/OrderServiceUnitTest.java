@@ -124,12 +124,60 @@ class OrderServiceUnitTest {
     }
 
     @Test
-    @DisplayName("관리자 CANCELLED 상태 변경 시 배송완료 주문은 취소 불가")
+    @DisplayName("관리자 CANCELLED 상태 변경 시 DELIVERED -> CANCELLED 전이는 차단")
     void updateOrderStatus_cancelled_disallowAfterDelivered() {
         Long orderId = 1L;
         Order order = mock(Order.class);
 
         when(orderRepository.findByIdWithLock(orderId)).thenReturn(Optional.of(order));
+        when(order.getOrderStatus()).thenReturn("DELIVERED");
+
+        assertThatThrownBy(() -> orderService.updateOrderStatus(orderId, "CANCELLED"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("허용되지 않는 주문 상태 전이");
+
+        verify(order, never()).cancel();
+        verifyNoInteractions(productRepository, userRepository, userCouponRepository);
+    }
+
+    @Test
+    @DisplayName("관리자 상태 변경 시 PAID -> SHIPPED 전이는 허용")
+    void updateOrderStatus_allowPaidToShipped() {
+        Long orderId = 1L;
+        Order order = mock(Order.class);
+
+        when(orderRepository.findByIdWithLock(orderId)).thenReturn(Optional.of(order));
+        when(order.getOrderStatus()).thenReturn("PAID");
+
+        orderService.updateOrderStatus(orderId, "SHIPPED");
+
+        verify(order).markShipped();
+    }
+
+    @Test
+    @DisplayName("관리자 상태 변경 시 SHIPPED -> PAID 전이는 차단")
+    void updateOrderStatus_blockShippedToPaid() {
+        Long orderId = 1L;
+        Order order = mock(Order.class);
+
+        when(orderRepository.findByIdWithLock(orderId)).thenReturn(Optional.of(order));
+        when(order.getOrderStatus()).thenReturn("SHIPPED");
+
+        assertThatThrownBy(() -> orderService.updateOrderStatus(orderId, "PAID"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("허용되지 않는 주문 상태 전이");
+
+        verify(order, never()).markPaid();
+    }
+
+    @Test
+    @DisplayName("관리자 상태 변경 시 PAID -> CANCELLED 전이는 isCancellable 규칙을 따른다")
+    void updateOrderStatus_cancelled_followsIsCancellableRule() {
+        Long orderId = 1L;
+        Order order = mock(Order.class);
+
+        when(orderRepository.findByIdWithLock(orderId)).thenReturn(Optional.of(order));
+        when(order.getOrderStatus()).thenReturn("PAID");
         when(order.isCancellable()).thenReturn(false);
 
         assertThatThrownBy(() -> orderService.updateOrderStatus(orderId, "CANCELLED"))
@@ -137,6 +185,5 @@ class OrderServiceUnitTest {
                 .hasMessageContaining("취소할 수 없는 주문 상태");
 
         verify(order, never()).cancel();
-        verifyNoInteractions(productRepository, userRepository, userCouponRepository);
     }
 }

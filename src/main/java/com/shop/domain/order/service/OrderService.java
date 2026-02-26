@@ -29,7 +29,9 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Map;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 @Service
@@ -239,6 +241,34 @@ public class OrderService {
     public void updateOrderStatus(Long orderId, String status) {
         Order order = orderRepository.findByIdWithLock(orderId)
                 .orElseThrow(() -> new ResourceNotFoundException("주문", orderId));
+
+        Set<String> supportedStatuses = Set.of("PENDING", "PAID", "SHIPPED", "DELIVERED", "CANCELLED");
+        if (!supportedStatuses.contains(status)) {
+            throw new BusinessException("INVALID_STATUS", "잘못된 주문 상태입니다.");
+        }
+
+        String currentStatus = order.getOrderStatus();
+        Map<String, Set<String>> allowedTransitions = Map.of(
+                "PENDING", Set.of("PENDING", "PAID", "CANCELLED"),
+                "PAID", Set.of("PAID", "SHIPPED", "CANCELLED"),
+                "SHIPPED", Set.of("SHIPPED", "DELIVERED"),
+                "DELIVERED", Set.of("DELIVERED"),
+                "CANCELLED", Set.of("CANCELLED")
+        );
+
+        Set<String> nextStatuses = allowedTransitions.get(currentStatus);
+        if (nextStatuses == null || !nextStatuses.contains(status)) {
+            throw new BusinessException(
+                    "INVALID_STATUS_TRANSITION",
+                    "허용되지 않는 주문 상태 전이입니다. [" + currentStatus + " -> " + status + "]"
+            );
+        }
+
+        if ("CANCELLED".equals(status) && !order.isCancellable()) {
+            throw new BusinessException("INVALID_STATUS_TRANSITION",
+                    "취소할 수 없는 주문 상태입니다. [" + currentStatus + " -> " + status + "]");
+        }
+
         switch (status) {
             case "PAID" -> order.markPaid();
             case "SHIPPED" -> order.markShipped();
