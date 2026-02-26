@@ -74,6 +74,9 @@ COMMENT ON TABLE users IS '사용자 테이블 (예상: 100만 명)';
 COMMENT ON COLUMN users.total_spent IS '누적 구매 금액 (등급 산정 기준)';
 COMMENT ON COLUMN users.point_balance IS '현재 보유 포인트';
 
+-- username은 대소문자 비구분 정책(Case-insensitive)을 적용한다.
+CREATE UNIQUE INDEX uk_users_username_lower ON users (LOWER(username));
+
 -- ============================================================================
 -- 3. USER_TIER_HISTORY (등급 변경 이력)
 -- ============================================================================
