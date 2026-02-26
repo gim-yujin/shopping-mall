@@ -125,7 +125,7 @@ class OrderSameUserConcurrencyTest {
                         "010-1234-5678",
                         "CARD",
                         BigDecimal.ZERO,
-                        null
+                        null, null
                 ));
                 successCount.incrementAndGet();
             } catch (BusinessException e) {

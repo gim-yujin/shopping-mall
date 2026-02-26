@@ -172,11 +172,30 @@ public class OrderService {
 
         BigDecimal totalDiscount = tierDiscountTotal.add(couponDiscount);
 
-        // 3) 배송비 계산 (등급별 무료배송 기준)
+        // 3) 포인트 사용 (1P = 1원)
+        int usePoints = request.usePoints();
+        if (usePoints > 0) {
+            if (usePoints > user.getPointBalance()) {
+                throw new BusinessException("INSUFFICIENT_POINTS",
+                        "보유 포인트가 부족합니다. (보유: " + user.getPointBalance() + "P, 요청: " + usePoints + "P)");
+            }
+            // 포인트 사용 상한: 상품금액 - 할인 (배송비 제외, 최종금액이 0 미만이 되지 않도록)
+            BigDecimal maxUsable = totalAmount.subtract(totalDiscount);
+            if (maxUsable.compareTo(BigDecimal.ZERO) < 0) {
+                maxUsable = BigDecimal.ZERO;
+            }
+            if (BigDecimal.valueOf(usePoints).compareTo(maxUsable) > 0) {
+                usePoints = maxUsable.intValue();
+            }
+            user.usePoints(usePoints);
+        }
+        BigDecimal usedPointsAmount = BigDecimal.valueOf(usePoints);
+
+        // 4) 배송비 계산 (등급별 무료배송 기준)
         BigDecimal shippingFee = calculateShippingFee(tier, totalAmount);
 
-        // 4) 최종 금액 & 주문 생성
-        BigDecimal finalAmount = calculateFinalAmount(totalAmount, totalDiscount, shippingFee);
+        // 5) 최종 금액 & 주문 생성
+        BigDecimal finalAmount = calculateFinalAmount(totalAmount, totalDiscount.add(usedPointsAmount), shippingFee);
 
         BigDecimal pointRateSnapshot = tier.getPointEarnRate(); // e.g. 1.50 = 1.5%
         int earnedPointsSnapshot = finalAmount.multiply(pointRateSnapshot)
@@ -184,6 +203,7 @@ public class OrderService {
 
         Order order = new Order(orderNumber, userId, totalAmount, totalDiscount,
                 shippingFee, finalAmount, pointRateSnapshot, earnedPointsSnapshot,
+                usePoints,
                 paymentMethod.getCode(), request.shippingAddress(),
                 request.recipientName(), request.recipientPhone());
 
@@ -312,13 +332,18 @@ public class OrderService {
             }
         }
 
-        // 2) 누적금액 & 포인트 차감 & 등급 재계산
+        // 2) 누적금액 & 포인트 차감 & 사용 포인트 환불 & 등급 재계산
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("사용자", userId));
         BigDecimal finalAmount = order.getFinalAmount();
         user.addTotalSpent(finalAmount.negate());
 
         user.addPoints(-order.getEarnedPointsSnapshot());
+
+        // 주문 시 사용한 포인트 환불
+        if (order.getUsedPoints() > 0) {
+            user.addPoints(order.getUsedPoints());
+        }
 
         userTierRepository.findFirstByMinSpentLessThanEqualOrderByTierLevelDesc(user.getTotalSpent())
                 .ifPresent(user::updateTier);

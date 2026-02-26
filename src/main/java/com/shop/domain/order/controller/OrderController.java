@@ -65,6 +65,7 @@ public class OrderController {
         model.addAttribute("estimatedShippingFee", estimatedShippingFee);
         model.addAttribute("estimatedFinalAmount", estimatedFinalAmount);
         model.addAttribute("user", user);
+        model.addAttribute("pointBalance", user.getPointBalance());
         List<UserCoupon> availableCoupons = couponService.getAvailableCoupons(userId);
         model.addAttribute("availableCoupons", availableCoupons);
         model.addAttribute("couponDisplayNames", buildCouponDisplayNames(availableCoupons));

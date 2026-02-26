@@ -140,7 +140,7 @@ class CancelOrderConcurrencyTest {
                 "010-1111-2222",
                 "CARD",
                 BigDecimal.ZERO,
-                null
+                null, null
         );
         Order order = orderService.createOrder(testUserId, request);
         return order.getOrderId();
@@ -357,7 +357,7 @@ class CancelOrderConcurrencyTest {
                 "010-3333-4444",
                 "CARD",
                 BigDecimal.ZERO,
-                null
+                null, null
         );
 
         // Thread A: 주문 취소

@@ -61,9 +61,11 @@
                     </p>
                     <div class="flex justify-between"><span class="text-gray-500">상품금액</span><span th:text="${#numbers.formatDecimal(order.totalAmount,0,'COMMA',0,'POINT')} + '원'">0원</span></div>
                     <div class="flex justify-between"><span class="text-gray-500">할인금액</span><span class="text-red-500" th:text="'-' + ${#numbers.formatDecimal(order.discountAmount,0,'COMMA',0,'POINT')} + '원'">0원</span></div>
+                    <div th:if="${order.usedPoints > 0}" class="flex justify-between"><span class="text-gray-500">포인트 사용</span><span class="text-red-500" th:text="'-' + ${#numbers.formatDecimal(order.usedPoints,0,'COMMA',0,'POINT')} + '원 (' + ${#numbers.formatDecimal(order.usedPoints,0,'COMMA',0,'POINT')} + 'P)'">0원</span></div>
                     <div class="flex justify-between"><span class="text-gray-500">배송비</span><span th:text="${#numbers.formatDecimal(order.shippingFee,0,'COMMA',0,'POINT')} + '원'">0원</span></div>
                     <hr/>
                     <div class="flex justify-between font-bold"><span>총 결제금액</span><span class="text-blue-600" th:text="${#numbers.formatDecimal(order.finalAmount,0,'COMMA',0,'POINT')} + '원'">0원</span></div>
+                    <div th:if="${order.earnedPointsSnapshot > 0}" class="flex justify-between text-xs text-gray-400 mt-1"><span>적립 포인트</span><span th:text="'+' + ${#numbers.formatDecimal(order.earnedPointsSnapshot,0,'COMMA',0,'POINT')} + 'P'">0P</span></div>
                 </div>
             </div>
         </div>

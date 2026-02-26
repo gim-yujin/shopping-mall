@@ -116,6 +116,7 @@ class OrderServiceUnitTest {
 
         when(userRepository.findById(orderOwnerId)).thenReturn(Optional.of(user));
         when(order.getEarnedPointsSnapshot()).thenReturn(100);
+        when(order.getUsedPoints()).thenReturn(0);
 
         when(userCouponRepository.findByOrderId(orderId)).thenReturn(Optional.of(userCoupon));
         when(user.getTotalSpent()).thenReturn(BigDecimal.ZERO);

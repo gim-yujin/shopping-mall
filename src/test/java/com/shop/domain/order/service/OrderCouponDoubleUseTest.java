@@ -203,7 +203,8 @@ class OrderCouponDoubleUseTest {
                 "010-9876-5432",
                 "CARD",
                 BigDecimal.ZERO,
-                testUserCouponId
+                testUserCouponId,
+                null
         );
 
         // When

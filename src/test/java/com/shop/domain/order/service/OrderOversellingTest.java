@@ -185,7 +185,7 @@ class OrderOversellingTest {
                 "010-1234-5678",
                 "CARD",
                 BigDecimal.ZERO,
-                null  // 쿠폰 미사용
+                null, null  // 쿠폰·포인트 미사용
         );
 
         // When: 10명 동시 주문

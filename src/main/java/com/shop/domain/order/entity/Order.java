@@ -43,6 +43,9 @@ public class Order {
     @Column(name = "earned_points_snapshot", nullable = false)
     private Integer earnedPointsSnapshot;
 
+    @Column(name = "used_points", nullable = false)
+    private Integer usedPoints;
+
     @Column(name = "payment_method", length = 20)
     private String paymentMethod;
 
@@ -78,6 +81,7 @@ public class Order {
     public Order(String orderNumber, Long userId, BigDecimal totalAmount, BigDecimal discountAmount,
                  BigDecimal shippingFee, BigDecimal finalAmount,
                  BigDecimal pointEarnRateSnapshot, Integer earnedPointsSnapshot,
+                 Integer usedPoints,
                  String paymentMethod,
                  String shippingAddress, String recipientName, String recipientPhone) {
         this.orderNumber = orderNumber;
@@ -89,6 +93,7 @@ public class Order {
         this.finalAmount = finalAmount;
         this.pointEarnRateSnapshot = pointEarnRateSnapshot;
         this.earnedPointsSnapshot = earnedPointsSnapshot;
+        this.usedPoints = usedPoints;
         this.paymentMethod = paymentMethod;
         this.shippingAddress = shippingAddress;
         this.recipientName = recipientName;
@@ -137,6 +142,7 @@ public class Order {
     public BigDecimal getFinalAmount() { return finalAmount; }
     public BigDecimal getPointEarnRateSnapshot() { return pointEarnRateSnapshot; }
     public Integer getEarnedPointsSnapshot() { return earnedPointsSnapshot; }
+    public Integer getUsedPoints() { return usedPoints; }
     public String getPaymentMethod() { return paymentMethod; }
     public String getShippingAddress() { return shippingAddress; }
     public String getRecipientName() { return recipientName; }

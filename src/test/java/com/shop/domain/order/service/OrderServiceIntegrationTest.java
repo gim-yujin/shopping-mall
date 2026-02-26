@@ -141,7 +141,7 @@ class OrderServiceIntegrationTest {
     private OrderCreateRequest defaultRequest() {
         return new OrderCreateRequest(
                 "서울시 강남구 테스트로 123", "테스트수령인", "010-0000-0000",
-                "CARD", BigDecimal.ZERO, null);
+                "CARD", BigDecimal.ZERO, null, null);
     }
 
     // ==================== createOrder 정상 플로우 ====================
@@ -279,7 +279,7 @@ class OrderServiceIntegrationTest {
 
         OrderCreateRequest request = new OrderCreateRequest(
                 "서울시 강남구 테스트로 123", "테스트수령인", "010-0000-0000",
-                "CARD", BigDecimal.ZERO, userCouponId);
+                "CARD", BigDecimal.ZERO, userCouponId, null);
 
         // When
         Order order = orderService.createOrder(testUserId, request);
@@ -577,7 +577,7 @@ class OrderServiceIntegrationTest {
 
         OrderCreateRequest request = new OrderCreateRequest(
                 "서울시 강남구 테스트로 123", "테스트수령인", "010-0000-0000",
-                "CARD", BigDecimal.ZERO, userCouponId);
+                "CARD", BigDecimal.ZERO, userCouponId, null);
 
         Order order = orderService.createOrder(testUserId, request);
         createdOrderIds.add(order.getOrderId());
@@ -603,5 +603,95 @@ class OrderServiceIntegrationTest {
         assertThat(orderIdOnCoupon).isNull();
 
         System.out.println("  [PASS] 주문 취소 시 쿠폰 복원 완료");
+    }
+
+    // ==================== 포인트 사용 ====================
+
+    @Test
+    @DisplayName("createOrder + 포인트 사용 — 포인트 차감 + 최종금액 반영 + 취소 시 환불")
+    void createOrder_withPoints_deductsAndRefundsOnCancel() {
+        // Given: 사용자에게 포인트 부여
+        int grantPoints = 5000;
+        jdbcTemplate.update(
+                "UPDATE users SET point_balance = point_balance + ? WHERE user_id = ?",
+                grantPoints, testUserId);
+
+        int pointsBefore = jdbcTemplate.queryForObject(
+                "SELECT point_balance FROM users WHERE user_id = ?",
+                Integer.class, testUserId);
+
+        addCartItem(testUserId, testProductId, 1);
+
+        int usePoints = 2000;
+        OrderCreateRequest request = new OrderCreateRequest(
+                "서울시 강남구 테스트로 123", "테스트수령인", "010-0000-0000",
+                "CARD", BigDecimal.ZERO, null, usePoints);
+
+        // When: 주문 생성
+        Order order = orderService.createOrder(testUserId, request);
+        createdOrderIds.add(order.getOrderId());
+
+        // Then: 포인트 차감 확인
+        int pointsAfterOrder = jdbcTemplate.queryForObject(
+                "SELECT point_balance FROM users WHERE user_id = ?",
+                Integer.class, testUserId);
+
+        // 차감된 포인트 = usePoints - 적립 포인트 (순 차감)
+        assertThat(pointsAfterOrder).isEqualTo(pointsBefore - usePoints + order.getEarnedPointsSnapshot());
+
+        // DB에 used_points 저장 확인
+        Integer storedUsedPoints = jdbcTemplate.queryForObject(
+                "SELECT used_points FROM orders WHERE order_id = ?",
+                Integer.class, order.getOrderId());
+        assertThat(storedUsedPoints).isEqualTo(usePoints);
+
+        // 최종금액에 포인트 할인 반영 확인
+        // finalAmount = totalAmount - discountAmount - usedPoints + shippingFee
+        BigDecimal expectedFinal = order.getTotalAmount()
+                .subtract(order.getDiscountAmount())
+                .subtract(BigDecimal.valueOf(usePoints))
+                .add(order.getShippingFee());
+        if (expectedFinal.compareTo(BigDecimal.ZERO) < 0) expectedFinal = BigDecimal.ZERO;
+        assertThat(order.getFinalAmount()).isEqualByComparingTo(expectedFinal);
+
+        // When: 취소
+        orderService.cancelOrder(order.getOrderId(), testUserId);
+
+        // Then: 포인트 완전 원복 (적립 취소 + 사용분 환불)
+        int pointsAfterCancel = jdbcTemplate.queryForObject(
+                "SELECT point_balance FROM users WHERE user_id = ?",
+                Integer.class, testUserId);
+        assertThat(pointsAfterCancel).isEqualTo(pointsBefore);
+
+        System.out.println("  [PASS] 포인트 사용 주문-취소 왕복: 포인트 " + pointsBefore
+                + " → " + pointsAfterOrder + " (사용 " + usePoints + ", 적립 " + order.getEarnedPointsSnapshot() + ")"
+                + " → " + pointsAfterCancel + " (환불)");
+    }
+
+    @Test
+    @DisplayName("createOrder + 포인트 초과 사용 — 보유량 초과 시 예외 발생")
+    void createOrder_withExcessivePoints_throwsException() {
+        // Given: 포인트 잔액을 100으로 설정
+        jdbcTemplate.update(
+                "UPDATE users SET point_balance = 100 WHERE user_id = ?", testUserId);
+
+        addCartItem(testUserId, testProductId, 1);
+
+        OrderCreateRequest request = new OrderCreateRequest(
+                "서울시 강남구 테스트로 123", "테스트수령인", "010-0000-0000",
+                "CARD", BigDecimal.ZERO, null, 99999);
+
+        // When & Then
+        assertThatThrownBy(() -> orderService.createOrder(testUserId, request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("포인트가 부족합니다");
+
+        // 포인트 변화 없음 확인
+        int pointsAfter = jdbcTemplate.queryForObject(
+                "SELECT point_balance FROM users WHERE user_id = ?",
+                Integer.class, testUserId);
+        assertThat(pointsAfter).isEqualTo(100);
+
+        System.out.println("  [PASS] 포인트 초과 사용 시 BusinessException 발생, 포인트 변화 없음");
     }
 }

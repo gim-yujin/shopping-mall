@@ -57,7 +57,7 @@
                     <div th:unless="${#lists.isEmpty(availableCoupons)}">
                         <select name="userCouponId" id="couponSelect"
                                 class="w-full border rounded-lg px-3 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                onchange="updateDiscount()">
+                                onchange="updateTotals()">
                             <option value="">쿠폰을 선택하세요 (선택 안함)</option>
                             <option th:each="uc : ${availableCoupons}"
                                     th:value="${uc.userCouponId}"
@@ -70,6 +70,32 @@
                             </option>
                         </select>
                         <p id="couponMessage" class="text-sm mt-2 hidden"></p>
+                    </div>
+                </div>
+
+                <!-- Points Usage -->
+                <div class="bg-white rounded-lg shadow p-6">
+                    <h2 class="text-lg font-bold mb-4">포인트 사용</h2>
+                    <div class="flex items-center gap-2 mb-2">
+                        <span class="text-sm text-gray-500">보유 포인트</span>
+                        <span class="font-bold text-blue-600" th:text="${#numbers.formatDecimal(pointBalance,0,'COMMA',0,'POINT')} + 'P'">0P</span>
+                    </div>
+                    <div th:if="${pointBalance > 0}">
+                        <div class="flex gap-2">
+                            <div class="relative flex-1">
+                                <input type="number" name="usePoints" id="pointsInput"
+                                       min="0" th:max="${pointBalance}" value="0" step="1"
+                                       placeholder="0"
+                                       class="w-full border rounded-lg px-3 py-2.5 pr-8 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                       oninput="updateTotals()"/>
+                                <span class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">P</span>
+                            </div>
+                            <button type="button" onclick="useAllPoints()" class="px-4 py-2.5 border border-blue-500 text-blue-600 rounded-lg text-sm font-medium hover:bg-blue-50">전액 사용</button>
+                        </div>
+                        <p id="pointsMessage" class="text-sm mt-2 hidden"></p>
+                    </div>
+                    <div th:if="${pointBalance == 0}" class="text-sm text-gray-500">
+                        사용 가능한 포인트가 없습니다.
                     </div>
                 </div>
 
@@ -111,6 +137,10 @@
                             <span class="text-gray-500">쿠폰 할인</span>
                             <span id="discountDisplay" class="text-red-500">0원</span>
                         </div>
+                        <div class="flex justify-between">
+                            <span class="text-gray-500">포인트 사용</span>
+                            <span id="pointsDiscountDisplay" class="text-red-500">0원</span>
+                        </div>
                     </div>
                     <hr class="my-4"/>
                     <div class="flex justify-between font-bold text-lg mb-6">
@@ -128,47 +158,91 @@
 <script th:inline="javascript">
     const totalPrice = /*[[${totalPrice}]]*/ 0;
     const shippingFee = /*[[${estimatedShippingFee}]]*/ 0;
+    const maxPoints = /*[[${pointBalance}]]*/ 0;
 
     function formatNumber(n) {
         return Math.floor(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
     }
 
-    function updateDiscount() {
+    function getCouponDiscount() {
         const select = document.getElementById('couponSelect');
         const msg = document.getElementById('couponMessage');
+        if (!select || !select.value) {
+            if (msg) { msg.textContent = ''; msg.className = 'text-sm mt-2 hidden'; }
+            return 0;
+        }
+        const opt = select.options[select.selectedIndex];
+        const type = opt.dataset.discountType;
+        const value = parseFloat(opt.dataset.discountValue);
+        const minOrder = parseFloat(opt.dataset.minOrder);
+        const maxDiscount = opt.dataset.maxDiscount ? parseFloat(opt.dataset.maxDiscount) : null;
+
+        if (totalPrice < minOrder) {
+            msg.textContent = '최소 주문금액(상품금액 기준) ' + formatNumber(minOrder) + '원 이상이어야 사용 가능합니다.';
+            msg.className = 'text-sm mt-2 text-red-500';
+            select.value = '';
+            return 0;
+        }
+
         let discount = 0;
-
-        if (select && select.value) {
-            const opt = select.options[select.selectedIndex];
-            const type = opt.dataset.discountType;
-            const value = parseFloat(opt.dataset.discountValue);
-            const minOrder = parseFloat(opt.dataset.minOrder);
-            const maxDiscount = opt.dataset.maxDiscount ? parseFloat(opt.dataset.maxDiscount) : null;
-
-            if (totalPrice < minOrder) {
-                msg.textContent = '최소 주문금액(상품금액 기준) ' + formatNumber(minOrder) + '원 이상이어야 사용 가능합니다.';
-                msg.className = 'text-sm mt-2 text-red-500';
-                select.value = '';
-                discount = 0;
-            } else {
-                if (type === 'PERCENT') {
-                    discount = Math.floor(totalPrice * value / 100);
-                    if (maxDiscount && discount > maxDiscount) discount = maxDiscount;
-                } else {
-                    discount = value;
-                }
-                msg.textContent = formatNumber(discount) + '원 할인 적용';
-                msg.className = 'text-sm mt-2 text-blue-600 font-medium';
-            }
+        if (type === 'PERCENT') {
+            discount = Math.floor(totalPrice * value / 100);
+            if (maxDiscount && discount > maxDiscount) discount = maxDiscount;
         } else {
-            if (msg) {
+            discount = value;
+        }
+        msg.textContent = formatNumber(discount) + '원 할인 적용';
+        msg.className = 'text-sm mt-2 text-blue-600 font-medium';
+        return discount;
+    }
+
+    function getPointsUsage(couponDiscount) {
+        const input = document.getElementById('pointsInput');
+        const msg = document.getElementById('pointsMessage');
+        if (!input) return 0;
+
+        let points = parseInt(input.value) || 0;
+        if (points < 0) points = 0;
+
+        // 상한 1: 보유 포인트
+        if (points > maxPoints) points = maxPoints;
+
+        // 상한 2: 상품금액 - 쿠폰할인 (결제금액이 0 미만이 되지 않도록)
+        const maxUsable = Math.max(0, Math.floor(totalPrice - couponDiscount));
+        if (points > maxUsable) points = maxUsable;
+
+        input.value = points;
+
+        if (msg) {
+            if (points > 0) {
+                msg.textContent = formatNumber(points) + 'P 사용 (-' + formatNumber(points) + '원)';
+                msg.className = 'text-sm mt-2 text-blue-600 font-medium';
+            } else {
                 msg.textContent = '';
                 msg.className = 'text-sm mt-2 hidden';
             }
         }
+        return points;
+    }
 
-        document.getElementById('discountDisplay').textContent = discount > 0 ? '-' + formatNumber(discount) + '원' : '0원';
-        const finalPrice = Math.max(0, totalPrice - discount + shippingFee);
+    function useAllPoints() {
+        const input = document.getElementById('pointsInput');
+        if (input) {
+            input.value = maxPoints;
+            updateTotals();
+        }
+    }
+
+    function updateTotals() {
+        const couponDiscount = getCouponDiscount();
+        const pointsUsed = getPointsUsage(couponDiscount);
+
+        document.getElementById('discountDisplay').textContent =
+            couponDiscount > 0 ? '-' + formatNumber(couponDiscount) + '원' : '0원';
+        document.getElementById('pointsDiscountDisplay').textContent =
+            pointsUsed > 0 ? '-' + formatNumber(pointsUsed) + '원' : '0원';
+
+        const finalPrice = Math.max(0, totalPrice - couponDiscount - pointsUsed + shippingFee);
         document.getElementById('finalPriceDisplay').textContent = formatNumber(finalPrice) + '원';
     }
 </script>
