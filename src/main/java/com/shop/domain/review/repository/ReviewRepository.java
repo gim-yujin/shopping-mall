@@ -20,7 +20,7 @@ public interface ReviewRepository extends JpaRepository<Review, Long> {
 
     boolean existsByUserIdAndOrderItemId(Long userId, Long orderItemId);
 
-    boolean existsByUserIdAndProductId(Long userId, Long productId);
+    boolean existsByUserIdAndProductIdAndOrderItemIdIsNull(Long userId, Long productId);
 
     Page<Review> findByUserIdOrderByCreatedAtDesc(Long userId, Pageable pageable);
 

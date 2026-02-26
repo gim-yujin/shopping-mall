@@ -106,7 +106,7 @@ class ReviewServiceUnitTest {
         Long productId = 101L;
         ReviewCreateRequest request = new ReviewCreateRequest(productId, null, 5, "중복", "내용");
 
-        when(reviewRepository.existsByUserIdAndProductId(userId, productId)).thenReturn(true);
+        when(reviewRepository.existsByUserIdAndProductIdAndOrderItemIdIsNull(userId, productId)).thenReturn(true);
 
         assertThatThrownBy(() -> reviewService.createReview(userId, request))
                 .isInstanceOf(BusinessException.class)

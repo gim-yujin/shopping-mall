@@ -96,7 +96,7 @@ public class ReviewService {
 
     private void validateDuplicateReview(Long userId, ReviewCreateRequest request) {
         boolean duplicated = request.orderItemId() == null
-                ? reviewRepository.existsByUserIdAndProductId(userId, request.productId())
+                ? reviewRepository.existsByUserIdAndProductIdAndOrderItemIdIsNull(userId, request.productId())
                 : reviewRepository.existsByUserIdAndOrderItemId(userId, request.orderItemId());
 
         if (duplicated) {
