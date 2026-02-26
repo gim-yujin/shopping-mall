@@ -95,17 +95,18 @@ public class ReviewService {
     }
 
     private void validateDuplicateReview(Long userId, ReviewCreateRequest request) {
-        if (reviewRepository.existsByUserIdAndOrderItemId(userId, request.orderItemId())) {
+        boolean duplicated = request.orderItemId() == null
+                ? reviewRepository.existsByUserIdAndProductIdAndOrderItemIdIsNull(userId, request.productId())
+                : reviewRepository.existsByUserIdAndOrderItemId(userId, request.orderItemId());
+
+        if (duplicated) {
             throw new BusinessException("DUPLICATE_REVIEW", "이미 리뷰를 작성하였습니다.");
         }
     }
 
     private void validateOrderItemForReview(Long userId, ReviewCreateRequest request) {
         if (request.orderItemId() == null) {
-            throw new BusinessException(
-                    "REVIEW_ORDER_ITEM_REQUIRED",
-                    "리뷰 작성 시 주문 항목 선택은 필수입니다."
-            );
+            return;
         }
 
         OrderItem orderItem = orderItemRepository.findById(request.orderItemId())
