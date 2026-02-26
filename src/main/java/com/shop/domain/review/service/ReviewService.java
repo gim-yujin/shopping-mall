@@ -16,6 +16,7 @@ import org.springframework.cache.Cache;
 import org.springframework.cache.CacheManager;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.cache.caffeine.CaffeineCache;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -71,7 +72,13 @@ public class ReviewService {
 
         Review review = new Review(request.productId(), userId, request.orderItemId(),
                 request.rating(), request.title(), request.content());
-        Review saved = reviewRepository.save(review);
+
+        Review saved;
+        try {
+            saved = reviewRepository.save(review);
+        } catch (DataIntegrityViolationException exception) {
+            throw new BusinessException("DUPLICATE_REVIEW", "이미 리뷰를 작성하였습니다.");
+        }
 
         updateProductRating(request.productId());
         productService.evictProductDetailCache(request.productId());

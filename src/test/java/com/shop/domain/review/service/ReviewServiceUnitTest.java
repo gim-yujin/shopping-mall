@@ -19,6 +19,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 
 import java.math.BigDecimal;
 import java.util.Optional;
@@ -112,6 +113,24 @@ class ReviewServiceUnitTest {
                 .hasMessageContaining("이미 리뷰를 작성");
 
         verify(reviewRepository, never()).save(any());
+        verify(productRepository, never()).findById(any());
+        verifyNoInteractions(productService);
+    }
+
+    @Test
+    @DisplayName("createReview - 저장 시점 unique 충돌도 DUPLICATE_REVIEW로 변환")
+    void createReview_duplicateAtDatabaseLevel_throwsBusinessException() {
+        Long userId = 11L;
+        Long productId = 101L;
+        ReviewCreateRequest request = new ReviewCreateRequest(productId, null, 5, "중복", "내용");
+
+        when(reviewRepository.existsByUserIdAndProductId(userId, productId)).thenReturn(false);
+        when(reviewRepository.save(any(Review.class))).thenThrow(new DataIntegrityViolationException("duplicate key"));
+
+        assertThatThrownBy(() -> reviewService.createReview(userId, request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("이미 리뷰를 작성");
+
         verify(productRepository, never()).findById(any());
         verifyNoInteractions(productService);
     }
