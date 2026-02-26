@@ -4,10 +4,13 @@ import com.shop.domain.user.dto.SignupRequest;
 import com.shop.domain.user.entity.User;
 import com.shop.global.exception.BusinessException;
 import com.shop.global.exception.ResourceNotFoundException;
+import com.shop.global.security.CustomUserDetailsService;
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.cache.CacheManager;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.TestPropertySource;
 
@@ -44,6 +47,12 @@ class UserServiceIntegrationTest {
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
+    @Autowired
+    private CustomUserDetailsService customUserDetailsService;
+
+    @Autowired
+    private CacheManager cacheManager;
+
     private final List<Long> createdUserIds = new ArrayList<>();
 
     // 기존 사용자 (프로필/비밀번호 테스트용)
@@ -68,6 +77,7 @@ class UserServiceIntegrationTest {
         existingOriginalPhone = (String) state.get("phone");
         existingOriginalPasswordHash = (String) state.get("password_hash");
 
+        clearUserDetailsCache();
         System.out.println("  [setUp] 기존 사용자 ID: " + existingUserId);
     }
 
@@ -84,6 +94,13 @@ class UserServiceIntegrationTest {
                 "UPDATE users SET email = ?, name = ?, phone = ?, password_hash = ? WHERE user_id = ?",
                 existingOriginalEmail, existingOriginalName, existingOriginalPhone,
                 existingOriginalPasswordHash, existingUserId);
+    }
+
+    private void clearUserDetailsCache() {
+        var cache = cacheManager.getCache("userDetails");
+        if (cache != null) {
+            cache.clear();
+        }
     }
 
     private String uniqueSuffix() {
@@ -300,6 +317,27 @@ class UserServiceIntegrationTest {
         assertThat(passwordEncoder.matches(knownPassword, updatedHash)).isFalse();
 
         System.out.println("  [PASS] 비밀번호 변경 성공");
+    }
+
+    @Test
+    @DisplayName("changePassword 후 userDetails 캐시가 즉시 무효화되어 새 비밀번호만 유효")
+    void changePassword_evictsUserDetailsCache_immediately() {
+        String username = jdbcTemplate.queryForObject(
+                "SELECT username FROM users WHERE user_id = ?",
+                String.class, existingUserId);
+
+        String knownPassword = "known_password_123!";
+        jdbcTemplate.update("UPDATE users SET password_hash = ? WHERE user_id = ?",
+                passwordEncoder.encode(knownPassword), existingUserId);
+
+        UserDetails before = customUserDetailsService.loadUserByUsername(username);
+
+        userService.changePassword(existingUserId, knownPassword, "new_password_456!");
+
+        UserDetails after = customUserDetailsService.loadUserByUsername(username);
+        assertThat(passwordEncoder.matches("new_password_456!", after.getPassword())).isTrue();
+        assertThat(passwordEncoder.matches(knownPassword, after.getPassword())).isFalse();
+        assertThat(after.getPassword()).isNotEqualTo(before.getPassword());
     }
 
     @Test
