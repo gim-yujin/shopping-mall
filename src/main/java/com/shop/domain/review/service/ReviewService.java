@@ -67,9 +67,7 @@ public class ReviewService {
     }
 
     public List<OrderItem> getReviewableOrderItems(Long userId, Long productId) {
-        return orderItemRepository.findDeliveredItemsForReview(userId, productId).stream()
-                .filter(orderItem -> !reviewRepository.existsByUserIdAndOrderItemId(userId, orderItem.getOrderItemId()))
-                .toList();
+        return orderItemRepository.findDeliveredItemsForReviewExcludingReviewed(userId, productId);
     }
 
     @Transactional
