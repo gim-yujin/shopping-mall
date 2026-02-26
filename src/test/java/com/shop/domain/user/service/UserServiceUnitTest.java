@@ -1,5 +1,6 @@
 package com.shop.domain.user.service;
 
+import com.shop.domain.user.dto.SignupRequest;
 import com.shop.domain.user.entity.User;
 import com.shop.domain.user.repository.UserRepository;
 import com.shop.domain.user.repository.UserTierRepository;
@@ -53,6 +54,21 @@ class UserServiceUnitTest {
         assertThatThrownBy(() -> userService.updateProfile(1L, "홍길동", "010-1234-5678", "invalid-email"))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("올바른 이메일 형식");
+    }
+
+
+    @Test
+    @DisplayName("signup 방어 검증 - 약한 비밀번호")
+    void signup_weakPassword_throwsException() {
+        assertThatThrownBy(() -> userService.signup(new SignupRequest(
+                "weakuser",
+                "weak@test.com",
+                "password",
+                "약한유저",
+                "010-1234-5678"
+        )))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("비밀번호는 영문, 숫자, 특수문자를 포함해야 합니다.");
     }
 
     @Test
