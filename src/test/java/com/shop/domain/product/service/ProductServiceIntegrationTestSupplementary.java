@@ -6,6 +6,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.cache.CacheManager;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.TestPropertySource;
 
@@ -38,6 +39,9 @@ class ProductServiceIntegrationTestSupplementary {
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
+    @Autowired
+    private CacheManager cacheManager;
+
     private Integer testCategoryId;
 
     @BeforeEach
@@ -55,6 +59,12 @@ class ProductServiceIntegrationTestSupplementary {
                 Integer.class);
 
         System.out.println("  [setUp] 카테고리 ID: " + testCategoryId);
+    }
+
+    private void evictBestSellersCache() {
+        if (cacheManager.getCache("bestSellers") != null) {
+            cacheManager.getCache("bestSellers").clear();
+        }
     }
 
     @Test
@@ -120,6 +130,7 @@ class ProductServiceIntegrationTestSupplementary {
             jdbcTemplate.update("UPDATE products SET sales_count = ? WHERE product_id = ?", firstSalesBeforeCancel, firstProductId);
             jdbcTemplate.update("UPDATE products SET sales_count = ? WHERE product_id = ?", secondSalesStable, secondProductId);
 
+            evictBestSellersCache();
             Page<Product> boostedResult = productService.getBestSellers(PageRequest.of(0, 50));
             List<Long> boostedIds = boostedResult.getContent().stream()
                     .map(Product::getProductId)
@@ -133,6 +144,7 @@ class ProductServiceIntegrationTestSupplementary {
 
             jdbcTemplate.update("UPDATE products SET sales_count = ? WHERE product_id = ?", firstSalesAfterCancel, firstProductId);
 
+            evictBestSellersCache();
             Page<Product> rolledBackResult = productService.getBestSellers(PageRequest.of(0, 50));
             List<Long> rolledBackIds = rolledBackResult.getContent().stream()
                     .map(Product::getProductId)
