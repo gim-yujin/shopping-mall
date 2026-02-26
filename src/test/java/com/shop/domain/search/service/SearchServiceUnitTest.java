@@ -6,7 +6,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.ValueSource;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -62,9 +62,9 @@ class SearchServiceUnitTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"Nike", " nike ", "NIKE"})
-    @DisplayName("logSearch - 대소문자/공백이 달라도 입력 검색어를 그대로 저장")
-    void logSearch_keepsKeywordVariants(String keyword) {
+    @CsvSource({"Nike, Nike", "' nike ', nike", "NIKE, NIKE"})
+    @DisplayName("logSearch - 대소문자/공백 차이는 기존 정책(양끝 trim)대로 저장")
+    void logSearch_keepsKeywordVariants(String keyword, String expectedStoredKeyword) {
         searchService.logSearch(11L, keyword, 7, "127.0.0.1", "JUnit");
 
         ArgumentCaptor<com.shop.domain.search.entity.SearchLog> captor =
@@ -73,7 +73,7 @@ class SearchServiceUnitTest {
 
         assertThat(captor.getValue().getSearchKeyword())
                 .as("검색 로그의 원문 키워드 저장 동작은 그대로 유지되어야 함")
-                .isEqualTo(keyword);
+                .isEqualTo(expectedStoredKeyword);
     }
 
     @Test
