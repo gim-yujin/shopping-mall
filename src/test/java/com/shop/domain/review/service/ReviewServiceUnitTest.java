@@ -100,15 +100,17 @@ class ReviewServiceUnitTest {
     }
 
     @Test
-    @DisplayName("createReview - orderItemId가 null이면 REVIEW_ORDER_ITEM_REQUIRED 예외")
-    void createReview_withoutOrderItem_throwsRequiredException() {
+    @DisplayName("createReview - orderItemId가 null이면 user/product 중복 기준으로 검증")
+    void createReview_withoutOrderItem_usesUserProductDuplicatePolicy() {
         Long userId = 11L;
         Long productId = 101L;
         ReviewCreateRequest request = new ReviewCreateRequest(productId, null, 5, "중복", "내용");
 
+        when(reviewRepository.existsByUserIdAndProductId(userId, productId)).thenReturn(true);
+
         assertThatThrownBy(() -> reviewService.createReview(userId, request))
                 .isInstanceOf(BusinessException.class)
-                .hasMessageContaining("주문 항목 선택은 필수");
+                .hasMessageContaining("이미 리뷰를 작성");
 
         verify(reviewRepository, never()).existsByUserIdAndOrderItemId(any(), any());
         verify(reviewRepository, never()).save(any());
