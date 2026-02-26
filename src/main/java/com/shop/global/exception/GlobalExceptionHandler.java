@@ -6,15 +6,19 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.ui.Model;
+import org.springframework.util.AntPathMatcher;
 import org.springframework.validation.BindException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseStatus;
+import org.springframework.web.util.UriComponentsBuilder;
 import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 
 import java.net.URI;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -22,6 +26,16 @@ import java.util.Optional;
 public class GlobalExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
+    private static final AntPathMatcher PATH_MATCHER = new AntPathMatcher();
+
+    private static final Map<String, List<String>> REDIRECT_PATH_POLICY = new LinkedHashMap<>();
+
+    static {
+        REDIRECT_PATH_POLICY.put("/cart", List.of());
+        REDIRECT_PATH_POLICY.put("/orders", List.of("page", "size", "status"));
+        REDIRECT_PATH_POLICY.put("/mypage", List.of("tab"));
+        REDIRECT_PATH_POLICY.put("/products/**", List.of("keyword", "categoryId", "sort", "page", "size"));
+    }
 
     @ExceptionHandler(ResourceNotFoundException.class)
     @ResponseStatus(HttpStatus.NOT_FOUND)
@@ -68,28 +82,84 @@ public class GlobalExceptionHandler {
     }
 
     /**
-     * Referer 헤더에서 같은 호스트의 경로를 추출한다.
-     * Referer가 없거나 외부 도메인이면 "/" 로 폴백한다.
+     * Referer 헤더에서 안전한 내부 경로만 추출한다.
+     * 허용되지 않은 경로이거나 파싱에 실패하면 "/" 로 폴백한다.
      */
     private String resolveRedirectUrl(HttpServletRequest request) {
         String referer = request.getHeader("Referer");
         if (referer == null || referer.isBlank()) {
             return "/";
         }
+
         try {
             URI refererUri = URI.create(referer);
-            // 같은 호스트인지 검증 — Open Redirect 방지
-            String serverHost = request.getServerName();
-            if (!serverHost.equalsIgnoreCase(refererUri.getHost())) {
+            String path = Optional.ofNullable(refererUri.getPath()).orElse("");
+
+            if (!isAllowedRedirectPath(path) || !isTrustedRefererHost(request, refererUri)) {
                 return "/";
             }
-            String path = refererUri.getPath();
-            String query = refererUri.getQuery();
-            return (query != null) ? path + "?" + query : path;
+
+            return appendAllowedQueryParams(path, refererUri);
         } catch (IllegalArgumentException e) {
             log.debug("Invalid Referer header: {}", referer);
             return "/";
         }
+    }
+
+    private boolean isAllowedRedirectPath(String path) {
+        return REDIRECT_PATH_POLICY.keySet().stream()
+                .anyMatch(pattern -> PATH_MATCHER.match(pattern, path));
+    }
+
+    private String appendAllowedQueryParams(String path, URI refererUri) {
+        List<String> allowedQueryParams = resolveAllowedQueryParams(path);
+        if (allowedQueryParams.isEmpty() || refererUri.getRawQuery() == null) {
+            return path;
+        }
+
+        var queryParams = UriComponentsBuilder.fromUri(refererUri)
+                .build()
+                .getQueryParams();
+
+        UriComponentsBuilder builder = UriComponentsBuilder.fromPath(path);
+        for (String paramName : allowedQueryParams) {
+            List<String> values = queryParams.get(paramName);
+            if (values != null && !values.isEmpty()) {
+                builder.queryParam(paramName, values.toArray());
+            }
+        }
+
+        return builder.build().toUriString();
+    }
+
+    private List<String> resolveAllowedQueryParams(String path) {
+        return REDIRECT_PATH_POLICY.entrySet().stream()
+                .filter(entry -> PATH_MATCHER.match(entry.getKey(), path))
+                .map(Map.Entry::getValue)
+                .findFirst()
+                .orElse(List.of());
+    }
+
+    private boolean isTrustedRefererHost(HttpServletRequest request, URI refererUri) {
+        String refererHost = refererUri.getHost();
+        if (refererHost == null || refererHost.isBlank()) {
+            return true;
+        }
+
+        String hostHeader = Optional.ofNullable(request.getHeader("X-Forwarded-Host"))
+                .orElse(request.getHeader("Host"));
+
+        if (hostHeader == null || hostHeader.isBlank()) {
+            return false;
+        }
+
+        String trustedHost = hostHeader.split(",")[0].trim();
+        int portIndex = trustedHost.indexOf(":");
+        if (portIndex >= 0) {
+            trustedHost = trustedHost.substring(0, portIndex);
+        }
+
+        return refererHost.equalsIgnoreCase(trustedHost);
     }
 
     private boolean isAjaxRequest(HttpServletRequest request) {
