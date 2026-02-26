@@ -117,7 +117,7 @@ public class UserService {
         if (cache == null || username == null) {
             return;
         }
-        cache.evict(username);
+        cache.evict(normalizeUsername(username));
     }
 
     private void validateProfileInput(String name, String phone, String email) {

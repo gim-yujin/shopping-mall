@@ -29,7 +29,7 @@ public class CustomUserDetailsService implements UserDetailsService {
      * TTL 5분 (CacheConfig 공통) → 비밀번호 변경 시 최대 5분 후 반영.
      */
     @Override
-    @Cacheable(value = "userDetails", key = "#root.target.userDetailsCacheKey(#username)")
+    @Cacheable(value = "userDetails", key = "(#username == null ? '' : #username.trim().toLowerCase())")
     @Transactional(readOnly = true)
     public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
         String normalizedUsername = normalizeUsername(username);
@@ -50,9 +50,6 @@ public class CustomUserDetailsService implements UserDetailsService {
         );
     }
 
-    String userDetailsCacheKey(String username) {
-        return normalizeUsername(username);
-    }
 
     private String normalizeUsername(String username) {
         return username == null ? "" : username.trim().toLowerCase(Locale.ROOT);
