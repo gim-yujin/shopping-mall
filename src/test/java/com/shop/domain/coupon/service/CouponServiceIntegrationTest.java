@@ -220,7 +220,7 @@ class CouponServiceIntegrationTest {
         // When & Then
         assertThatThrownBy(() -> couponService.issueCoupon(testUserId, couponCode))
                 .isInstanceOf(BusinessException.class)
-                .hasMessageContaining("유효하지 않은");
+                .hasMessageContaining("수량이 모두 소진");
 
         System.out.println("  [PASS] 수량 소진 쿠폰 → BusinessException");
     }

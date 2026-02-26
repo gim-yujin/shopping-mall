@@ -18,12 +18,12 @@ import static org.assertj.core.api.Assertions.assertThat;
  *
  * 시나리오 1 — 초과 발급 (Over-Issuance)
  *   총 수량 5장인 쿠폰에 100명이 동시 발급 요청
- *   위험: Coupon에 락 없이 usedQuantity를 읽으므로 100명 모두 "수량 남음"으로 판단
+ *   위험: 동시 요청 시 수량 체크/증가가 원자적이지 않으면 초과 발급 발생
  *   기대: 정확히 5명만 성공
  *
  * 시나리오 2 — 중복 발급 (Duplicate Issuance)
  *   같은 사용자가 같은 쿠폰을 100회 동시 요청
- *   위험: (user_id, coupon_id) UNIQUE 제약이 없으므로 여러 장 발급 가능
+ *   위험: 애플리케이션 레벨 중복 체크만으로는 레이스에서 중복 저장 가능
  *   기대: 정확히 1장만 발급
  */
 @SpringBootTest

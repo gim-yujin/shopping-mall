@@ -12,7 +12,6 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import jakarta.persistence.EntityManager;
 import java.util.List;
 
 @Service
@@ -21,13 +20,9 @@ public class CouponService {
 
     private final CouponRepository couponRepository;
     private final UserCouponRepository userCouponRepository;
-    private final EntityManager entityManager;
-
-    public CouponService(CouponRepository couponRepository, UserCouponRepository userCouponRepository,
-                         EntityManager entityManager) {
+    public CouponService(CouponRepository couponRepository, UserCouponRepository userCouponRepository) {
         this.couponRepository = couponRepository;
         this.userCouponRepository = userCouponRepository;
-        this.entityManager = entityManager;
     }
 
     @Cacheable(value = "activeCoupons", key = "T(com.shop.global.cache.CacheKeyGenerator).pageable(#pageable)")
@@ -45,18 +40,15 @@ public class CouponService {
 
     @Transactional
     public void issueCoupon(Long userId, String couponCode) {
-        // 비관적 락으로 쿠폰 조회 → 수량 검증 직렬화
-        Coupon coupon = couponRepository.findByCouponCodeWithLock(couponCode)
+        Coupon coupon = couponRepository.findByCouponCode(couponCode)
                 .orElseThrow(() -> new ResourceNotFoundException("쿠폰", couponCode));
-        entityManager.refresh(coupon);
         issueToUser(userId, coupon);
     }
 
     @Transactional
     public void issueCouponById(Long userId, Integer couponId) {
-        Coupon coupon = couponRepository.findByIdWithLock(couponId)
+        Coupon coupon = couponRepository.findById(couponId)
                 .orElseThrow(() -> new ResourceNotFoundException("쿠폰", couponId));
-        entityManager.refresh(coupon);
         issueToUser(userId, coupon);
     }
 
@@ -68,7 +60,10 @@ public class CouponService {
             throw new BusinessException("ALREADY_ISSUED", "이미 발급받은 쿠폰입니다.");
         }
 
-        coupon.incrementUsed();
+        int updated = couponRepository.incrementUsedQuantityIfAvailable(coupon.getCouponId());
+        if (updated == 0) {
+            throw new BusinessException("COUPON_SOLD_OUT", "쿠폰 수량이 모두 소진되었습니다.");
+        }
 
         // UNIQUE 제약(uk_user_coupon_user_coupon)으로 동시 중복 발급 방지
         try {
