@@ -372,8 +372,9 @@ class ReviewServiceIntegrationTest {
     @DisplayName("deleteReview 성공 — 삭제 후 상품 평점 재계산")
     void deleteReview_success() {
         // Given: 리뷰 생성
+        Long orderItemId = createOrderItemForReview(testUserId, testProductId, "DELIVERED");
         Review review = reviewService.createReview(testUserId,
-                new ReviewCreateRequest(testProductId, null, 5, "삭제될 리뷰", null));
+                new ReviewCreateRequest(testProductId, orderItemId, 5, "삭제될 리뷰", null));
         createdReviewIds.add(review.getReviewId());
 
         int countAfterCreate = jdbcTemplate.queryForObject(
