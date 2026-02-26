@@ -65,6 +65,22 @@ public class OrderService {
 
     private static final BigDecimal SHIPPING_FEE_BASE = new BigDecimal("3000");
 
+    public BigDecimal calculateShippingFee(UserTier tier, BigDecimal itemTotalAmount) {
+        BigDecimal freeThreshold = tier.getFreeShippingThreshold();
+        if (freeThreshold.compareTo(BigDecimal.ZERO) == 0 || itemTotalAmount.compareTo(freeThreshold) >= 0) {
+            return BigDecimal.ZERO;
+        }
+        return SHIPPING_FEE_BASE;
+    }
+
+    public BigDecimal calculateFinalAmount(BigDecimal itemTotalAmount, BigDecimal totalDiscount, BigDecimal shippingFee) {
+        BigDecimal finalAmount = itemTotalAmount.subtract(totalDiscount).add(shippingFee);
+        if (finalAmount.compareTo(BigDecimal.ZERO) < 0) {
+            return BigDecimal.ZERO;
+        }
+        return finalAmount;
+    }
+
     @Transactional
     public Order createOrder(Long userId, OrderCreateRequest request) {
         List<Cart> cartItems = cartRepository.findByUserIdWithProduct(userId);
@@ -125,11 +141,9 @@ public class OrderService {
             ));
         }
 
-        // 2) 쿠폰 할인 적용 (등급 할인 후 금액 기준)
+        // 2) 쿠폰 할인 적용 (상품 금액 기준)
         BigDecimal couponDiscount = BigDecimal.ZERO;
         UserCoupon userCoupon = null;
-        BigDecimal afterTierAmount = totalAmount.subtract(tierDiscountTotal);
-
         if (request.userCouponId() != null) {
             userCoupon = userCouponRepository.findByIdWithLock(request.userCouponId())
                     .orElseThrow(() -> new BusinessException("COUPON_NOT_FOUND", "쿠폰을 찾을 수 없습니다."));
@@ -141,25 +155,17 @@ public class OrderService {
                 throw new BusinessException("COUPON_EXPIRED", "사용할 수 없는 쿠폰입니다.");
             }
 
-            couponDiscount = userCoupon.getCoupon().calculateDiscount(afterTierAmount);
+            // 쿠폰 최소 주문 기준은 "상품 금액(등급 할인/쿠폰 할인 전)" 기준으로 적용한다.
+            couponDiscount = userCoupon.getCoupon().calculateDiscount(totalAmount);
         }
 
         BigDecimal totalDiscount = tierDiscountTotal.add(couponDiscount);
 
         // 3) 배송비 계산 (등급별 무료배송 기준)
-        BigDecimal shippingFee;
-        BigDecimal freeThreshold = tier.getFreeShippingThreshold();
-        if (freeThreshold.compareTo(BigDecimal.ZERO) == 0 || totalAmount.compareTo(freeThreshold) >= 0) {
-            shippingFee = BigDecimal.ZERO;
-        } else {
-            shippingFee = SHIPPING_FEE_BASE;
-        }
+        BigDecimal shippingFee = calculateShippingFee(tier, totalAmount);
 
         // 4) 최종 금액 & 주문 생성
-        BigDecimal finalAmount = totalAmount.subtract(totalDiscount).add(shippingFee);
-        if (finalAmount.compareTo(BigDecimal.ZERO) < 0) {
-            finalAmount = BigDecimal.ZERO;
-        }
+        BigDecimal finalAmount = calculateFinalAmount(totalAmount, totalDiscount, shippingFee);
 
         BigDecimal pointRateSnapshot = tier.getPointEarnRate(); // e.g. 1.50 = 1.5%
         int earnedPointsSnapshot = finalAmount.multiply(pointRateSnapshot)

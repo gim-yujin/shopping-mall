@@ -20,6 +20,8 @@ import org.springframework.validation.BindingResult;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.support.RedirectAttributes;
+
+import java.math.BigDecimal;
 import java.text.NumberFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -51,8 +53,14 @@ public class OrderController {
             return "redirect:/cart";
         }
         User user = userService.findById(userId);
+        BigDecimal totalPrice = cartService.calculateTotal(items);
+        BigDecimal estimatedShippingFee = orderService.calculateShippingFee(user.getTier(), totalPrice);
+        BigDecimal estimatedFinalAmount = orderService.calculateFinalAmount(totalPrice, BigDecimal.ZERO, estimatedShippingFee);
+
         model.addAttribute("cartItems", items);
-        model.addAttribute("totalPrice", cartService.calculateTotal(items));
+        model.addAttribute("totalPrice", totalPrice);
+        model.addAttribute("estimatedShippingFee", estimatedShippingFee);
+        model.addAttribute("estimatedFinalAmount", estimatedFinalAmount);
         model.addAttribute("user", user);
         List<UserCoupon> availableCoupons = couponService.getAvailableCoupons(userId);
         model.addAttribute("availableCoupons", availableCoupons);
@@ -142,7 +150,7 @@ public class OrderController {
 
             String displayName = coupon.getCouponName()
                     + " (" + discountText
-                    + " 할인, 최소주문 " + numberFormat.format(coupon.getMinOrderAmount()) + "원)";
+                    + " 할인, 최소주문(상품금액 기준) " + numberFormat.format(coupon.getMinOrderAmount()) + "원)";
 
             displayNames.put(userCoupon.getUserCouponId(), displayName);
         }
