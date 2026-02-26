@@ -62,13 +62,18 @@
                         </div>
                         <div class="flex justify-between">
                             <span class="text-gray-500">배송비</span>
-                            <span class="text-green-600">무료</span>
+                            <span th:if="${shippingFee.compareTo(T(java.math.BigDecimal).ZERO) == 0}" class="text-green-600">무료</span>
+                            <span th:unless="${shippingFee.compareTo(T(java.math.BigDecimal).ZERO) == 0}" th:text="${#numbers.formatDecimal(shippingFee,0,'COMMA',0,'POINT')} + '원'">3,000원</span>
                         </div>
+                        <p th:if="${shippingFee.compareTo(T(java.math.BigDecimal).ZERO) > 0 and freeShippingThreshold != null and freeShippingThreshold.compareTo(T(java.math.BigDecimal).ZERO) > 0}"
+                           class="text-xs text-gray-400 text-right"
+                           th:text="${#numbers.formatDecimal(freeShippingThreshold,0,'COMMA',0,'POINT')} + '원 이상 주문 시 무료배송'"></p>
                     </div>
                     <hr class="my-4"/>
                     <div class="flex justify-between font-bold text-lg">
                         <span>총 결제금액</span>
-                        <span class="text-blue-600" id="totalPrice" th:text="${#numbers.formatDecimal(totalPrice,0,'COMMA',0,'POINT')} + '원'">0원</span>
+                        <span class="text-blue-600" id="totalPrice"
+                              th:text="${#numbers.formatDecimal(totalPrice.add(shippingFee),0,'COMMA',0,'POINT')} + '원'">0원</span>
                     </div>
                     <a th:href="@{/orders/checkout}" class="block mt-4 bg-blue-600 text-white text-center py-3 rounded-lg font-medium hover:bg-blue-700">주문하기</a>
                     <a th:href="@{/products}" class="block mt-2 text-center text-sm text-gray-500 hover:text-gray-700">쇼핑 계속하기</a>

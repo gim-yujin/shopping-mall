@@ -13,12 +13,6 @@ java {
     }
 }
 
-configurations {
-    compileOnly {
-        extendsFrom annotationProcessor
-    }
-}
-
 repositories {
     mavenCentral()
 }
@@ -41,13 +35,6 @@ dependencies {
 
     // PostgreSQL
     runtimeOnly 'org.postgresql:postgresql'
-
-    // Jackson for JSONB
-    implementation 'com.vladmihalcea:hibernate-types-60:2.21.1'
-
-    // Lombok
-    compileOnly 'org.projectlombok:lombok'
-    annotationProcessor 'org.projectlombok:lombok'
 
     // Dev Tools
     developmentOnly 'org.springframework.boot:spring-boot-devtools'

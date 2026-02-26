@@ -19,7 +19,7 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
 
     Optional<Order> findByOrderNumber(String orderNumber);
 
-    @Query("SELECT o FROM Order o WHERE o.userId = :userId AND o.orderId = :orderId")
+    @Query("SELECT o FROM Order o LEFT JOIN FETCH o.items WHERE o.userId = :userId AND o.orderId = :orderId")
     Optional<Order> findByIdAndUserId(@Param("orderId") Long orderId, @Param("userId") Long userId);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)

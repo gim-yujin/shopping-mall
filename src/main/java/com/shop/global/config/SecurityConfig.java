@@ -64,8 +64,7 @@ public class SecurityConfig {
             .authenticationProvider(authenticationProvider())
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/", "/products/**", "/categories/**", "/search/**",
-                    "/auth/**", "/static/**", "/css/**", "/images/**", "/error/**",
-                    "/api/products/**").permitAll()
+                    "/auth/**", "/static/**", "/css/**", "/images/**", "/error/**").permitAll()
                 .requestMatchers("/admin/**").hasRole("ADMIN")
                 .anyRequest().authenticated()
             )

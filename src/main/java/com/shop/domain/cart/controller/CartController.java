@@ -2,12 +2,16 @@ package com.shop.domain.cart.controller;
 
 import com.shop.domain.cart.entity.Cart;
 import com.shop.domain.cart.service.CartService;
+import com.shop.domain.order.service.OrderService;
+import com.shop.domain.user.entity.User;
+import com.shop.domain.user.service.UserService;
 import com.shop.global.security.SecurityUtil;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.support.RedirectAttributes;
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
 
@@ -16,17 +20,28 @@ import java.util.Map;
 public class CartController {
 
     private final CartService cartService;
+    private final UserService userService;
+    private final OrderService orderService;
 
-    public CartController(CartService cartService) {
+    public CartController(CartService cartService, UserService userService, OrderService orderService) {
         this.cartService = cartService;
+        this.userService = userService;
+        this.orderService = orderService;
     }
 
     @GetMapping
     public String cartPage(Model model) {
         Long userId = SecurityUtil.getCurrentUserId().orElseThrow();
         List<Cart> items = cartService.getCartItems(userId);
+        BigDecimal totalPrice = cartService.calculateTotal(items);
+
+        User user = userService.findById(userId);
+        BigDecimal shippingFee = orderService.calculateShippingFee(user.getTier(), totalPrice);
+
         model.addAttribute("cartItems", items);
-        model.addAttribute("totalPrice", cartService.calculateTotal(items));
+        model.addAttribute("totalPrice", totalPrice);
+        model.addAttribute("shippingFee", shippingFee);
+        model.addAttribute("freeShippingThreshold", user.getTier().getFreeShippingThreshold());
         return "cart/index";
     }
 

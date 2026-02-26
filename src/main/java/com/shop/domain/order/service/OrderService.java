@@ -226,16 +226,13 @@ public class OrderService {
 
     public Page<Order> getOrdersByUser(Long userId, Pageable pageable) {
         Page<Order> orders = orderRepository.findByUserId(userId, pageable);
-        // OSIV off: 트랜잭션 내에서 Lazy 컬렉션 초기화 (batch_fetch_size=100 활용)
-        orders.getContent().forEach(order -> order.getItems().size());
+        initializeOrderItems(orders);
         return orders;
     }
 
     public Order getOrderDetail(Long orderId, Long userId) {
-        Order order = orderRepository.findByIdAndUserId(orderId, userId)
+        return orderRepository.findByIdAndUserId(orderId, userId)
                 .orElseThrow(() -> new ResourceNotFoundException("주문", orderId));
-        order.getItems().size(); // OSIV off: Lazy 컬렉션 초기화
-        return order;
     }
 
     @Transactional
@@ -248,14 +245,14 @@ public class OrderService {
 
     public Page<Order> getAllOrders(Pageable pageable) {
         Page<Order> orders = orderRepository.findAllByOrderByOrderDateDesc(pageable);
-        orders.getContent().forEach(order -> order.getItems().size());
+        initializeOrderItems(orders);
         return orders;
     }
 
     public Page<Order> getOrdersByStatus(String status, Pageable pageable) {
         OrderStatus orderStatus = OrderStatus.fromOrThrow(status);
         Page<Order> orders = orderRepository.findByStatus(orderStatus, pageable);
-        orders.getContent().forEach(order -> order.getItems().size());
+        initializeOrderItems(orders);
         return orders;
     }
 
@@ -333,6 +330,18 @@ public class OrderService {
 
         // 4) 재고가 변경된 상품의 상세 캐시 무효화
         evictProductDetailCaches(sortedItems.stream().map(OrderItem::getProductId).toList());
+    }
+
+    /**
+     * OSIV off 환경에서 Page<Order>의 Lazy 컬렉션(items)을 초기화한다.
+     * batch_fetch_size=100이 적용되어 있으므로, 페이지 크기가 100 이하인 한
+     * 추가 쿼리 1회로 모든 주문의 아이템이 일괄 로드된다.
+     *
+     * 참고: Page 쿼리에 JOIN FETCH를 사용하면 Hibernate가 전체 결과를 메모리에
+     * 로드한 뒤 페이징하므로(HHH000104 경고), batch fetch가 더 효율적이다.
+     */
+    private void initializeOrderItems(Page<Order> orders) {
+        orders.getContent().forEach(order -> order.getItems().size());
     }
 
     /**
