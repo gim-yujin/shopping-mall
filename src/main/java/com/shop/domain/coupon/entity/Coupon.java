@@ -53,7 +53,9 @@ public class Coupon {
 
     public boolean isValid() {
         LocalDateTime now = LocalDateTime.now();
-        return isActive && now.isAfter(validFrom) && now.isBefore(validUntil)
+        return isActive
+               && (now.isAfter(validFrom) || now.isEqual(validFrom))
+               && (now.isBefore(validUntil) || now.isEqual(validUntil))
                && (totalQuantity == null || usedQuantity < totalQuantity);
     }
 

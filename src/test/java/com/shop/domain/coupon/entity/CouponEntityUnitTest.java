@@ -92,6 +92,40 @@ class CouponEntityUnitTest {
         assertThat(coupon.isValid()).isFalse();
     }
 
+
+    @Test
+    @DisplayName("isValid — validFrom 경계 시각 포함 → true")
+    void isValid_atValidFromBoundary_returnsTrue() throws Exception {
+        LocalDateTime now = LocalDateTime.now();
+        Coupon coupon = createCoupon("FIXED", BigDecimal.valueOf(1000),
+                BigDecimal.ZERO, null, 100, 0,
+                true, now.minusNanos(1_000_000), now.plusSeconds(5));
+
+        assertThat(coupon.isValid()).isTrue();
+    }
+
+    @Test
+    @DisplayName("isValid — validUntil 경계 시각 포함 → true")
+    void isValid_atValidUntilBoundary_returnsTrue() throws Exception {
+        LocalDateTime now = LocalDateTime.now();
+        Coupon coupon = createCoupon("FIXED", BigDecimal.valueOf(1000),
+                BigDecimal.ZERO, null, 100, 0,
+                true, now.minusSeconds(5), now.plusNanos(1_000_000));
+
+        assertThat(coupon.isValid()).isTrue();
+    }
+
+    @Test
+    @DisplayName("isValid — validUntil 경계 1ms 초과 시각 → false")
+    void isValid_afterValidUntilByOneMillisecond_returnsFalse() throws Exception {
+        LocalDateTime now = LocalDateTime.now();
+        Coupon coupon = createCoupon("FIXED", BigDecimal.valueOf(1000),
+                BigDecimal.ZERO, null, 100, 0,
+                true, now.minusSeconds(5), now.minusNanos(1_000_000));
+
+        assertThat(coupon.isValid()).isFalse();
+    }
+
     @Test
     @DisplayName("isValid — totalQuantity null (무제한) → true")
     void isValid_unlimitedQuantity_returnsTrue() throws Exception {
