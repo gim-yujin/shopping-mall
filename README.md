@@ -112,6 +112,16 @@ spring:
 ```
 
 
+
+## 운영 보안 설정 (Trusted Proxy)
+
+`security.login-attempt.trusted-proxy-cidrs`와 `security.login-attempt.trusted-hop-count`는 **로그인 차단 IP 계산뿐 아니라 검색 로그(`searchService.logSearch`)의 클라이언트 IP 해석에도 동일하게 적용**됩니다.
+
+- 프록시 미사용 환경: `request.getRemoteAddr()` 기준으로 기록
+- 신뢰 프록시 환경: `X-Forwarded-For` / `X-Real-IP`를 trusted proxy CIDR 정책으로 검증 후 기록
+
+운영 환경에서는 실제 L4/L7 프록시 CIDR만 등록하고, hop 수(`trusted-hop-count`)를 인프라 체인과 일치시켜야 합니다.
+
 ## 보안 템플릿 규칙
 
 - 모든 Thymeleaf 템플릿의 `method="post"` 폼에는 CSRF hidden input을 **반드시** 포함해야 합니다.

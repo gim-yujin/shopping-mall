@@ -18,8 +18,7 @@ class LoginAttemptServiceTest {
 
     private final LoginAttemptService service = new LoginAttemptService(
             new ConcurrentMapCacheManager("loginAttempts"),
-            List.of("10.0.0.0/8", "127.0.0.1/32"),
-            1
+            new ClientIpResolver(List.of("10.0.0.0/8", "127.0.0.1/32"), 1)
     );
 
     @Test
