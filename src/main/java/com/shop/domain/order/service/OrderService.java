@@ -309,7 +309,7 @@ public class OrderService {
             if (product != null) {
                 entityManager.refresh(product);
                 int before = product.getStockQuantity();
-                product.increaseStock(item.getQuantity());
+                product.increaseStockAndRollbackSales(item.getQuantity());
                 inventoryHistoryRepository.save(new ProductInventoryHistory(
                         product.getProductId(), "IN", item.getQuantity(),
                         before, product.getStockQuantity(), "RETURN", orderId, userId));

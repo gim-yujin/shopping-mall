@@ -121,7 +121,7 @@ class OrderServiceUnitTest {
 
         orderService.updateOrderStatus(orderId, "CANCELLED");
 
-        verify(product).increaseStock(2);
+        verify(product).increaseStockAndRollbackSales(2);
         verify(user).addTotalSpent(new BigDecimal("-10000"));
         verify(user).addPoints(-100);
         verify(userCoupon).cancelUse();
