@@ -21,6 +21,7 @@ class GlobalExceptionHandlerTest {
         BusinessException ex = new BusinessException("ORDER_001", "주문 처리 실패");
         MockHttpServletRequest request = new MockHttpServletRequest();
         request.setServerName("localhost");
+        request.addHeader("Host", "localhost");
         request.addHeader("Referer", "http://localhost/orders?page=2&token=secret");
         RedirectAttributesModelMap redirectAttributes = new RedirectAttributesModelMap();
 
@@ -49,6 +50,7 @@ class GlobalExceptionHandlerTest {
         BusinessException ex = new BusinessException("ERR", "에러");
         MockHttpServletRequest request = new MockHttpServletRequest();
         request.setServerName("localhost");
+        request.addHeader("Host", "localhost");
         request.addHeader("Referer", "https://evil.com/orders?page=1");
         RedirectAttributesModelMap redirectAttributes = new RedirectAttributesModelMap();
 
@@ -95,6 +97,7 @@ class GlobalExceptionHandlerTest {
         BusinessException ex = new BusinessException("ERR", "에러");
         MockHttpServletRequest request = new MockHttpServletRequest();
         request.setServerName("myshop.com");
+        request.addHeader("Host", "myshop.com");
         request.addHeader("Referer", "https://myshop.com/products/123?keyword=shoe&page=2&redirect=https://evil.com");
         RedirectAttributesModelMap redirectAttributes = new RedirectAttributesModelMap();
 
@@ -110,6 +113,7 @@ class GlobalExceptionHandlerTest {
         MockHttpServletRequest request = new MockHttpServletRequest();
         request.setServerName("internal-service");
         request.setServerPort(8080);
+        request.addHeader("X-Forwarded-Host", "shop.example.com");
         request.addHeader("Referer", "https://shop.example.com:8443/cart");
         RedirectAttributesModelMap redirectAttributes = new RedirectAttributesModelMap();
 
@@ -124,6 +128,7 @@ class GlobalExceptionHandlerTest {
         BusinessException ex = new BusinessException("ERR", "에러");
         MockHttpServletRequest request = new MockHttpServletRequest();
         request.setServerName("myshop.com");
+        request.addHeader("Host", "myshop.com");
         request.addHeader("Referer", "https://myshop.com/admin/orders");
         RedirectAttributesModelMap redirectAttributes = new RedirectAttributesModelMap();
 
@@ -138,6 +143,7 @@ class GlobalExceptionHandlerTest {
         BusinessException ex = new BusinessException("ERR", "에러");
         MockHttpServletRequest request = new MockHttpServletRequest();
         request.setServerName("myshop.com");
+        request.addHeader("Host", "myshop.com");
         request.addHeader("Referer", "https://myshop.com/products/123");
         RedirectAttributesModelMap redirectAttributes = new RedirectAttributesModelMap();
 

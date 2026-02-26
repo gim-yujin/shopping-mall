@@ -29,13 +29,13 @@ public class GlobalExceptionHandler {
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
     private static final AntPathMatcher PATH_MATCHER = new AntPathMatcher();
 
-    private static final Map<String, Set<String>> REDIRECT_PATH_POLICY = new LinkedHashMap<>();
+    private static final Map<String, List<String>> REDIRECT_PATH_POLICY = new LinkedHashMap<>();
 
     static {
-        REDIRECT_PATH_POLICY.put("/cart", Set.of());
-        REDIRECT_PATH_POLICY.put("/orders", Set.of("page", "size", "status"));
-        REDIRECT_PATH_POLICY.put("/mypage", Set.of("tab"));
-        REDIRECT_PATH_POLICY.put("/products/**", Set.of("keyword", "categoryId", "sort", "page", "size"));
+        REDIRECT_PATH_POLICY.put("/cart", List.of());
+        REDIRECT_PATH_POLICY.put("/orders", List.of("page", "size", "status"));
+        REDIRECT_PATH_POLICY.put("/mypage", List.of("tab"));
+        REDIRECT_PATH_POLICY.put("/products/**", List.of("keyword", "categoryId", "sort", "page", "size"));
     }
 
     @ExceptionHandler(ResourceNotFoundException.class)
@@ -96,7 +96,7 @@ public class GlobalExceptionHandler {
             URI refererUri = URI.create(referer);
             String path = Optional.ofNullable(refererUri.getPath()).orElse("");
 
-            if (!isAllowedRedirectPath(path)) {
+            if (!isAllowedRedirectPath(path) || !isTrustedRefererHost(request, refererUri)) {
                 return "/";
             }
 
@@ -113,7 +113,7 @@ public class GlobalExceptionHandler {
     }
 
     private String appendAllowedQueryParams(String path, URI refererUri) {
-        Set<String> allowedQueryParams = resolveAllowedQueryParams(path);
+        List<String> allowedQueryParams = resolveAllowedQueryParams(path);
         if (allowedQueryParams.isEmpty() || refererUri.getRawQuery() == null) {
             return path;
         }
@@ -133,12 +133,34 @@ public class GlobalExceptionHandler {
         return builder.build().toUriString();
     }
 
-    private Set<String> resolveAllowedQueryParams(String path) {
+    private List<String> resolveAllowedQueryParams(String path) {
         return REDIRECT_PATH_POLICY.entrySet().stream()
                 .filter(entry -> PATH_MATCHER.match(entry.getKey(), path))
                 .map(Map.Entry::getValue)
                 .findFirst()
-                .orElse(Set.of());
+                .orElse(List.of());
+    }
+
+    private boolean isTrustedRefererHost(HttpServletRequest request, URI refererUri) {
+        String refererHost = refererUri.getHost();
+        if (refererHost == null || refererHost.isBlank()) {
+            return true;
+        }
+
+        String hostHeader = Optional.ofNullable(request.getHeader("X-Forwarded-Host"))
+                .orElse(request.getHeader("Host"));
+
+        if (hostHeader == null || hostHeader.isBlank()) {
+            return false;
+        }
+
+        String trustedHost = hostHeader.split(",")[0].trim();
+        int portIndex = trustedHost.indexOf(":");
+        if (portIndex >= 0) {
+            trustedHost = trustedHost.substring(0, portIndex);
+        }
+
+        return refererHost.equalsIgnoreCase(trustedHost);
     }
 
     private boolean isAjaxRequest(HttpServletRequest request) {
