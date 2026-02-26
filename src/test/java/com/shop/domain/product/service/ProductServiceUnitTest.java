@@ -1,5 +1,6 @@
 package com.shop.domain.product.service;
 
+import com.shop.domain.category.service.CategoryService;
 import com.shop.domain.product.entity.Product;
 import com.shop.domain.product.repository.ProductRepository;
 import com.shop.global.exception.ResourceNotFoundException;
@@ -33,11 +34,14 @@ class ProductServiceUnitTest {
     @Mock
     private ViewCountService viewCountService;
 
+    @Mock
+    private CategoryService categoryService;
+
     private ProductService productService;
 
     @BeforeEach
     void setUp() {
-        productService = new ProductService(productRepository, viewCountService);
+        productService = new ProductService(productRepository, viewCountService, categoryService);
     }
 
     @Test

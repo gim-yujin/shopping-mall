@@ -1,5 +1,8 @@
 package com.shop.domain.product.service;
 
+import com.shop.domain.category.entity.Category;
+import com.shop.domain.category.service.CategoryService;
+import com.shop.domain.product.dto.AdminProductRequest;
 import com.shop.domain.product.entity.Product;
 import com.shop.domain.product.repository.ProductRepository;
 import com.shop.global.common.PagingParams;
@@ -19,10 +22,13 @@ public class ProductService {
 
     private final ProductRepository productRepository;
     private final ViewCountService viewCountService;
+    private final CategoryService categoryService;
 
-    public ProductService(ProductRepository productRepository, ViewCountService viewCountService) {
+    public ProductService(ProductRepository productRepository, ViewCountService viewCountService,
+                          CategoryService categoryService) {
         this.productRepository = productRepository;
         this.viewCountService = viewCountService;
+        this.categoryService = categoryService;
     }
 
     public Product findById(Long productId) {
@@ -106,5 +112,63 @@ public class ProductService {
         String normalizedSort = PagingParams.normalizeProductSort(sort);
         return productRepository.findByIsActiveTrue(
                 PageRequest.of(normalizedPage, normalizedSize, PagingParams.toProductSort(normalizedSort)));
+    }
+
+    // ────────────────────────────────────────────
+    // Admin CRUD
+    // ────────────────────────────────────────────
+
+    /**
+     * 관리자용 상품 상세 조회 (카테고리 fetch join, 비활성 포함).
+     */
+    public Product findByIdForAdmin(Long productId) {
+        return productRepository.findByIdWithCategory(productId)
+                .orElseThrow(() -> new ResourceNotFoundException("상품", productId));
+    }
+
+    /**
+     * 관리자용 상품 목록 (비활성 포함).
+     */
+    public Page<Product> findAllForAdmin(Pageable pageable) {
+        return productRepository.findAll(pageable);
+    }
+
+    @Transactional
+    public Product createProduct(AdminProductRequest request) {
+        Category category = categoryService.findById(request.getCategoryId());
+        Product product = Product.create(
+                request.getProductName(),
+                category,
+                request.getDescription(),
+                request.getPrice(),
+                request.getOriginalPrice(),
+                request.getStockQuantity()
+        );
+        return productRepository.save(product);
+    }
+
+    @Transactional
+    @CacheEvict(value = "productDetail", key = "#productId")
+    public Product updateProduct(Long productId, AdminProductRequest request) {
+        Product product = productRepository.findById(productId)
+                .orElseThrow(() -> new ResourceNotFoundException("상품", productId));
+        Category category = categoryService.findById(request.getCategoryId());
+        product.update(
+                request.getProductName(),
+                category,
+                request.getDescription(),
+                request.getPrice(),
+                request.getOriginalPrice(),
+                request.getStockQuantity()
+        );
+        return product;
+    }
+
+    @Transactional
+    @CacheEvict(value = "productDetail", key = "#productId")
+    public void toggleProductActive(Long productId) {
+        Product product = productRepository.findById(productId)
+                .orElseThrow(() -> new ResourceNotFoundException("상품", productId));
+        product.toggleActive();
     }
 }

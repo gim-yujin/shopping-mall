@@ -1,5 +1,6 @@
 package com.shop.domain.product.service;
 
+import com.shop.domain.category.service.CategoryService;
 import com.shop.domain.product.entity.Product;
 import com.shop.domain.product.repository.ProductRepository;
 import org.junit.jupiter.api.BeforeEach;
@@ -32,11 +33,14 @@ class ProductServiceUnitTestSupplementary {
     @Mock
     private ViewCountService viewCountService;
 
+    @Mock
+    private CategoryService categoryService;
+
     private ProductService productService;
 
     @BeforeEach
     void setUp() {
-        productService = new ProductService(productRepository, viewCountService);
+        productService = new ProductService(productRepository, viewCountService, categoryService);
     }
 
     // ==================== 미커버 메서드 5개 ====================

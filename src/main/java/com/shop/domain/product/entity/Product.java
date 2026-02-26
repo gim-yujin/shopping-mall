@@ -62,6 +62,47 @@ public class Product {
 
     protected Product() {}
 
+    /**
+     * 관리자 상품 등록용 팩토리 메서드.
+     */
+    public static Product create(String productName, Category category, String description,
+                                 BigDecimal price, BigDecimal originalPrice, int stockQuantity) {
+        Product p = new Product();
+        p.productName = productName;
+        p.category = category;
+        p.description = description;
+        p.price = price;
+        p.originalPrice = originalPrice;
+        p.stockQuantity = stockQuantity;
+        p.salesCount = 0;
+        p.viewCount = 0;
+        p.ratingAvg = BigDecimal.ZERO;
+        p.reviewCount = 0;
+        p.isActive = true;
+        p.createdAt = LocalDateTime.now();
+        p.updatedAt = LocalDateTime.now();
+        return p;
+    }
+
+    /**
+     * 관리자 상품 수정.
+     */
+    public void update(String productName, Category category, String description,
+                       BigDecimal price, BigDecimal originalPrice, int stockQuantity) {
+        this.productName = productName;
+        this.category = category;
+        this.description = description;
+        this.price = price;
+        this.originalPrice = originalPrice;
+        this.stockQuantity = stockQuantity;
+        this.updatedAt = LocalDateTime.now();
+    }
+
+    public void toggleActive() {
+        this.isActive = !this.isActive;
+        this.updatedAt = LocalDateTime.now();
+    }
+
     public void incrementViewCount() {
         this.viewCount++;
     }

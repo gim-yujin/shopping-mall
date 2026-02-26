@@ -14,4 +14,7 @@ public interface CategoryRepository extends JpaRepository<Category, Integer> {
     List<Category> findByParentId(Integer parentId);
 
     List<Category> findByLevelAndIsActiveTrueOrderByDisplayOrder(int level);
+
+    @Query("SELECT c FROM Category c WHERE c.isActive = true ORDER BY c.level, c.displayOrder")
+    List<Category> findAllActiveOrderByLevelAndDisplayOrder();
 }

@@ -24,6 +24,13 @@ public class CategoryService {
         return categoryRepository.findTopLevelCategories();
     }
 
+    /**
+     * 관리자용 — 전체 활성 카테고리 목록 (레벨·정렬순).
+     */
+    public List<Category> getAllActiveCategories() {
+        return categoryRepository.findAllActiveOrderByLevelAndDisplayOrder();
+    }
+
     @Cacheable(value = "categoryById", key = "#categoryId")
     public Category findById(Integer categoryId) {
         return categoryRepository.findById(categoryId)
