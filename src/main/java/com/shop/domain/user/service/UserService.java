@@ -47,7 +47,7 @@ public class UserService {
         String normalizedName = normalizeName(request.name());
         String normalizedPhone = normalizePhone(request.phone());
 
-        if (userRepository.existsByUsername(normalizedUsername)) {
+        if (userRepository.existsByUsernameIgnoreCase(normalizedUsername)) {
             throw new BusinessException("DUPLICATE", "이미 사용 중인 아이디입니다.");
         }
         if (userRepository.existsByEmail(normalizedEmail)) {
@@ -78,7 +78,7 @@ public class UserService {
     }
 
     public User findByUsername(String username) {
-        return userRepository.findByUsername(username)
+        return userRepository.findByUsernameIgnoreCase(normalizeUsername(username))
                 .orElseThrow(() -> new ResourceNotFoundException("사용자", username));
     }
 
@@ -117,7 +117,7 @@ public class UserService {
         if (cache == null || username == null) {
             return;
         }
-        cache.evict(username);
+        cache.evict(normalizeUsername(username));
     }
 
     private void validateProfileInput(String name, String phone, String email) {
@@ -154,7 +154,8 @@ public class UserService {
     }
 
     private String normalizeUsername(String username) {
-        return username == null ? "" : username.trim();
+        // username은 대소문자 구분 없이 동일 사용자로 취급합니다.
+        return username == null ? "" : username.trim().toLowerCase(Locale.ROOT);
     }
 
     private String normalizeName(String name) {

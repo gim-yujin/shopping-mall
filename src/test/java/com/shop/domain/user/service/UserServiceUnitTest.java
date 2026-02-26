@@ -50,7 +50,7 @@ class UserServiceUnitTest {
     @Test
     @DisplayName("signup 시 trim/lower-case 정규화 값을 중복 검사와 저장에 사용")
     void signup_normalizesFields_forDuplicateCheckAndSave() {
-        when(userRepository.existsByUsername("tester")).thenReturn(false);
+        when(userRepository.existsByUsernameIgnoreCase("tester")).thenReturn(false);
         when(userRepository.existsByEmail("test@a.com")).thenReturn(false);
         UserTier defaultTier = mock(UserTier.class);
         when(userTierRepository.findByTierLevel(1)).thenReturn(Optional.of(defaultTier));
@@ -65,12 +65,28 @@ class UserServiceUnitTest {
                 " 010-1234-5678 "
         ));
 
-        verify(userRepository).existsByUsername("tester");
+        verify(userRepository).existsByUsernameIgnoreCase("tester");
         verify(userRepository).existsByEmail("test@a.com");
         assertThat(saved.getUsername()).isEqualTo("tester");
         assertThat(saved.getEmail()).isEqualTo("test@a.com");
         assertThat(saved.getName()).isEqualTo("테스터");
         assertThat(saved.getPhone()).isEqualTo("010-1234-5678");
+    }
+
+    @Test
+    @DisplayName("signup 중복 아이디 검사는 대소문자를 무시한다")
+    void signup_duplicateUsername_ignoresCase() {
+        when(userRepository.existsByUsernameIgnoreCase("user")).thenReturn(true);
+
+        assertThatThrownBy(() -> userService.signup(new SignupRequest(
+                "User",
+                "test@a.com",
+                "Pass1234!",
+                "테스터",
+                "010-1234-5678"
+        )))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("이미 사용 중인 아이디");
     }
 
     @Test
