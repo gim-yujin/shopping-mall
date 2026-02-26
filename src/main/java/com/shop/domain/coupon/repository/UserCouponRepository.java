@@ -17,6 +17,7 @@ import java.util.Set;
 
 public interface UserCouponRepository extends JpaRepository<UserCoupon, Long> {
 
+    // 쿠폰 유효 기간은 [validFrom, validUntil] 경계를 포함(inclusive)한다.
     @Query("""
             SELECT uc
             FROM UserCoupon uc
