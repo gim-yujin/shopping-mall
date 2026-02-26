@@ -6,7 +6,7 @@ import jakarta.validation.constraints.NotNull;
 
 public record ReviewCreateRequest(
     @NotNull Long productId,
-    Long orderItemId,
+    @NotNull Long orderItemId,
     @Min(1) @Max(5) int rating,
     String title,
     String content

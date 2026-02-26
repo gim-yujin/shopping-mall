@@ -1,0 +1,13 @@
+-- REVIEW ORDER ITEM REQUIRED 정책 전환
+--
+-- 정책:
+-- 1) 신규 리뷰는 반드시 order_item_id를 포함해야 한다.
+-- 2) 기존 데이터의 order_item_id IS NULL 레코드는 히스토리 보존을 위해 유지한다.
+--    (삭제/비활성화하지 않음)
+--
+-- 운영 점검용 쿼리:
+-- SELECT COUNT(*) AS legacy_review_count FROM reviews WHERE order_item_id IS NULL;
+--
+-- 백엔드/프론트에서 order_item_id 필수 검증을 먼저 적용한 뒤,
+-- legacy_review_count가 0이 되는 시점에 아래 DDL 적용을 검토한다.
+-- ALTER TABLE reviews ALTER COLUMN order_item_id SET NOT NULL;

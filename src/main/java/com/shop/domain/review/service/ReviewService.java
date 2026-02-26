@@ -24,6 +24,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 
@@ -65,6 +66,12 @@ public class ReviewService {
         return CacheKeyGenerator.pageableWithPrefix(productId + ":v" + version, pageable);
     }
 
+    public List<OrderItem> getReviewableOrderItems(Long userId, Long productId) {
+        return orderItemRepository.findDeliveredItemsForReview(userId, productId).stream()
+                .filter(orderItem -> !reviewRepository.existsByUserIdAndOrderItemId(userId, orderItem.getOrderItemId()))
+                .toList();
+    }
+
     @Transactional
     public Review createReview(Long userId, ReviewCreateRequest request) {
         validateOrderItemForReview(userId, request);
@@ -88,13 +95,6 @@ public class ReviewService {
     }
 
     private void validateDuplicateReview(Long userId, ReviewCreateRequest request) {
-        if (request.orderItemId() == null) {
-            if (reviewRepository.existsByUserIdAndProductId(userId, request.productId())) {
-                throw new BusinessException("DUPLICATE_REVIEW", "이미 리뷰를 작성하였습니다.");
-            }
-            return;
-        }
-
         if (reviewRepository.existsByUserIdAndOrderItemId(userId, request.orderItemId())) {
             throw new BusinessException("DUPLICATE_REVIEW", "이미 리뷰를 작성하였습니다.");
         }
@@ -102,7 +102,10 @@ public class ReviewService {
 
     private void validateOrderItemForReview(Long userId, ReviewCreateRequest request) {
         if (request.orderItemId() == null) {
-            return;
+            throw new BusinessException(
+                    "REVIEW_ORDER_ITEM_REQUIRED",
+                    "리뷰 작성 시 주문 항목 선택은 필수입니다."
+            );
         }
 
         OrderItem orderItem = orderItemRepository.findById(request.orderItemId())

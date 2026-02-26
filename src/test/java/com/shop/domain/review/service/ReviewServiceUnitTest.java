@@ -100,19 +100,17 @@ class ReviewServiceUnitTest {
     }
 
     @Test
-    @DisplayName("createReview - orderItemId가 null이어도 user/product 중복이면 예외")
-    void createReview_duplicateWithoutOrderItem_throwsBeforeSave() {
+    @DisplayName("createReview - orderItemId가 null이면 REVIEW_ORDER_ITEM_REQUIRED 예외")
+    void createReview_withoutOrderItem_throwsRequiredException() {
         Long userId = 11L;
         Long productId = 101L;
         ReviewCreateRequest request = new ReviewCreateRequest(productId, null, 5, "중복", "내용");
 
-        when(reviewRepository.existsByUserIdAndProductId(userId, productId)).thenReturn(true);
-
         assertThatThrownBy(() -> reviewService.createReview(userId, request))
-                .as("비구매 리뷰도 동일 사용자/상품 기준 중복이 차단되어야 함")
                 .isInstanceOf(BusinessException.class)
-                .hasMessageContaining("이미 리뷰를 작성");
+                .hasMessageContaining("주문 항목 선택은 필수");
 
+        verify(reviewRepository, never()).existsByUserIdAndOrderItemId(any(), any());
         verify(reviewRepository, never()).save(any());
         verify(productRepository, never()).findById(any());
         verifyNoInteractions(productService);
@@ -123,9 +121,11 @@ class ReviewServiceUnitTest {
     void createReview_duplicateAtDatabaseLevel_throwsBusinessException() {
         Long userId = 11L;
         Long productId = 101L;
-        ReviewCreateRequest request = new ReviewCreateRequest(productId, null, 5, "중복", "내용");
+        Long orderItemId = 1001L;
+        ReviewCreateRequest request = new ReviewCreateRequest(productId, orderItemId, 5, "중복", "내용");
 
-        when(reviewRepository.existsByUserIdAndProductId(userId, productId)).thenReturn(false);
+        mockValidDeliveredOrderItem(orderItemId, userId, productId);
+        when(reviewRepository.existsByUserIdAndOrderItemId(userId, orderItemId)).thenReturn(false);
         when(reviewRepository.save(any(Review.class))).thenThrow(new DataIntegrityViolationException("duplicate key"));
 
         assertThatThrownBy(() -> reviewService.createReview(userId, request))
@@ -230,9 +230,12 @@ class ReviewServiceUnitTest {
     void createReview_updatesProductRatingRoundedToTwoDecimals() {
         Long userId = 11L;
         Long productId = 101L;
-        ReviewCreateRequest request = new ReviewCreateRequest(productId, null, 5, "좋음", "내용");
+        Long orderItemId = 1001L;
+        ReviewCreateRequest request = new ReviewCreateRequest(productId, orderItemId, 5, "좋음", "내용");
         Product product = mock(Product.class);
 
+        mockValidDeliveredOrderItem(orderItemId, userId, productId);
+        when(reviewRepository.existsByUserIdAndOrderItemId(userId, orderItemId)).thenReturn(false);
         when(reviewRepository.save(any(Review.class))).thenAnswer(invocation -> invocation.getArgument(0));
         when(productRepository.findById(productId)).thenReturn(Optional.of(product));
         when(reviewRepository.findAverageRatingByProductId(productId)).thenReturn(Optional.of(4.666666));
@@ -325,9 +328,12 @@ class ReviewServiceUnitTest {
     void createReview_whenNoAverage_updatesZeroRating() {
         Long userId = 11L;
         Long productId = 101L;
-        ReviewCreateRequest request = new ReviewCreateRequest(productId, null, 2, "첫 리뷰", "내용");
+        Long orderItemId = 1001L;
+        ReviewCreateRequest request = new ReviewCreateRequest(productId, orderItemId, 2, "첫 리뷰", "내용");
         Product product = mock(Product.class);
 
+        mockValidDeliveredOrderItem(orderItemId, userId, productId);
+        when(reviewRepository.existsByUserIdAndOrderItemId(userId, orderItemId)).thenReturn(false);
         when(reviewRepository.save(any(Review.class))).thenAnswer(invocation -> invocation.getArgument(0));
         when(productRepository.findById(productId)).thenReturn(Optional.of(product));
         when(reviewRepository.findAverageRatingByProductId(productId)).thenReturn(Optional.empty());
