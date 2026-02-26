@@ -5,6 +5,7 @@ import com.shop.domain.category.service.CategoryService;
 import com.shop.domain.product.dto.AdminProductRequest;
 import com.shop.domain.product.entity.Product;
 import com.shop.domain.product.repository.ProductRepository;
+import com.shop.global.cache.CacheKeyGenerator;
 import com.shop.global.common.PagingParams;
 import com.shop.global.exception.ResourceNotFoundException;
 import org.springframework.cache.annotation.Caching;
@@ -15,6 +16,8 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import java.util.Locale;
 import java.util.List;
 
 @Service
@@ -79,13 +82,28 @@ public class ProductService {
     }
 
     @Cacheable(value = "searchResults",
-               key = "T(com.shop.global.cache.CacheKeyGenerator).pageableWithPrefix(#keyword, #pageable)")
+               key = "#root.target.searchCacheKey(#keyword, #pageable)")
     public Page<Product> search(String keyword, Pageable pageable) {
-        Page<Product> results = productRepository.searchByKeyword(keyword, pageable);
+        String normalizedKeyword = normalizeSearchKeyword(keyword);
+
+        Page<Product> results = productRepository.searchByKeyword(normalizedKeyword, pageable);
         if (results.isEmpty()) {
-            results = productRepository.searchByKeywordLike(keyword, pageable);
+            results = productRepository.searchByKeywordLike(normalizedKeyword, pageable);
         }
         return results;
+    }
+
+    String normalizeSearchKeyword(String keyword) {
+        if (keyword == null) {
+            return "";
+        }
+        return keyword.trim()
+                .replaceAll("\\s+", " ")
+                .toLowerCase(Locale.ROOT);
+    }
+
+    String searchCacheKey(String keyword, Pageable pageable) {
+        return CacheKeyGenerator.pageableWithPrefix(normalizeSearchKeyword(keyword), pageable);
     }
 
     @Cacheable(value = "bestSellers", key = "T(com.shop.global.cache.CacheKeyGenerator).pageable(#pageable)")

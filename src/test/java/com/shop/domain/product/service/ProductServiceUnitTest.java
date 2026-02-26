@@ -64,6 +64,21 @@ class ProductServiceUnitTest {
     }
 
     @Test
+    @DisplayName("search - 검색어를 trim/소문자/공백 정규화 후 조회")
+    void search_normalizesKeywordBeforeQuery() {
+        when(productRepository.searchByKeyword(any(String.class), any(Pageable.class))).thenReturn(Page.empty());
+        when(productRepository.searchByKeywordLike(any(String.class), any(Pageable.class))).thenReturn(Page.empty());
+
+        Pageable pageable = PageRequest.of(0, 10);
+        productService.search("Nike", pageable);
+        productService.search(" nike ", pageable);
+        productService.search("NIKE", pageable);
+
+        verify(productRepository, times(3)).searchByKeyword(eq("nike"), any(Pageable.class));
+        verify(productRepository, times(3)).searchByKeywordLike(eq("nike"), any(Pageable.class));
+    }
+
+    @Test
     @DisplayName("findAllSorted - sort 파라미터에 따라 정렬 필드가 선택됨")
     void findAllSorted_usesExpectedSortField() {
         when(productRepository.findByIsActiveTrue(any(Pageable.class))).thenReturn(Page.empty());
