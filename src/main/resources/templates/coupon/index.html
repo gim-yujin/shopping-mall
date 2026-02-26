@@ -43,11 +43,11 @@
             </div>
             <!-- Pagination -->
             <div th:if="${availableCoupons.totalPages > 1}" class="flex justify-center items-center gap-2 mt-6">
-                <a th:unless="${availableCoupons.first}" th:href="@{/coupons(page=${availableCoupons.number - 1})}"
+                <a th:unless="${availableCoupons.first}" th:href="@{/coupons(availablePage=${availableCoupons.number - 1},myPage=${myCoupons.number})}"
                    class="px-3 py-2 rounded-lg border bg-white text-gray-700 hover:bg-gray-50 text-sm">← 이전</a>
                 <span class="px-3 py-2 text-sm text-gray-600"
                       th:text="${(availableCoupons.number + 1) + ' / ' + availableCoupons.totalPages + ' 페이지'}">1 / 100 페이지</span>
-                <a th:unless="${availableCoupons.last}" th:href="@{/coupons(page=${availableCoupons.number + 1})}"
+                <a th:unless="${availableCoupons.last}" th:href="@{/coupons(availablePage=${availableCoupons.number + 1},myPage=${myCoupons.number})}"
                    class="px-3 py-2 rounded-lg border bg-white text-gray-700 hover:bg-gray-50 text-sm">다음 →</a>
             </div>
         </div>
@@ -73,6 +73,15 @@
                     </div>
                 </div>
             </div>
+            <div th:if="${myCoupons.totalPages > 1}" class="flex justify-center items-center gap-2 mt-6">
+                <a th:unless="${myCoupons.first}" th:href="@{/coupons(availablePage=${availableCoupons.number},myPage=${myCoupons.number - 1})}"
+                   class="px-3 py-2 rounded-lg border bg-white text-gray-700 hover:bg-gray-50 text-sm">← 이전</a>
+                <span class="px-3 py-2 text-sm text-gray-600"
+                      th:text="${(myCoupons.number + 1) + ' / ' + myCoupons.totalPages + ' 페이지'}">1 / 100 페이지</span>
+                <a th:unless="${myCoupons.last}" th:href="@{/coupons(availablePage=${availableCoupons.number},myPage=${myCoupons.number + 1})}"
+                   class="px-3 py-2 rounded-lg border bg-white text-gray-700 hover:bg-gray-50 text-sm">다음 →</a>
+            </div>
+
         </div>
     </div>
 </div>

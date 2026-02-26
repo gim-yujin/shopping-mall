@@ -21,11 +21,18 @@ public class CouponController {
     }
 
     @GetMapping
-    public String couponPage(@RequestParam(defaultValue = "0") int page, Model model) {
+    public String couponPage(
+            @RequestParam(required = false) Integer page,
+            @RequestParam(defaultValue = "0") int availablePage,
+            @RequestParam(defaultValue = "0") int myPage,
+            Model model
+    ) {
         Long userId = SecurityUtil.getCurrentUserId().orElseThrow();
-        int normalizedPage = PagingParams.normalizePage(page);
-        model.addAttribute("availableCoupons", couponService.getActiveCoupons(PageRequest.of(normalizedPage, 20)));
-        model.addAttribute("myCoupons", couponService.getUserCoupons(userId, PageRequest.of(0, 20)));
+        int normalizedAvailablePage = PagingParams.normalizePage(page != null ? page : availablePage);
+        int normalizedMyPage = PagingParams.normalizePage(myPage);
+
+        model.addAttribute("availableCoupons", couponService.getActiveCoupons(PageRequest.of(normalizedAvailablePage, 20)));
+        model.addAttribute("myCoupons", couponService.getUserCoupons(userId, PageRequest.of(normalizedMyPage, 20)));
         model.addAttribute("issuedCouponIds", couponService.getUserIssuedCouponIds(userId));
         return "coupon/index";
     }
