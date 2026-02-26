@@ -35,13 +35,6 @@ public class AsyncConfig {
         executor.setWaitForTasksToCompleteOnShutdown(true);
         executor.setAwaitTerminationSeconds(awaitTerminationSeconds);
 
-        executor.setTaskDecorator(runnable -> () -> {
-            try {
-                runnable.run();
-            } finally {
-                asyncExecutorMetrics.incrementCompleted();
-            }
-        });
 
         executor.setRejectedExecutionHandler((runnable, threadPoolExecutor) -> {
             asyncExecutorMetrics.incrementRejected();
@@ -49,7 +42,7 @@ public class AsyncConfig {
         });
 
         executor.initialize();
-        asyncExecutorMetrics.bindQueueSizeSupplier(() -> executor.getThreadPoolExecutor().getQueue().size());
+        asyncExecutorMetrics.bindExecutor(executor);
 
         return executor;
     }

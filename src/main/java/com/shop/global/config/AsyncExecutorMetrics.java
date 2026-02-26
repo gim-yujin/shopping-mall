@@ -1,24 +1,20 @@
 package com.shop.global.config;
 
+import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
+
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.function.IntSupplier;
 
 public class AsyncExecutorMetrics {
 
     private final AtomicLong rejectedTotal = new AtomicLong();
-    private final AtomicLong completedTotal = new AtomicLong();
-    private volatile IntSupplier queueSizeSupplier = () -> 0;
+    private volatile ThreadPoolTaskExecutor executor;
 
-    public void bindQueueSizeSupplier(IntSupplier queueSizeSupplier) {
-        this.queueSizeSupplier = queueSizeSupplier;
+    public void bindExecutor(ThreadPoolTaskExecutor executor) {
+        this.executor = executor;
     }
 
     public void incrementRejected() {
         rejectedTotal.incrementAndGet();
-    }
-
-    public void incrementCompleted() {
-        completedTotal.incrementAndGet();
     }
 
     public long getRejectedTotal() {
@@ -26,10 +22,16 @@ public class AsyncExecutorMetrics {
     }
 
     public long getCompletedTotal() {
-        return completedTotal.get();
+        if (executor == null) {
+            return 0L;
+        }
+        return executor.getThreadPoolExecutor().getCompletedTaskCount();
     }
 
     public int getQueueSize() {
-        return queueSizeSupplier.getAsInt();
+        if (executor == null) {
+            return 0;
+        }
+        return executor.getThreadPoolExecutor().getQueue().size();
     }
 }
