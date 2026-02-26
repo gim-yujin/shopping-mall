@@ -231,6 +231,71 @@ class ReviewHelpfulConcurrencyTest {
                 .isEqualTo(actualRecordCount);
     }
 
+
+    /**
+     * 테스트 3: inserted=0 경로 재현
+     *
+     * 시작 상태가 OFF(레코드 없음)인 상황에서 같은 사용자가 동시에 2회 클릭하면
+     * 한 트랜잭션은 INSERT 성공(1), 다른 트랜잭션은 INSERT 충돌(0)이 발생할 수 있다.
+     * 이때 markHelpful()은 최종 ON 상태를 true로 반환해야 한다.
+     */
+    @Test
+    @Order(3)
+    @DisplayName("insert 충돌(inserted=0)에서도 최종 ON 상태면 true 반환")
+    void concurrentHelpful_insertedZeroPathReturnsCurrentOnState() throws InterruptedException {
+        long testUserId = (reviewAuthorId == 888888L) ? 888887L : 888888L;
+        boolean reproduced = false;
+
+        for (int attempt = 1; attempt <= 30; attempt++) {
+            cleanUp();
+
+            ExecutorService executor = Executors.newFixedThreadPool(2);
+            CountDownLatch ready = new CountDownLatch(2);
+            CountDownLatch start = new CountDownLatch(1);
+            CountDownLatch done = new CountDownLatch(2);
+
+            AtomicInteger trueCount = new AtomicInteger(0);
+
+            for (int i = 0; i < 2; i++) {
+                executor.submit(() -> {
+                    ready.countDown();
+                    try {
+                        start.await();
+                        boolean currentOn = reviewService.markHelpful(testReviewId, testUserId);
+                        if (currentOn) {
+                            trueCount.incrementAndGet();
+                        }
+                    } catch (Exception ignored) {
+                        // 이 테스트는 반환 상태 검증이 목적이며, 예외 발생 시 해당 시도는 미재현으로 간주
+                    } finally {
+                        done.countDown();
+                    }
+                });
+            }
+
+            ready.await(5, TimeUnit.SECONDS);
+            start.countDown();
+            done.await(10, TimeUnit.SECONDS);
+            executor.shutdown();
+
+            Integer actualHelpfulCount = jdbcTemplate.queryForObject(
+                    "SELECT helpful_count FROM reviews WHERE review_id = ?",
+                    Integer.class, testReviewId);
+            Integer actualRecordCount = jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM review_helpfuls WHERE review_id = ? AND user_id = ?",
+                    Integer.class, testReviewId, testUserId);
+
+            if (trueCount.get() == 2 && actualHelpfulCount == 1 && actualRecordCount == 1) {
+                reproduced = true;
+                break;
+            }
+        }
+
+        assertThat(reproduced)
+                .as("동시 실행 중 inserted=0 경로를 재현하고 두 요청 모두 최종 ON(true)을 반환해야 합니다")
+                .isTrue();
+    }
+
     /**
      * 테스트 데이터 정리
      * - review_helpfuls에서 테스트 리뷰 관련 레코드 삭제

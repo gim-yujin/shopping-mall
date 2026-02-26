@@ -176,8 +176,10 @@ public class ReviewService {
         if (inserted > 0) {
             reviewRepository.incrementHelpfulCount(reviewId);
             bumpProductReviewVersion(productId);
+            return true;
         }
-        return true; // 추가됨 (또는 이미 존재)
+
+        return reviewHelpfulRepository.existsByReviewIdAndUserId(reviewId, userId);
     }
 
     private long getProductReviewVersion(Long productId) {

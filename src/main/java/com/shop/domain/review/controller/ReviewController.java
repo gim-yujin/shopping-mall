@@ -46,9 +46,9 @@ public class ReviewController {
                               RedirectAttributes redirectAttributes) {
         Long userId = SecurityUtil.getCurrentUserId().orElseThrow();
         try {
-            boolean added = reviewService.markHelpful(reviewId, userId);
+            boolean helpfulOn = reviewService.markHelpful(reviewId, userId);
             redirectAttributes.addFlashAttribute("successMessage",
-                    added ? "도움이 됐어요를 눌렀습니다." : "도움이 됐어요를 취소했습니다.");
+                    helpfulOn ? "도움이 됐어요를 눌렀습니다." : "도움이 됐어요를 취소했습니다.");
         } catch (BusinessException e) {
             redirectAttributes.addFlashAttribute("errorMessage", e.getMessage());
         }
