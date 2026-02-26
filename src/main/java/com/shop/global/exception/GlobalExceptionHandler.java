@@ -33,8 +33,14 @@ public class GlobalExceptionHandler {
 
     static {
         REDIRECT_PATH_POLICY.put("/cart", List.of());
-        REDIRECT_PATH_POLICY.put("/orders", List.of("page", "size", "status"));
-        REDIRECT_PATH_POLICY.put("/mypage", List.of("tab"));
+        REDIRECT_PATH_POLICY.put("/orders", List.of("page"));
+        REDIRECT_PATH_POLICY.put("/orders/**", List.of("page"));
+        REDIRECT_PATH_POLICY.put("/mypage", List.of());
+        REDIRECT_PATH_POLICY.put("/mypage/reviews", List.of("page"));
+        REDIRECT_PATH_POLICY.put("/mypage/**", List.of());
+        REDIRECT_PATH_POLICY.put("/admin/orders", List.of("page", "status"));
+        REDIRECT_PATH_POLICY.put("/admin/products", List.of("page"));
+        REDIRECT_PATH_POLICY.put("/admin/**", List.of());
         REDIRECT_PATH_POLICY.put("/products/**", List.of("keyword", "categoryId", "sort", "page", "size"));
     }
 
