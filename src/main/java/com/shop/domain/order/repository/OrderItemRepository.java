@@ -15,7 +15,12 @@ public interface OrderItemRepository extends JpaRepository<OrderItem, Long> {
             WHERE o.userId = :userId
               AND oi.productId = :productId
               AND o.orderStatus = com.shop.domain.order.entity.OrderStatus.DELIVERED
+              AND NOT EXISTS (
+                  SELECT 1 FROM Review r
+                  WHERE r.userId = :userId
+                    AND r.orderItemId = oi.orderItemId
+              )
             ORDER BY o.deliveredAt DESC, oi.orderItemId DESC
             """)
-    List<OrderItem> findDeliveredItemsForReview(@Param("userId") Long userId, @Param("productId") Long productId);
+    List<OrderItem> findDeliveredItemsForReviewExcludingReviewed(@Param("userId") Long userId, @Param("productId") Long productId);
 }

@@ -6,6 +6,8 @@ import com.shop.domain.review.dto.ReviewCreateRequest;
 import com.shop.domain.review.entity.Review;
 import com.shop.global.exception.BusinessException;
 import com.shop.global.exception.ResourceNotFoundException;
+import jakarta.persistence.EntityManagerFactory;
+import org.hibernate.stat.Statistics;
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -38,7 +40,8 @@ import static org.assertj.core.api.Assertions.*;
 @SpringBootTest
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 @TestPropertySource(properties = {
-        "logging.level.org.hibernate.SQL=WARN"
+        "logging.level.org.hibernate.SQL=WARN",
+        "spring.jpa.properties.hibernate.generate_statistics=true"
 })
 class ReviewServiceIntegrationTest {
 
@@ -50,6 +53,9 @@ class ReviewServiceIntegrationTest {
 
     @Autowired
     private ProductService productService;
+
+    @Autowired
+    private EntityManagerFactory entityManagerFactory;
 
     private Long testUserId;
     private Long otherUserId;
@@ -161,6 +167,65 @@ class ReviewServiceIntegrationTest {
                 "리뷰테스트상품"
         );
     }
+
+    @Test
+    @DisplayName("getReviewableOrderItems - 단일 쿼리로 조회하고 기존 기준과 동일한 결과를 반환")
+    void getReviewableOrderItems_usesSingleQueryAndKeepsResultConsistency() {
+        // Given: 배송완료 3건(2건은 미리뷰, 1건은 리뷰 완료), 배송중 1건
+        Long unreviewedLatest = createOrderItemForReview(testUserId, testProductId, "DELIVERED");
+        Long reviewed = createOrderItemForReview(testUserId, testProductId, "DELIVERED");
+        Long unreviewedOldest = createOrderItemForReview(testUserId, testProductId, "DELIVERED");
+        createOrderItemForReview(testUserId, testProductId, "SHIPPED");
+
+        Review existing = reviewService.createReview(testUserId,
+                new ReviewCreateRequest(testProductId, reviewed, 5, "기작성", "이미 작성된 리뷰"));
+        createdReviewIds.add(existing.getReviewId());
+
+        Statistics statistics = statistics();
+        statistics.clear();
+
+        // When
+        List<com.shop.domain.order.entity.OrderItem> actual = reviewService.getReviewableOrderItems(testUserId, testProductId);
+        long queryCount = statistics.getPrepareStatementCount();
+
+        // Then: 단일 쿼리로 조회
+        assertThat(queryCount)
+                .as("리뷰 가능 주문 항목 조회는 DB 쿼리 1회여야 한다")
+                .isEqualTo(1L);
+
+        // Then: 기존 로직(배송완료 + 본인 + 동일 상품 + 미리뷰)과 결과 동일
+        List<Long> expectedOrderItemIds = jdbcTemplate.queryForList(
+                """
+                SELECT oi.order_item_id
+                FROM order_items oi
+                JOIN orders o ON o.order_id = oi.order_id
+                WHERE o.user_id = ?
+                  AND oi.product_id = ?
+                  AND o.order_status = 'DELIVERED'
+                  AND NOT EXISTS (
+                      SELECT 1 FROM reviews r
+                      WHERE r.user_id = ?
+                        AND r.order_item_id = oi.order_item_id
+                  )
+                ORDER BY o.delivered_at DESC, oi.order_item_id DESC
+                """,
+                Long.class,
+                testUserId, testProductId, testUserId
+        );
+
+        List<Long> actualOrderItemIds = actual.stream()
+                .map(com.shop.domain.order.entity.OrderItem::getOrderItemId)
+                .toList();
+
+        assertThat(actualOrderItemIds).containsExactlyElementsOf(expectedOrderItemIds);
+        assertThat(actualOrderItemIds).contains(unreviewedLatest, unreviewedOldest);
+        assertThat(actualOrderItemIds).doesNotContain(reviewed);
+    }
+
+    private Statistics statistics() {
+        return entityManagerFactory.unwrap(org.hibernate.SessionFactory.class).getStatistics();
+    }
+
 
     @Test
     @DisplayName("createReview 성공 — 리뷰 생성 + 상품 평점 갱신")
