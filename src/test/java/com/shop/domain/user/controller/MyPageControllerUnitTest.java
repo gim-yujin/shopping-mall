@@ -6,6 +6,7 @@ import com.shop.domain.review.service.ReviewService;
 import com.shop.domain.user.entity.User;
 import com.shop.domain.user.service.UserService;
 import com.shop.global.security.CustomUserPrincipal;
+import com.shop.global.exception.DuplicateConstraintMessageResolver;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -41,12 +42,14 @@ class MyPageControllerUnitTest {
     private ReviewService reviewService;
     @Mock
     private CouponService couponService;
+    @Mock
+    private DuplicateConstraintMessageResolver duplicateConstraintMessageResolver;
 
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
-        MyPageController controller = new MyPageController(userService, orderService, reviewService, couponService);
+        MyPageController controller = new MyPageController(userService, orderService, reviewService, couponService, duplicateConstraintMessageResolver);
 
         LocalValidatorFactoryBean validator = new LocalValidatorFactoryBean();
         validator.afterPropertiesSet();

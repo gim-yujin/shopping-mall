@@ -60,12 +60,15 @@ public class MyPageController {
     @PostMapping("/profile")
     public String updateProfile(@Valid @ModelAttribute("profileUpdateRequest") ProfileUpdateRequest request,
                                 BindingResult bindingResult,
+                                Model model,
                                 RedirectAttributes redirectAttributes) {
         Long userId = SecurityUtil.getCurrentUserId().orElseThrow();
 
         if (bindingResult.hasErrors()) {
-            redirectAttributes.addFlashAttribute("profileErrorMessage", "입력값을 확인해주세요.");
-            return "redirect:/mypage/profile";
+            User user = userService.findById(userId);
+            populateProfilePageModel(model, user);
+            model.addAttribute("profileErrorMessage", "입력값을 확인해주세요.");
+            return "mypage/profile";
         }
 
         try {
@@ -84,12 +87,15 @@ public class MyPageController {
     @PostMapping("/password")
     public String changePassword(@Valid @ModelAttribute("passwordChangeRequest") PasswordChangeRequest request,
                                  BindingResult bindingResult,
+                                 Model model,
                                  RedirectAttributes redirectAttributes) {
         Long userId = SecurityUtil.getCurrentUserId().orElseThrow();
 
         if (bindingResult.hasErrors()) {
-            redirectAttributes.addFlashAttribute("passwordErrorMessage", "입력값을 확인해주세요.");
-            return "redirect:/mypage/profile";
+            User user = userService.findById(userId);
+            populateProfilePageModel(model, user);
+            model.addAttribute("passwordErrorMessage", "입력값을 확인해주세요.");
+            return "mypage/profile";
         }
 
         try {
