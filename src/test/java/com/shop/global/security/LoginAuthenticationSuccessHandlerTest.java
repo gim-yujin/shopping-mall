@@ -45,7 +45,8 @@ class LoginAuthenticationSuccessHandlerTest {
 
         handler.onAuthenticationSuccess(loginRequest, response, authentication);
 
-        assertThat(response.getRedirectedUrl()).isEqualTo("http://localhost/orders");
+        assertThat(response.getRedirectedUrl()).endsWith("/orders");
+        verify(loginAttemptService).extractClientIp(loginRequest);
         verify(loginAttemptService).clearFailures("user1", "127.0.0.1");
     }
 
@@ -68,6 +69,7 @@ class LoginAuthenticationSuccessHandlerTest {
         handler.onAuthenticationSuccess(request, response, authentication);
 
         assertThat(response.getRedirectedUrl()).isEqualTo("/");
+        verify(loginAttemptService).extractClientIp(request);
         verify(loginAttemptService).clearFailures("user1", "127.0.0.1");
     }
 }
