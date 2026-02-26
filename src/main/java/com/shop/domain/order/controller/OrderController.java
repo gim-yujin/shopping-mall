@@ -7,6 +7,7 @@ import com.shop.domain.coupon.entity.Coupon;
 import com.shop.domain.coupon.entity.UserCoupon;
 import com.shop.domain.order.dto.OrderCreateRequest;
 import com.shop.domain.order.entity.Order;
+import com.shop.domain.order.entity.OrderStatus;
 import com.shop.domain.order.entity.PaymentMethod;
 import com.shop.domain.order.service.OrderService;
 import com.shop.domain.user.entity.User;
@@ -98,8 +99,8 @@ public class OrderController {
         Long userId = SecurityUtil.getCurrentUserId().orElseThrow();
         int normalizedPage = PagingParams.normalizePage(page);
         model.addAttribute("orders", orderService.getOrdersByUser(userId, PageRequest.of(normalizedPage, 10)));
-        model.addAttribute("orderStatusLabels", orderStatusLabels());
-        model.addAttribute("orderStatusBadgeClasses", orderStatusBadgeClasses());
+        model.addAttribute("orderStatusLabels", OrderStatus.labelsByCode());
+        model.addAttribute("orderStatusBadgeClasses", OrderStatus.badgeClassesByCode());
         return "order/list";
     }
 
@@ -121,26 +122,6 @@ public class OrderController {
         }
         return "redirect:/orders/" + orderId;
     }
-    private Map<String, String> orderStatusLabels() {
-        Map<String, String> labels = new LinkedHashMap<>();
-        labels.put("PENDING", "결제대기");
-        labels.put("PAID", "결제완료");
-        labels.put("SHIPPED", "배송중");
-        labels.put("DELIVERED", "배송완료");
-        labels.put("CANCELLED", "취소");
-        return labels;
-    }
-
-    private Map<String, String> orderStatusBadgeClasses() {
-        Map<String, String> classes = new LinkedHashMap<>();
-        classes.put("PENDING", "bg-yellow-100 text-yellow-700");
-        classes.put("PAID", "bg-yellow-100 text-yellow-700");
-        classes.put("SHIPPED", "bg-blue-100 text-blue-700");
-        classes.put("DELIVERED", "bg-green-100 text-green-700");
-        classes.put("CANCELLED", "bg-red-100 text-red-700");
-        return classes;
-    }
-
     private Map<Long, String> buildCouponDisplayNames(List<UserCoupon> availableCoupons) {
         Map<Long, String> displayNames = new LinkedHashMap<>();
         NumberFormat numberFormat = NumberFormat.getInstance(Locale.KOREA);

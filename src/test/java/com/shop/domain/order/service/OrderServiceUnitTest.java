@@ -6,6 +6,7 @@ import com.shop.domain.coupon.repository.UserCouponRepository;
 import com.shop.domain.inventory.repository.ProductInventoryHistoryRepository;
 import com.shop.domain.order.entity.Order;
 import com.shop.domain.order.entity.OrderItem;
+import com.shop.domain.order.entity.OrderStatus;
 import com.shop.domain.order.repository.OrderRepository;
 import com.shop.domain.product.entity.Product;
 import com.shop.domain.product.repository.ProductRepository;
@@ -97,7 +98,7 @@ class OrderServiceUnitTest {
         UserCoupon userCoupon = mock(UserCoupon.class);
 
         when(orderRepository.findByIdWithLock(orderId)).thenReturn(Optional.of(order));
-        when(order.getOrderStatus()).thenReturn("PAID");
+        when(order.getOrderStatus()).thenReturn(OrderStatus.PAID);
         when(order.isCancellable()).thenReturn(true);
         when(order.getOrderId()).thenReturn(orderId);
         when(order.getUserId()).thenReturn(orderOwnerId);
@@ -135,7 +136,7 @@ class OrderServiceUnitTest {
         Order order = mock(Order.class);
 
         when(orderRepository.findByIdWithLock(orderId)).thenReturn(Optional.of(order));
-        when(order.getOrderStatus()).thenReturn("DELIVERED");
+        when(order.getOrderStatus()).thenReturn(OrderStatus.DELIVERED);
 
         assertThatThrownBy(() -> orderService.updateOrderStatus(orderId, "CANCELLED"))
                 .isInstanceOf(BusinessException.class)
@@ -152,7 +153,7 @@ class OrderServiceUnitTest {
         Order order = mock(Order.class);
 
         when(orderRepository.findByIdWithLock(orderId)).thenReturn(Optional.of(order));
-        when(order.getOrderStatus()).thenReturn("PAID");
+        when(order.getOrderStatus()).thenReturn(OrderStatus.PAID);
 
         orderService.updateOrderStatus(orderId, "SHIPPED");
 
@@ -166,7 +167,7 @@ class OrderServiceUnitTest {
         Order order = mock(Order.class);
 
         when(orderRepository.findByIdWithLock(orderId)).thenReturn(Optional.of(order));
-        when(order.getOrderStatus()).thenReturn("SHIPPED");
+        when(order.getOrderStatus()).thenReturn(OrderStatus.SHIPPED);
 
         assertThatThrownBy(() -> orderService.updateOrderStatus(orderId, "PAID"))
                 .isInstanceOf(BusinessException.class)
@@ -182,7 +183,7 @@ class OrderServiceUnitTest {
         Order order = mock(Order.class);
 
         when(orderRepository.findByIdWithLock(orderId)).thenReturn(Optional.of(order));
-        when(order.getOrderStatus()).thenReturn("PAID");
+        when(order.getOrderStatus()).thenReturn(OrderStatus.PAID);
         when(order.isCancellable()).thenReturn(false);
 
         assertThatThrownBy(() -> orderService.updateOrderStatus(orderId, "CANCELLED"))
@@ -191,4 +192,22 @@ class OrderServiceUnitTest {
 
         verify(order, never()).cancel();
     }
+
+    @Test
+    @DisplayName("관리자 상태 변경 시 지원하지 않는 상태 코드는 차단")
+    void updateOrderStatus_blockUnknownStatusCode() {
+        Long orderId = 1L;
+        Order order = mock(Order.class);
+
+        when(orderRepository.findByIdWithLock(orderId)).thenReturn(Optional.of(order));
+        assertThatThrownBy(() -> orderService.updateOrderStatus(orderId, "INVALID"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("잘못된 주문 상태");
+
+        verify(order, never()).markPaid();
+        verify(order, never()).markShipped();
+        verify(order, never()).markDelivered();
+        verify(order, never()).cancel();
+    }
+
 }

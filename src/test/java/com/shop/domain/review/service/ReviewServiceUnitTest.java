@@ -5,6 +5,7 @@ import com.shop.domain.product.repository.ProductRepository;
 import com.shop.domain.product.service.ProductService;
 import com.shop.domain.order.entity.Order;
 import com.shop.domain.order.entity.OrderItem;
+import com.shop.domain.order.entity.OrderStatus;
 import com.shop.domain.order.repository.OrderItemRepository;
 import com.shop.domain.review.dto.ReviewCreateRequest;
 import com.shop.domain.review.entity.Review;
@@ -73,7 +74,7 @@ class ReviewServiceUnitTest {
         when(orderItem.getOrder()).thenReturn(order);
         when(order.getUserId()).thenReturn(userId);
         when(orderItem.getProductId()).thenReturn(productId);
-        when(order.getOrderStatus()).thenReturn("DELIVERED");
+        when(order.getOrderStatus()).thenReturn(OrderStatus.DELIVERED);
     }
 
     @Test
@@ -192,7 +193,7 @@ class ReviewServiceUnitTest {
         when(orderItem.getOrder()).thenReturn(order);
         when(order.getUserId()).thenReturn(userId);
         when(orderItem.getProductId()).thenReturn(productId);
-        when(order.getOrderStatus()).thenReturn("SHIPPED");
+        when(order.getOrderStatus()).thenReturn(OrderStatus.SHIPPED);
 
         assertThatThrownBy(() -> reviewService.createReview(userId, request))
                 .isInstanceOf(BusinessException.class)
@@ -375,10 +376,11 @@ class ReviewServiceUnitTest {
         boolean result = reviewService.markHelpful(reviewId, userId);
 
         assertThat(result)
-                .as("서비스 구현상 insert 충돌(0건)도 true를 반환해야 함")
-                .isTrue();
+                .as("insert 충돌 시에는 기존 도움 여부 조회 결과를 반환해야 함")
+                .isFalse();
         verify(reviewRepository, never()).incrementHelpfulCount(any());
         verify(reviewRepository, never()).decrementHelpfulCount(any());
+        verify(reviewHelpfulRepository).existsByReviewIdAndUserId(reviewId, userId);
         verifyNoInteractions(productService);
     }
 

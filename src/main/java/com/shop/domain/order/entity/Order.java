@@ -21,8 +21,9 @@ public class Order {
     @Column(name = "user_id", nullable = false)
     private Long userId;
 
+    @Enumerated(EnumType.STRING)
     @Column(name = "order_status", nullable = false, length = 20)
-    private String orderStatus;
+    private OrderStatus orderStatus;
 
     @Column(name = "total_amount", nullable = false, precision = 15, scale = 2)
     private BigDecimal totalAmount;
@@ -81,7 +82,7 @@ public class Order {
                  String shippingAddress, String recipientName, String recipientPhone) {
         this.orderNumber = orderNumber;
         this.userId = userId;
-        this.orderStatus = "PENDING";
+        this.orderStatus = OrderStatus.PENDING;
         this.totalAmount = totalAmount;
         this.discountAmount = discountAmount;
         this.shippingFee = shippingFee;
@@ -101,34 +102,35 @@ public class Order {
     }
 
     public void markPaid() {
-        this.orderStatus = "PAID";
+        this.orderStatus = OrderStatus.PAID;
         this.paidAt = LocalDateTime.now();
     }
 
     public void markShipped() {
-        this.orderStatus = "SHIPPED";
+        this.orderStatus = OrderStatus.SHIPPED;
         this.shippedAt = LocalDateTime.now();
     }
 
     public void markDelivered() {
-        this.orderStatus = "DELIVERED";
+        this.orderStatus = OrderStatus.DELIVERED;
         this.deliveredAt = LocalDateTime.now();
     }
 
     public void cancel() {
-        this.orderStatus = "CANCELLED";
+        this.orderStatus = OrderStatus.CANCELLED;
         this.cancelledAt = LocalDateTime.now();
     }
 
     public boolean isCancellable() {
-        return "PENDING".equals(orderStatus) || "PAID".equals(orderStatus);
+        return orderStatus == OrderStatus.PENDING || orderStatus == OrderStatus.PAID;
     }
 
     // Getters
     public Long getOrderId() { return orderId; }
     public String getOrderNumber() { return orderNumber; }
     public Long getUserId() { return userId; }
-    public String getOrderStatus() { return orderStatus; }
+    public OrderStatus getOrderStatus() { return orderStatus; }
+    public String getOrderStatusCode() { return orderStatus.name(); }
     public BigDecimal getTotalAmount() { return totalAmount; }
     public BigDecimal getDiscountAmount() { return discountAmount; }
     public BigDecimal getShippingFee() { return shippingFee; }
@@ -147,13 +149,6 @@ public class Order {
     public List<OrderItem> getItems() { return items; }
     
     public String getStatusDisplay() {
-        return switch (orderStatus) {
-            case "PENDING" -> "결제대기";
-            case "PAID" -> "결제완료";
-            case "SHIPPED" -> "배송중";
-            case "DELIVERED" -> "배송완료";
-            case "CANCELLED" -> "주문취소";
-            default -> orderStatus;
-        };
+        return orderStatus.getLabel();
     }
 }
