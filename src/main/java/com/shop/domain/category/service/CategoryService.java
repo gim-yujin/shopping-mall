@@ -2,16 +2,23 @@ package com.shop.domain.category.service;
 
 import com.shop.domain.category.entity.Category;
 import com.shop.domain.category.repository.CategoryRepository;
+import com.shop.global.exception.BusinessException;
 import com.shop.global.exception.ResourceNotFoundException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 @Service
 @Transactional(readOnly = true)
 public class CategoryService {
+
+    private static final Logger log = LoggerFactory.getLogger(CategoryService.class);
 
     private final CategoryRepository categoryRepository;
 
@@ -51,16 +58,23 @@ public class CategoryService {
     @Cacheable(value = "categoryDescendants", key = "#categoryId")
     public List<Integer> getAllDescendantIds(Integer categoryId) {
         List<Integer> ids = new ArrayList<>();
+        Set<Integer> visited = new HashSet<>();
         ids.add(categoryId);
-        collectChildIds(categoryId, ids);
+        visited.add(categoryId);
+        collectChildIds(categoryId, ids, visited);
         return ids;
     }
 
-    private void collectChildIds(Integer parentId, List<Integer> ids) {
+    private void collectChildIds(Integer parentId, List<Integer> ids, Set<Integer> visited) {
         List<Category> children = categoryRepository.findByParentId(parentId);
         for (Category child : children) {
-            ids.add(child.getCategoryId());
-            collectChildIds(child.getCategoryId(), ids);
+            Integer childId = child.getCategoryId();
+            if (!visited.add(childId)) {
+                log.warn("카테고리 하위 트리 순환 감지: parentId={}, childId={}", parentId, childId);
+                continue;
+            }
+            ids.add(childId);
+            collectChildIds(childId, ids, visited);
         }
     }
 
@@ -72,8 +86,14 @@ public class CategoryService {
     @Cacheable(value = "categoryBreadcrumb", key = "#categoryId")
     public List<Category> getBreadcrumb(Integer categoryId) {
         List<Category> breadcrumb = new ArrayList<>();
+        Set<Integer> visited = new HashSet<>();
         Category current = findById(categoryId);
         while (current != null) {
+            Integer currentId = current.getCategoryId();
+            if (!visited.add(currentId)) {
+                log.warn("카테고리 브레드크럼 순환 감지: categoryId={}, loopId={}", categoryId, currentId);
+                throw new BusinessException("CATEGORY_CYCLE", "카테고리 계층 구조에 순환이 감지되었습니다.");
+            }
             breadcrumb.add(0, current);
             current = current.getParentCategory();
         }
