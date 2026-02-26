@@ -16,7 +16,8 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.math.BigDecimal;
 import java.time.Duration;
@@ -37,6 +38,8 @@ public class TierScheduler {
     private final UserTierHistoryRepository tierHistoryRepository;
     private final OrderRepository orderRepository;
     private final EntityManager entityManager;
+    private final TransactionTemplate txTemplate;
+    private final TransactionTemplate txReadOnlyTemplate;
     private final int userChunkSize;
 
     @Autowired
@@ -44,8 +47,10 @@ public class TierScheduler {
                          UserTierRepository userTierRepository,
                          UserTierHistoryRepository tierHistoryRepository,
                          OrderRepository orderRepository,
-                         EntityManager entityManager) {
-        this(userRepository, userTierRepository, tierHistoryRepository, orderRepository, entityManager, DEFAULT_USER_CHUNK_SIZE);
+                         EntityManager entityManager,
+                         PlatformTransactionManager txManager) {
+        this(userRepository, userTierRepository, tierHistoryRepository, orderRepository,
+                entityManager, txManager, DEFAULT_USER_CHUNK_SIZE);
     }
 
     public TierScheduler(UserRepository userRepository,
@@ -53,6 +58,7 @@ public class TierScheduler {
                          UserTierHistoryRepository tierHistoryRepository,
                          OrderRepository orderRepository,
                          EntityManager entityManager,
+                         PlatformTransactionManager txManager,
                          int userChunkSize) {
         this.userRepository = userRepository;
         this.userTierRepository = userTierRepository;
@@ -60,14 +66,21 @@ public class TierScheduler {
         this.orderRepository = orderRepository;
         this.entityManager = entityManager;
         this.userChunkSize = userChunkSize;
+
+        this.txTemplate = new TransactionTemplate(txManager);
+        this.txReadOnlyTemplate = new TransactionTemplate(txManager);
+        this.txReadOnlyTemplate.setReadOnly(true);
     }
 
     /**
      * 매년 1월 1일 00:00:00 실행
      * 전년도 주문금액 기준으로 모든 회원의 등급을 재산정한다.
+     *
+     * 트랜잭션 전략: 메서드 전체를 하나의 트랜잭션으로 묶지 않고,
+     * 집계 조회(읽기 전용)와 청크별 갱신을 각각 독립 트랜잭션으로 실행한다.
+     * → 100만 명 처리 시에도 커넥션 장시간 점유·전체 롤백 위험 없음.
      */
     @Scheduled(cron = "0 0 0 1 1 *")
-    @Transactional
     public void recalculateTiers() {
         int lastYear = Year.now().getValue() - 1;
         LocalDateTime startedAt = LocalDateTime.now();
@@ -76,45 +89,67 @@ public class TierScheduler {
         LocalDateTime startDate = LocalDateTime.of(lastYear, 1, 1, 0, 0, 0);
         LocalDateTime endDate = LocalDateTime.of(lastYear + 1, 1, 1, 0, 0, 0);
 
-        // 1) 전년도 사용자별 주문금액 집계 (취소 주문 제외)
-        List<Object[]> yearlySpentList = orderRepository.findYearlySpentByUser(startDate, endDate);
-        Map<Long, BigDecimal> yearlySpentMap = new HashMap<>();
-        for (Object[] row : yearlySpentList) {
-            Long userId = (Long) row[0];
-            BigDecimal spent = (BigDecimal) row[1];
-            yearlySpentMap.put(userId, spent);
-        }
+        // 1) 전년도 사용자별 주문금액 집계 (취소 주문 제외) — 읽기 전용 트랜잭션
+        Map<Long, BigDecimal> yearlySpentMap = txReadOnlyTemplate.execute(status -> {
+            List<Object[]> yearlySpentList = orderRepository.findYearlySpentByUser(startDate, endDate);
+            Map<Long, BigDecimal> map = new HashMap<>();
+            for (Object[] row : yearlySpentList) {
+                map.put((Long) row[0], (BigDecimal) row[1]);
+            }
+            return map;
+        });
 
-        // 2) 기본 등급 (웰컴) 조회
-        UserTier defaultTier = userTierRepository.findByTierLevel(1)
-                .orElseThrow(() -> new RuntimeException("기본 등급이 존재하지 않습니다."));
+        // 2) 기본 등급 (웰컴) 조회 — 읽기 전용 트랜잭션
+        UserTier defaultTier = txReadOnlyTemplate.execute(status ->
+                userTierRepository.findByTierLevel(1)
+                        .orElseThrow(() -> new RuntimeException("기본 등급이 존재하지 않습니다.")));
 
         TierProcessingResult totalResult = new TierProcessingResult();
         int pageNumber = 0;
 
         while (true) {
             Pageable pageable = PageRequest.of(pageNumber, userChunkSize);
-            Page<User> userPage = loadUserChunk(pageable);
-            if (!userPage.hasContent()) {
+
+            // 3) 사용자 청크 로드 — 읽기 전용 트랜잭션
+            Page<User> userPage = txReadOnlyTemplate.execute(status -> loadUserChunk(pageable));
+            if (userPage == null || !userPage.hasContent()) {
                 break;
             }
 
+            // 4) 청크별 등급 갱신 — 독립 쓰기 트랜잭션 (실패 시 해당 청크만 롤백)
             long chunkStartedAt = System.nanoTime();
-            TierProcessingResult chunkResult = processTierChunk(lastYear, yearlySpentMap, defaultTier, userPage.getContent());
+            boolean hasNext = userPage.hasNext();
+            List<User> users = userPage.getContent();
+
+            TierProcessingResult chunkResult = txTemplate.execute(status -> {
+                try {
+                    return processTierChunk(lastYear, yearlySpentMap, defaultTier, users);
+                } catch (Exception e) {
+                    status.setRollbackOnly();
+                    log.error("등급 재산정 청크 실패 - page={}", pageable.getPageNumber(), e);
+                    TierProcessingResult errorResult = new TierProcessingResult();
+                    errorResult.errors = users.size();
+                    errorResult.processed = users.size();
+                    return errorResult;
+                }
+            });
+
             long chunkElapsedMs = Duration.ofNanos(System.nanoTime() - chunkStartedAt).toMillis();
 
-            totalResult.merge(chunkResult);
+            if (chunkResult != null) {
+                totalResult.merge(chunkResult);
+            }
             log.info("등급 재산정 청크 완료 - page={}, chunkSize={}, processed={}, upgraded={}, downgraded={}, unchanged={}, errors={}, elapsedMs={}",
                     pageNumber,
                     userChunkSize,
-                    chunkResult.processed,
-                    chunkResult.upgraded,
-                    chunkResult.downgraded,
-                    chunkResult.unchanged,
-                    chunkResult.errors,
+                    chunkResult != null ? chunkResult.processed : 0,
+                    chunkResult != null ? chunkResult.upgraded : 0,
+                    chunkResult != null ? chunkResult.downgraded : 0,
+                    chunkResult != null ? chunkResult.unchanged : 0,
+                    chunkResult != null ? chunkResult.errors : 0,
                     chunkElapsedMs);
 
-            if (!userPage.hasNext()) {
+            if (!hasNext) {
                 break;
             }
             pageNumber++;

@@ -22,6 +22,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.cache.CacheManager;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -45,6 +46,7 @@ class OrderServiceUnitTest {
     @Mock private UserCouponRepository userCouponRepository;
     @Mock private UserTierRepository userTierRepository;
     @Mock private EntityManager entityManager;
+    @Mock private CacheManager cacheManager;
 
     private OrderService orderService;
 
@@ -52,7 +54,7 @@ class OrderServiceUnitTest {
     void setUp() {
         orderService = new OrderService(orderRepository, cartRepository, productRepository,
                 userRepository, inventoryHistoryRepository, userCouponRepository,
-                userTierRepository, entityManager);
+                userTierRepository, entityManager, cacheManager);
     }
 
     @Test

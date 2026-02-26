@@ -22,6 +22,8 @@ import com.shop.global.exception.BusinessException;
 import com.shop.global.exception.InsufficientStockException;
 import com.shop.global.exception.ResourceNotFoundException;
 import jakarta.persistence.EntityManager;
+import org.springframework.cache.Cache;
+import org.springframework.cache.CacheManager;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -46,13 +48,15 @@ public class OrderService {
     private final UserCouponRepository userCouponRepository;
     private final UserTierRepository userTierRepository;
     private final EntityManager entityManager;
+    private final CacheManager cacheManager;
 
     public OrderService(OrderRepository orderRepository, CartRepository cartRepository,
                         ProductRepository productRepository, UserRepository userRepository,
                         ProductInventoryHistoryRepository inventoryHistoryRepository,
                         UserCouponRepository userCouponRepository,
                         UserTierRepository userTierRepository,
-                        EntityManager entityManager) {
+                        EntityManager entityManager,
+                        CacheManager cacheManager) {
         this.orderRepository = orderRepository;
         this.cartRepository = cartRepository;
         this.productRepository = productRepository;
@@ -61,6 +65,7 @@ public class OrderService {
         this.userCouponRepository = userCouponRepository;
         this.userTierRepository = userTierRepository;
         this.entityManager = entityManager;
+        this.cacheManager = cacheManager;
     }
 
     private static final BigDecimal SHIPPING_FEE_BASE = new BigDecimal("3000");
@@ -212,6 +217,10 @@ public class OrderService {
                 .ifPresent(user::updateTier);
 
         cartRepository.deleteByUserId(userId);
+
+        // 8) 재고가 변경된 상품의 상세 캐시 무효화
+        evictProductDetailCaches(orderLines.stream().map(OrderLine::productId).toList());
+
         return savedOrder;
     }
 
@@ -321,6 +330,24 @@ public class OrderService {
         userCouponRepository.findByOrderId(orderId).ifPresent(UserCoupon::cancelUse);
 
         order.cancel();
+
+        // 4) 재고가 변경된 상품의 상세 캐시 무효화
+        evictProductDetailCaches(sortedItems.stream().map(OrderItem::getProductId).toList());
+    }
+
+    /**
+     * 재고가 변경된 상품의 상세 캐시를 즉시 무효화한다.
+     * 주문 생성/취소로 재고가 바뀌었을 때 호출하여
+     * 상품 상세 페이지에 stale 재고가 표시되는 것을 방지한다.
+     */
+    private void evictProductDetailCaches(List<Long> productIds) {
+        Cache cache = cacheManager.getCache("productDetail");
+        if (cache == null) {
+            return;
+        }
+        for (Long productId : productIds) {
+            cache.evict(productId);
+        }
     }
 
     private String generateOrderNumber() {

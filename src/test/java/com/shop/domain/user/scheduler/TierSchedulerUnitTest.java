@@ -14,6 +14,8 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionStatus;
 
 import java.util.Collections;
 import java.util.List;
@@ -35,14 +37,20 @@ class TierSchedulerUnitTest {
     private OrderRepository orderRepository;
     @Mock
     private EntityManager entityManager;
+    @Mock
+    private PlatformTransactionManager txManager;
 
     private TierScheduler tierScheduler;
 
     @org.junit.jupiter.api.BeforeEach
     void setUp() {
+        // TransactionTemplate이 콜백을 정상 실행하도록 모의 트랜잭션 상태 반환
+        TransactionStatus mockStatus = mock(TransactionStatus.class);
+        when(txManager.getTransaction(any())).thenReturn(mockStatus);
+
         tierScheduler = new TierScheduler(
                 userRepository, userTierRepository, tierHistoryRepository,
-                orderRepository, entityManager, 1);
+                orderRepository, entityManager, txManager, 1);
     }
 
     @Test
