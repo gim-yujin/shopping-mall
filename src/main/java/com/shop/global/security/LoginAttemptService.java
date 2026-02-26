@@ -65,9 +65,10 @@ public class LoginAttemptService {
 
         AttemptState nextState;
         if (cache instanceof CaffeineCache caffeineCache) {
-            nextState = caffeineCache.getNativeCache().asMap().compute(cacheKey, (key, existing) ->
+            Object updated = caffeineCache.getNativeCache().asMap().compute(cacheKey, (key, existing) ->
                     nextAttemptState(existing instanceof AttemptState state ? state : null)
             );
+            nextState = updated instanceof AttemptState state ? state : nextAttemptState(null);
         } else {
             Object lock = lockFor(cacheKey);
             synchronized (lock) {
