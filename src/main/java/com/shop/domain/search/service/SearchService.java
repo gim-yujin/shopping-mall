@@ -2,6 +2,8 @@ package com.shop.domain.search.service;
 
 import com.shop.domain.search.entity.SearchLog;
 import com.shop.domain.search.repository.SearchLogRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
@@ -12,6 +14,8 @@ import java.util.stream.Collectors;
 @Service
 @Transactional(readOnly = true)
 public class SearchService {
+
+    private static final Logger log = LoggerFactory.getLogger(SearchService.class);
 
     private final SearchLogRepository searchLogRepository;
 
@@ -27,7 +31,11 @@ public class SearchService {
     @Async("asyncExecutor")
     @Transactional
     public void logSearch(Long userId, String keyword, int resultCount, String ipAddress, String userAgent) {
-        searchLogRepository.save(new SearchLog(userId, keyword, resultCount, ipAddress, userAgent));
+        try {
+            searchLogRepository.save(new SearchLog(userId, keyword, resultCount, ipAddress, userAgent));
+        } catch (Exception e) {
+            log.warn("검색 로그 저장에 실패했지만 요청 처리는 계속 진행합니다. keyword={}, userId={}", keyword, userId, e);
+        }
     }
 
     @Cacheable(value = "popularKeywords", key = "'top10'")
