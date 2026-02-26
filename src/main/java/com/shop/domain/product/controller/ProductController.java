@@ -5,6 +5,7 @@ import com.shop.domain.category.service.CategoryService;
 import com.shop.domain.product.entity.Product;
 import com.shop.domain.product.service.ProductService;
 import com.shop.domain.review.service.ReviewService;
+import com.shop.domain.order.entity.OrderItem;
 import com.shop.domain.review.entity.Review;
 import com.shop.domain.wishlist.service.WishlistService;
 import com.shop.global.common.PagingParams;
@@ -70,6 +71,9 @@ public class ProductController {
                     .map(Review::getReviewId)
                     .collect(Collectors.toSet());
             model.addAttribute("helpedReviewIds", reviewService.getHelpedReviewIds(userId, reviewIds));
+
+            List<OrderItem> reviewableOrderItems = reviewService.getReviewableOrderItems(userId, productId);
+            model.addAttribute("reviewableOrderItems", reviewableOrderItems);
         });
 
         if (product.getCategory() != null) {
