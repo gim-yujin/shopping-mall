@@ -27,6 +27,7 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
 /**
@@ -96,6 +97,7 @@ class OrderServiceUnitTest {
         UserCoupon userCoupon = mock(UserCoupon.class);
 
         when(orderRepository.findByIdWithLock(orderId)).thenReturn(Optional.of(order));
+        when(order.getOrderStatus()).thenReturn("PAID");
         when(order.isCancellable()).thenReturn(true);
         when(order.getOrderId()).thenReturn(orderId);
         when(order.getUserId()).thenReturn(orderOwnerId);
@@ -113,6 +115,9 @@ class OrderServiceUnitTest {
         when(order.getEarnedPointsSnapshot()).thenReturn(100);
 
         when(userCouponRepository.findByOrderId(orderId)).thenReturn(Optional.of(userCoupon));
+        when(user.getTotalSpent()).thenReturn(BigDecimal.ZERO);
+        when(userTierRepository.findFirstByMinSpentLessThanEqualOrderByTierLevelDesc(any()))
+                .thenReturn(Optional.empty());
 
         orderService.updateOrderStatus(orderId, "CANCELLED");
 
