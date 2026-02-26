@@ -13,6 +13,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Locale;
 import java.util.regex.Pattern;
 
 @Service
@@ -41,10 +42,15 @@ public class UserService {
 
     @Transactional
     public User signup(SignupRequest request) {
-        if (userRepository.existsByUsername(request.username())) {
+        String normalizedUsername = normalizeUsername(request.username());
+        String normalizedEmail = normalizeEmail(request.email());
+        String normalizedName = normalizeName(request.name());
+        String normalizedPhone = normalizePhone(request.phone());
+
+        if (userRepository.existsByUsername(normalizedUsername)) {
             throw new BusinessException("DUPLICATE", "이미 사용 중인 아이디입니다.");
         }
-        if (userRepository.existsByEmail(request.email())) {
+        if (userRepository.existsByEmail(normalizedEmail)) {
             throw new BusinessException("DUPLICATE", "이미 사용 중인 이메일입니다.");
         }
         if (request.password() == null || !PASSWORD_PATTERN.matcher(request.password()).matches()) {
@@ -55,11 +61,11 @@ public class UserService {
                 .orElseThrow(() -> new ResourceNotFoundException("기본 등급", 1));
 
         User user = new User(
-                request.username(),
-                request.email(),
+                normalizedUsername,
+                normalizedEmail,
                 passwordEncoder.encode(request.password()),
-                request.name(),
-                request.phone()
+                normalizedName,
+                normalizedPhone
         );
         user.setTier(defaultTier);
 
@@ -80,11 +86,15 @@ public class UserService {
     public void updateProfile(Long userId, String name, String phone, String email) {
         validateProfileInput(name, phone, email);
 
+        String normalizedName = normalizeName(name);
+        String normalizedPhone = normalizePhone(phone);
+        String normalizedEmail = normalizeEmail(email);
+
         User user = findById(userId);
-        if (!user.getEmail().equals(email) && userRepository.existsByEmail(email)) {
+        if (!user.getEmail().equals(normalizedEmail) && userRepository.existsByEmail(normalizedEmail)) {
             throw new BusinessException("DUPLICATE", "이미 사용 중인 이메일입니다.");
         }
-        user.updateProfile(name.trim(), normalizePhone(phone), email.trim());
+        user.updateProfile(normalizedName, normalizedPhone, normalizedEmail);
     }
 
     @Transactional
@@ -117,7 +127,7 @@ public class UserService {
         if (email == null || email.trim().isEmpty()) {
             throw new BusinessException("INVALID_INPUT", "이메일을 입력해주세요.");
         }
-        if (!EMAIL_PATTERN.matcher(email.trim()).matches()) {
+        if (!EMAIL_PATTERN.matcher(normalizeEmail(email)).matches()) {
             throw new BusinessException("INVALID_INPUT", "올바른 이메일 형식이 아닙니다.");
         }
 
@@ -141,5 +151,18 @@ public class UserService {
 
     private String normalizePhone(String phone) {
         return phone == null ? "" : phone.trim();
+    }
+
+    private String normalizeUsername(String username) {
+        return username == null ? "" : username.trim();
+    }
+
+    private String normalizeName(String name) {
+        return name == null ? "" : name.trim();
+    }
+
+    private String normalizeEmail(String email) {
+        // 이메일은 저장/조회 시 모두 소문자 정책을 적용합니다.
+        return email == null ? "" : email.trim().toLowerCase(Locale.ROOT);
     }
 }
