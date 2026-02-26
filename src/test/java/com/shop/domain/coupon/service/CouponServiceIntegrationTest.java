@@ -267,26 +267,42 @@ class CouponServiceIntegrationTest {
     }
 
     @Test
-    @DisplayName("getAvailableCoupons — 사용 가능 쿠폰만 반환")
-    void getAvailableCoupons_returnsOnlyAvailable() {
-        // Given: 사용 가능 쿠폰 1개 발급
-        String code = "TEST_AVAIL_" + System.currentTimeMillis();
-        createTestCoupon(code, "사용가능", "FIXED", 1000, 100, true, false);
-        couponService.issueCoupon(testUserId, code);
+    @DisplayName("getAvailableCoupons — 주문 시점 isAvailable 규칙과 동일한 쿠폰만 반환")
+    void getAvailableCoupons_returnsOnlyOrderAvailableCoupons() {
+        // Given: 발급 후 상태를 변경해 조회 필터링 대상 쿠폰들을 준비
+        String availableCode = "TEST_AVAIL_OK_" + System.currentTimeMillis();
+        String inactiveCode = "TEST_AVAIL_INACTIVE_" + System.currentTimeMillis();
+        String soldOutCode = "TEST_AVAIL_SOLDOUT_" + System.currentTimeMillis();
+        String notStartedCode = "TEST_AVAIL_NOT_STARTED_" + System.currentTimeMillis();
+
+        Integer availableCouponId = createTestCoupon(availableCode, "조회 가능", "FIXED", 1000, 100, true, false);
+        Integer inactiveCouponId = createTestCoupon(inactiveCode, "비활성", "FIXED", 1000, 100, true, false);
+        Integer soldOutCouponId = createTestCoupon(soldOutCode, "소진", "FIXED", 1000, 2, true, false);
+        Integer notStartedCouponId = createTestCoupon(notStartedCode, "시작 전", "FIXED", 1000, 100, true, false);
+
+        couponService.issueCoupon(testUserId, availableCode);
+        couponService.issueCoupon(testUserId, inactiveCode);
+        couponService.issueCoupon(testUserId, soldOutCode);
+        couponService.issueCoupon(testUserId, notStartedCode);
+
+        jdbcTemplate.update("UPDATE coupons SET is_active = false WHERE coupon_id = ?", inactiveCouponId);
+        jdbcTemplate.update("UPDATE coupons SET used_quantity = total_quantity WHERE coupon_id = ?", soldOutCouponId);
+        jdbcTemplate.update("UPDATE coupons SET valid_from = NOW() + interval '1 day' WHERE coupon_id = ?", notStartedCouponId);
 
         // When
         List<UserCoupon> available = couponService.getAvailableCoupons(testUserId);
 
-        // Then: 최소 1개 이상 (기존 쿠폰 포함)
-        assertThat(available).isNotEmpty();
+        // Then: 주문 시점의 UserCoupon.isAvailable() 규칙과 동일해야 함
+        assertThat(available)
+                .extracting(uc -> uc.getCoupon().getCouponId())
+                .contains(availableCouponId)
+                .doesNotContain(inactiveCouponId, soldOutCouponId, notStartedCouponId);
 
-        // 모든 쿠폰이 미사용 + 미만료 상태
-        for (UserCoupon uc : available) {
-            assertThat(uc.getIsUsed()).isFalse();
-            assertThat(uc.getExpiresAt()).isAfter(java.time.LocalDateTime.now());
-        }
+        assertThat(available)
+                .as("조회된 모든 쿠폰은 주문 시점 사용 가능 규칙(isAvailable)을 만족해야 함")
+                .allMatch(UserCoupon::isAvailable);
 
-        System.out.println("  [PASS] 사용 가능 쿠폰 조회: " + available.size() + "개");
+        System.out.println("  [PASS] 사용 가능 쿠폰 조회/주문 규칙 일치 검증: " + available.size() + "개");
     }
 
 

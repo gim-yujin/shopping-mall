@@ -17,7 +17,19 @@ import java.util.Set;
 
 public interface UserCouponRepository extends JpaRepository<UserCoupon, Long> {
 
-    @Query("SELECT uc FROM UserCoupon uc JOIN FETCH uc.coupon WHERE uc.userId = :userId AND uc.isUsed = false AND uc.expiresAt > CURRENT_TIMESTAMP ORDER BY uc.expiresAt ASC")
+    @Query("""
+            SELECT uc
+            FROM UserCoupon uc
+            JOIN FETCH uc.coupon c
+            WHERE uc.userId = :userId
+              AND uc.isUsed = false
+              AND uc.expiresAt > CURRENT_TIMESTAMP
+              AND c.isActive = true
+              AND c.validFrom <= CURRENT_TIMESTAMP
+              AND c.validUntil >= CURRENT_TIMESTAMP
+              AND (c.totalQuantity IS NULL OR c.usedQuantity < c.totalQuantity)
+            ORDER BY uc.expiresAt ASC
+            """)
     List<UserCoupon> findAvailableCoupons(@Param("userId") Long userId);
 
     @Query(value = "SELECT uc FROM UserCoupon uc JOIN FETCH uc.coupon WHERE uc.userId = :userId ORDER BY uc.issuedAt DESC",

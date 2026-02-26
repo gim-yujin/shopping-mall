@@ -51,7 +51,9 @@
                 <!-- Coupon Selection -->
                 <div class="bg-white rounded-lg shadow p-6">
                     <h2 class="text-lg font-bold mb-4">쿠폰 적용</h2>
-                    <div th:if="${#lists.isEmpty(availableCoupons)}" class="text-sm text-gray-500">사용 가능한 쿠폰이 없습니다.</div>
+                    <div th:if="${#lists.isEmpty(availableCoupons)}" class="text-sm text-gray-500">
+                        현재 주문에 즉시 적용 가능한 쿠폰이 없습니다. (만료/비활성/소진 쿠폰은 결제 단계에서 자동 제외됩니다.)
+                    </div>
                     <div th:unless="${#lists.isEmpty(availableCoupons)}">
                         <select name="userCouponId" id="couponSelect"
                                 class="w-full border rounded-lg px-3 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
