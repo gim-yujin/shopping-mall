@@ -29,24 +29,35 @@ import java.util.Map;
 public class TierScheduler {
 
     private static final Logger log = LoggerFactory.getLogger(TierScheduler.class);
-    private static final int USER_CHUNK_SIZE = 1_000;
+    private static final int DEFAULT_USER_CHUNK_SIZE = 1_000;
 
     private final UserRepository userRepository;
     private final UserTierRepository userTierRepository;
     private final UserTierHistoryRepository tierHistoryRepository;
     private final OrderRepository orderRepository;
     private final EntityManager entityManager;
+    private final int userChunkSize;
 
     public TierScheduler(UserRepository userRepository,
                          UserTierRepository userTierRepository,
                          UserTierHistoryRepository tierHistoryRepository,
                          OrderRepository orderRepository,
                          EntityManager entityManager) {
+        this(userRepository, userTierRepository, tierHistoryRepository, orderRepository, entityManager, DEFAULT_USER_CHUNK_SIZE);
+    }
+
+    public TierScheduler(UserRepository userRepository,
+                         UserTierRepository userTierRepository,
+                         UserTierHistoryRepository tierHistoryRepository,
+                         OrderRepository orderRepository,
+                         EntityManager entityManager,
+                         int userChunkSize) {
         this.userRepository = userRepository;
         this.userTierRepository = userTierRepository;
         this.tierHistoryRepository = tierHistoryRepository;
         this.orderRepository = orderRepository;
         this.entityManager = entityManager;
+        this.userChunkSize = userChunkSize;
     }
 
     /**
@@ -80,7 +91,7 @@ public class TierScheduler {
         int pageNumber = 0;
 
         while (true) {
-            Pageable pageable = PageRequest.of(pageNumber, USER_CHUNK_SIZE);
+            Pageable pageable = PageRequest.of(pageNumber, userChunkSize);
             Page<User> userPage = loadUserChunk(pageable);
             if (!userPage.hasContent()) {
                 break;
@@ -93,7 +104,7 @@ public class TierScheduler {
             totalResult.merge(chunkResult);
             log.info("등급 재산정 청크 완료 - page={}, chunkSize={}, processed={}, upgraded={}, downgraded={}, unchanged={}, errors={}, elapsedMs={}",
                     pageNumber,
-                    USER_CHUNK_SIZE,
+                    userChunkSize,
                     chunkResult.processed,
                     chunkResult.upgraded,
                     chunkResult.downgraded,
