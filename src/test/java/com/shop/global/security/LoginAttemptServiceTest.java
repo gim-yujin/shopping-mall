@@ -5,7 +5,12 @@ import org.junit.jupiter.api.Test;
 import org.springframework.cache.concurrent.ConcurrentMapCacheManager;
 import org.springframework.mock.web.MockHttpServletRequest;
 
+import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -62,4 +67,62 @@ class LoginAttemptServiceTest {
         assertThat(spoofedIp).isEqualTo(normalIp);
         assertThat(service.isBlocked(username, spoofedIp)).isTrue();
     }
+
+    @Test
+    @DisplayName("동일 키로 병렬 실패 요청 시 카운트가 유실되지 않는다")
+    void recordFailure_shouldIncreaseCountAtomically_underConcurrentRequests() throws Exception {
+        String username = "parallel-user";
+        String ipAddress = "203.0.113.10";
+
+        int attempts = 64;
+        ExecutorService executor = Executors.newFixedThreadPool(8);
+        try {
+            List<Callable<Long>> tasks = new ArrayList<>();
+            for (int i = 0; i < attempts; i++) {
+                tasks.add(() -> service.recordFailure(username, ipAddress));
+            }
+
+            List<Future<Long>> futures = executor.invokeAll(tasks);
+            for (Future<Long> future : futures) {
+                future.get();
+            }
+        } finally {
+            executor.shutdownNow();
+        }
+
+        LoginAttemptService.AttemptState state = service.getStateForTest(username, ipAddress);
+        assertThat(state).isNotNull();
+        assertThat(state.failureCount()).isEqualTo(attempts);
+        assertThat(service.isBlocked(username, ipAddress)).isTrue();
+    }
+
+    @Test
+    @DisplayName("실패 누적에 따른 차단 시간 계산은 최대 5분으로 캡된다")
+    void recordFailure_shouldKeepBackoffPolicy_withFiveMinuteCap() {
+        String username = "cap-user";
+        String ipAddress = "198.51.100.33";
+
+        long first = service.recordFailure(username, ipAddress);
+        assertThat(first).isEqualTo(1);
+
+        long second = service.recordFailure(username, ipAddress);
+        assertThat(second).isEqualTo(2);
+
+        long ninth = 0;
+        for (int i = 0; i < 7; i++) {
+            ninth = service.recordFailure(username, ipAddress);
+        }
+        assertThat(ninth).isEqualTo(256);
+
+        long tenth = service.recordFailure(username, ipAddress);
+        assertThat(tenth).isEqualTo(300);
+
+        LoginAttemptService.AttemptState state = service.getStateForTest(username, ipAddress);
+        assertThat(state).isNotNull();
+        assertThat(state.failureCount()).isEqualTo(10);
+
+        long remaining = service.getRemainingBlockSeconds(username, ipAddress);
+        assertThat(remaining).isBetween(1L, 300L);
+    }
+
 }
