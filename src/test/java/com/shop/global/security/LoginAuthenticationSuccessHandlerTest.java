@@ -7,7 +7,6 @@ import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.mock.web.MockHttpSession;
 import org.springframework.security.core.Authentication;
-import org.springframework.security.web.savedrequest.HttpSessionRequestCache;
 import org.springframework.security.web.savedrequest.SimpleSavedRequest;
 
 import java.io.IOException;
@@ -19,6 +18,8 @@ import static org.mockito.Mockito.when;
 
 class LoginAuthenticationSuccessHandlerTest {
 
+    private static final String SAVED_REQUEST_SESSION_ATTRIBUTE = "SPRING_SECURITY_SAVED_REQUEST";
+
     @Test
     @DisplayName("보호 URL 접근 후 로그인 성공 시 원래 요청 URL로 리다이렉트된다")
     void redirectsToSavedRequestAfterLogin() throws ServletException, IOException {
@@ -29,7 +30,7 @@ class LoginAuthenticationSuccessHandlerTest {
         request.setContextPath("");
         request.setSession(new MockHttpSession());
         request.getSession().setAttribute(
-            HttpSessionRequestCache.SAVED_REQUEST,
+            SAVED_REQUEST_SESSION_ATTRIBUTE,
             new SimpleSavedRequest("http://localhost/orders")
         );
 
