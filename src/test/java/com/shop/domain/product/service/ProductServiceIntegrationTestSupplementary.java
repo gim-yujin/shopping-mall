@@ -9,7 +9,9 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.TestPropertySource;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.*;
 
@@ -87,6 +89,56 @@ class ProductServiceIntegrationTestSupplementary {
         // 시드 데이터에 상품이 있다면 결과가 있어야 함
         assertThat(result).isNotNull();
         System.out.println("  [PASS] getBestSellers: " + result.getTotalElements() + "개");
+    }
+
+
+
+    @Test
+    @DisplayName("getBestSellers — 주문 취소(판매량 롤백) 반영 시 정렬 순서 변경")
+    void getBestSellers_reflectsSalesRollbackOrdering() {
+        List<Map<String, Object>> topProducts = jdbcTemplate.queryForList(
+                "SELECT product_id, sales_count FROM products WHERE is_active = true ORDER BY product_id LIMIT 2");
+        assertThat(topProducts).hasSizeGreaterThanOrEqualTo(2);
+
+        Integer currentMaxSales = jdbcTemplate.queryForObject(
+                "SELECT COALESCE(MAX(sales_count), 0) FROM products WHERE is_active = true",
+                Integer.class);
+        assertThat(currentMaxSales).isNotNull();
+
+        Long firstProductId = ((Number) topProducts.get(0).get("product_id")).longValue();
+        Long secondProductId = ((Number) topProducts.get(1).get("product_id")).longValue();
+
+        Map<Long, Integer> originalSales = new HashMap<>();
+        originalSales.put(firstProductId, ((Number) topProducts.get(0).get("sales_count")).intValue());
+        originalSales.put(secondProductId, ((Number) topProducts.get(1).get("sales_count")).intValue());
+
+        try {
+            int firstSalesBeforeCancel = currentMaxSales + 2000;
+            int secondSalesStable = currentMaxSales + 1000;
+            int firstSalesAfterCancel = currentMaxSales + 500;
+
+            jdbcTemplate.update("UPDATE products SET sales_count = ? WHERE product_id = ?", firstSalesBeforeCancel, firstProductId);
+            jdbcTemplate.update("UPDATE products SET sales_count = ? WHERE product_id = ?", secondSalesStable, secondProductId);
+
+            Page<Product> boostedResult = productService.getBestSellers(PageRequest.of(0, 2));
+            assertThat(boostedResult.getContent()).isNotEmpty();
+            assertThat(boostedResult.getContent().get(0).getProductId())
+                    .as("판매량이 가장 높은 상품이 1위여야 함")
+                    .isEqualTo(firstProductId);
+
+            jdbcTemplate.update("UPDATE products SET sales_count = ? WHERE product_id = ?", firstSalesAfterCancel, firstProductId);
+
+            Page<Product> rolledBackResult = productService.getBestSellers(PageRequest.of(0, 2));
+            assertThat(rolledBackResult.getContent()).isNotEmpty();
+            assertThat(rolledBackResult.getContent().get(0).getProductId())
+                    .as("취소로 판매량이 롤백된 뒤에는 두 번째 상품이 1위여야 함")
+                    .isEqualTo(secondProductId);
+        } finally {
+            jdbcTemplate.update("UPDATE products SET sales_count = ? WHERE product_id = ?",
+                    originalSales.get(firstProductId), firstProductId);
+            jdbcTemplate.update("UPDATE products SET sales_count = ? WHERE product_id = ?",
+                    originalSales.get(secondProductId), secondProductId);
+        }
     }
 
     @Test
