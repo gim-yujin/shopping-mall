@@ -6,6 +6,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.web.servlet.mvc.support.RedirectAttributesModelMap;
 
+import java.lang.reflect.Method;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -92,18 +93,43 @@ class GlobalExceptionHandlerTest {
     }
 
     @Test
-    @DisplayName("BusinessException — /products/** 경로는 화이트리스트 쿼리만 유지")
-    void handleBusiness_keepsWhitelistedQueryParamsForProducts() {
-        BusinessException ex = new BusinessException("ERR", "에러");
-        MockHttpServletRequest request = new MockHttpServletRequest();
-        request.setServerName("myshop.com");
-        request.addHeader("Host", "myshop.com");
-        request.addHeader("Referer", "https://myshop.com/products/123?keyword=shoe&page=2&redirect=https://evil.com");
-        RedirectAttributesModelMap redirectAttributes = new RedirectAttributesModelMap();
+    @DisplayName("resolveRedirectUrl — 허용 경로와 허용 쿼리만 복원")
+    void resolveRedirectUrl_keepsAllowedPathAndQuery() {
+        MockHttpServletRequest request = requestWithReferer("https://myshop.com/orders?page=2&status=PAID");
 
-        Object result = handler.handleBusiness(ex, request, redirectAttributes);
+        String redirectUrl = invokeResolveRedirectUrl(request);
 
-        assertThat(result).isEqualTo("redirect:/products/123?keyword=shoe&page=2");
+        assertThat(redirectUrl).isEqualTo("/orders?page=2");
+    }
+
+    @Test
+    @DisplayName("resolveRedirectUrl — 허용 경로에서 비허용 쿼리 제거")
+    void resolveRedirectUrl_removesDisallowedQuery() {
+        MockHttpServletRequest request = requestWithReferer("https://myshop.com/mypage/reviews?page=1&token=secret");
+
+        String redirectUrl = invokeResolveRedirectUrl(request);
+
+        assertThat(redirectUrl).isEqualTo("/mypage/reviews?page=1");
+    }
+
+    @Test
+    @DisplayName("resolveRedirectUrl — 외부 호스트 Referer 차단")
+    void resolveRedirectUrl_blocksExternalHost() {
+        MockHttpServletRequest request = requestWithReferer("https://evil.com/orders?page=1");
+
+        String redirectUrl = invokeResolveRedirectUrl(request);
+
+        assertThat(redirectUrl).isEqualTo("/");
+    }
+
+    @Test
+    @DisplayName("resolveRedirectUrl — 미등록 경로는 홈으로 폴백")
+    void resolveRedirectUrl_fallbackForUnregisteredPath() {
+        MockHttpServletRequest request = requestWithReferer("https://myshop.com/unknown/path?page=1");
+
+        String redirectUrl = invokeResolveRedirectUrl(request);
+
+        assertThat(redirectUrl).isEqualTo("/");
     }
 
     @Test
@@ -122,33 +148,22 @@ class GlobalExceptionHandlerTest {
         assertThat(result).isEqualTo("redirect:/cart");
     }
 
-    @Test
-    @DisplayName("BusinessException — 허용되지 않은 내부 경로 Referer는 홈으로 폴백")
-    void handleBusiness_fallbackWhenPathIsNotInWhitelist() {
-        BusinessException ex = new BusinessException("ERR", "에러");
+    private MockHttpServletRequest requestWithReferer(String referer) {
         MockHttpServletRequest request = new MockHttpServletRequest();
         request.setServerName("myshop.com");
         request.addHeader("Host", "myshop.com");
-        request.addHeader("Referer", "https://myshop.com/admin/orders");
-        RedirectAttributesModelMap redirectAttributes = new RedirectAttributesModelMap();
-
-        Object result = handler.handleBusiness(ex, request, redirectAttributes);
-
-        assertThat(result).isEqualTo("redirect:/");
+        request.addHeader("Referer", referer);
+        return request;
     }
 
-    @Test
-    @DisplayName("BusinessException — Referer 경로만 추출 (쿼리 파라미터 없는 경우)")
-    void handleBusiness_refererWithoutQuery() {
-        BusinessException ex = new BusinessException("ERR", "에러");
-        MockHttpServletRequest request = new MockHttpServletRequest();
-        request.setServerName("myshop.com");
-        request.addHeader("Host", "myshop.com");
-        request.addHeader("Referer", "https://myshop.com/products/123");
-        RedirectAttributesModelMap redirectAttributes = new RedirectAttributesModelMap();
-
-        Object result = handler.handleBusiness(ex, request, redirectAttributes);
-
-        assertThat(result).isEqualTo("redirect:/products/123");
+    private String invokeResolveRedirectUrl(MockHttpServletRequest request) {
+        try {
+            Method resolveRedirectUrl = GlobalExceptionHandler.class
+                    .getDeclaredMethod("resolveRedirectUrl", jakarta.servlet.http.HttpServletRequest.class);
+            resolveRedirectUrl.setAccessible(true);
+            return (String) resolveRedirectUrl.invoke(handler, request);
+        } catch (ReflectiveOperationException e) {
+            throw new AssertionError("resolveRedirectUrl 호출 실패", e);
+        }
     }
 }
