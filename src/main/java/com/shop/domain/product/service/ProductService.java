@@ -80,17 +80,17 @@ public class ProductService {
         return results;
     }
 
-    @Cacheable(value = "bestSellers", key = "'home'")
+    @Cacheable(value = "bestSellers", key = "T(com.shop.global.cache.CacheKeyGenerator).pageable(#pageable)")
     public Page<Product> getBestSellers(Pageable pageable) {
         return productRepository.findBestSellers(pageable);
     }
 
-    @Cacheable(value = "newArrivals", key = "'home'")
+    @Cacheable(value = "newArrivals", key = "T(com.shop.global.cache.CacheKeyGenerator).pageable(#pageable)")
     public Page<Product> getNewArrivals(Pageable pageable) {
         return productRepository.findNewArrivals(pageable);
     }
 
-    @Cacheable(value = "deals", key = "'home'")
+    @Cacheable(value = "deals", key = "T(com.shop.global.cache.CacheKeyGenerator).pageable(#pageable)")
     public Page<Product> getDeals(Pageable pageable) {
         return productRepository.findDeals(pageable);
     }

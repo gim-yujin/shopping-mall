@@ -1,11 +1,13 @@
 package com.shop.domain.product.service;
 
 import com.shop.domain.product.entity.Product;
+import com.shop.global.cache.CacheKeyGenerator;
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.cache.Cache;
 import org.springframework.cache.CacheManager;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.TestPropertySource;
@@ -180,4 +182,58 @@ class ProductServiceIntegrationTestSupplementary {
         assertThat(result).isNotNull();
         System.out.println("  [PASS] getDeals: " + result.getTotalElements() + "개");
     }
+    @Test
+    @DisplayName("홈 화면 pageable(0,8) 규격과 캐시 키가 일치해야 한다")
+    void homePageableSpec_matchesCacheKey() {
+        PageRequest homePageable = PageRequest.of(0, 8);
+
+        productService.getBestSellers(homePageable);
+        productService.getNewArrivals(homePageable);
+        productService.getDeals(homePageable);
+
+        String expectedKey = CacheKeyGenerator.pageable(homePageable);
+
+        assertThat(expectedKey).isEqualTo("0:8:UNSORTED");
+        assertThat(cacheManager.getCache("bestSellers").get(expectedKey)).isNotNull();
+        assertThat(cacheManager.getCache("newArrivals").get(expectedKey)).isNotNull();
+        assertThat(cacheManager.getCache("deals").get(expectedKey)).isNotNull();
+    }
+
+    @Test
+    @DisplayName("서로 다른 pageable 요청은 서로 다른 캐시 엔트리를 사용한다")
+    void pageableRequests_useDifferentCacheEntries() {
+        Cache bestSellersCache = cacheManager.getCache("bestSellers");
+        Cache newArrivalsCache = cacheManager.getCache("newArrivals");
+        Cache dealsCache = cacheManager.getCache("deals");
+
+        assertThat(bestSellersCache).isNotNull();
+        assertThat(newArrivalsCache).isNotNull();
+        assertThat(dealsCache).isNotNull();
+
+        bestSellersCache.clear();
+        newArrivalsCache.clear();
+        dealsCache.clear();
+
+        PageRequest firstPageable = PageRequest.of(0, 8);
+        PageRequest secondPageable = PageRequest.of(1, 8);
+
+        productService.getBestSellers(firstPageable);
+        productService.getBestSellers(secondPageable);
+        productService.getNewArrivals(firstPageable);
+        productService.getNewArrivals(secondPageable);
+        productService.getDeals(firstPageable);
+        productService.getDeals(secondPageable);
+
+        String firstKey = CacheKeyGenerator.pageable(firstPageable);
+        String secondKey = CacheKeyGenerator.pageable(secondPageable);
+
+        assertThat(firstKey).isNotEqualTo(secondKey);
+        assertThat(bestSellersCache.get(firstKey)).isNotNull();
+        assertThat(bestSellersCache.get(secondKey)).isNotNull();
+        assertThat(newArrivalsCache.get(firstKey)).isNotNull();
+        assertThat(newArrivalsCache.get(secondKey)).isNotNull();
+        assertThat(dealsCache.get(firstKey)).isNotNull();
+        assertThat(dealsCache.get(secondKey)).isNotNull();
+    }
+
 }
