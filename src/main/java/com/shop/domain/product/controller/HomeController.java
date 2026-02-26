@@ -3,6 +3,7 @@ package com.shop.domain.product.controller;
 import com.shop.domain.category.service.CategoryService;
 import com.shop.domain.product.service.ProductService;
 import com.shop.domain.search.service.SearchService;
+import com.shop.global.common.PageDefaults;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
@@ -25,9 +26,9 @@ public class HomeController {
     @GetMapping("/")
     public String home(Model model) {
         model.addAttribute("categories", categoryService.getTopLevelCategories());
-        model.addAttribute("bestSellers", productService.getBestSellers(PageRequest.of(0, 8)));
-        model.addAttribute("newArrivals", productService.getNewArrivals(PageRequest.of(0, 8)));
-        model.addAttribute("deals", productService.getDeals(PageRequest.of(0, 8)));
+        model.addAttribute("bestSellers", productService.getBestSellers(PageRequest.of(0, PageDefaults.HOME_SECTION_SIZE)));
+        model.addAttribute("newArrivals", productService.getNewArrivals(PageRequest.of(0, PageDefaults.HOME_SECTION_SIZE)));
+        model.addAttribute("deals", productService.getDeals(PageRequest.of(0, PageDefaults.HOME_SECTION_SIZE)));
         model.addAttribute("popularKeywords", searchService.getPopularKeywords());
         return "home";
     }

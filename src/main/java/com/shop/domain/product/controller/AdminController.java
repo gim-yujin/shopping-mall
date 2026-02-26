@@ -6,6 +6,7 @@ import com.shop.domain.order.service.OrderService;
 import com.shop.domain.product.dto.AdminProductRequest;
 import com.shop.domain.product.entity.Product;
 import com.shop.domain.product.service.ProductService;
+import com.shop.global.common.PageDefaults;
 import com.shop.global.common.PagingParams;
 import com.shop.global.exception.BusinessException;
 import jakarta.validation.Valid;
@@ -36,8 +37,8 @@ public class AdminController {
 
     @GetMapping
     public String dashboard(Model model) {
-        model.addAttribute("products", productService.findAll(PageRequest.of(0, 10)));
-        model.addAttribute("recentOrders", orderService.getAllOrders(PageRequest.of(0, 10)));
+        model.addAttribute("products", productService.findAll(PageRequest.of(0, PageDefaults.ADMIN_DASHBOARD_SIZE)));
+        model.addAttribute("recentOrders", orderService.getAllOrders(PageRequest.of(0, PageDefaults.ADMIN_DASHBOARD_SIZE)));
         return "admin/dashboard";
     }
 
@@ -49,9 +50,9 @@ public class AdminController {
                               Model model) {
         int normalizedPage = PagingParams.normalizePage(page);
         if (status != null && !status.isBlank()) {
-            model.addAttribute("orders", orderService.getOrdersByStatus(status, PageRequest.of(normalizedPage, 20)));
+            model.addAttribute("orders", orderService.getOrdersByStatus(status, PageRequest.of(normalizedPage, PageDefaults.ADMIN_LIST_SIZE)));
         } else {
-            model.addAttribute("orders", orderService.getAllOrders(PageRequest.of(normalizedPage, 20)));
+            model.addAttribute("orders", orderService.getAllOrders(PageRequest.of(normalizedPage, PageDefaults.ADMIN_LIST_SIZE)));
         }
         model.addAttribute("currentStatus", status);
         model.addAttribute("orderStatuses", OrderStatus.codes());
@@ -78,7 +79,7 @@ public class AdminController {
     public String adminProducts(@RequestParam(defaultValue = "0") int page, Model model) {
         int normalizedPage = PagingParams.normalizePage(page);
         model.addAttribute("products",
-                productService.findAllForAdmin(PageRequest.of(normalizedPage, 20, Sort.by(Sort.Direction.DESC, "productId"))));
+                productService.findAllForAdmin(PageRequest.of(normalizedPage, PageDefaults.ADMIN_LIST_SIZE, Sort.by(Sort.Direction.DESC, "productId"))));
         return "admin/products";
     }
 

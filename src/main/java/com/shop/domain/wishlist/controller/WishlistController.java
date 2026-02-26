@@ -1,6 +1,7 @@
 package com.shop.domain.wishlist.controller;
 
 import com.shop.domain.wishlist.service.WishlistService;
+import com.shop.global.common.PageDefaults;
 import com.shop.global.common.PagingParams;
 import com.shop.global.security.SecurityUtil;
 import org.springframework.data.domain.PageRequest;
@@ -24,7 +25,7 @@ public class WishlistController {
     public String wishlistPage(@RequestParam(defaultValue = "0") int page, Model model) {
         Long userId = SecurityUtil.getCurrentUserId().orElseThrow();
         int normalizedPage = PagingParams.normalizePage(page);
-        model.addAttribute("wishlists", wishlistService.getWishlist(userId, PageRequest.of(normalizedPage, 20)));
+        model.addAttribute("wishlists", wishlistService.getWishlist(userId, PageRequest.of(normalizedPage, PageDefaults.LARGE_LIST_SIZE)));
         return "wishlist/index";
     }
 

@@ -1,6 +1,7 @@
 package com.shop.domain.coupon.controller;
 
 import com.shop.domain.coupon.service.CouponService;
+import com.shop.global.common.PageDefaults;
 import com.shop.global.common.PagingParams;
 import com.shop.global.exception.BusinessException;
 import com.shop.global.security.SecurityUtil;
@@ -31,8 +32,8 @@ public class CouponController {
         int normalizedAvailablePage = PagingParams.normalizePage(page != null ? page : availablePage);
         int normalizedMyPage = PagingParams.normalizePage(myPage);
 
-        model.addAttribute("availableCoupons", couponService.getActiveCoupons(PageRequest.of(normalizedAvailablePage, 20)));
-        model.addAttribute("myCoupons", couponService.getUserCoupons(userId, PageRequest.of(normalizedMyPage, 20)));
+        model.addAttribute("availableCoupons", couponService.getActiveCoupons(PageRequest.of(normalizedAvailablePage, PageDefaults.LARGE_LIST_SIZE)));
+        model.addAttribute("myCoupons", couponService.getUserCoupons(userId, PageRequest.of(normalizedMyPage, PageDefaults.LARGE_LIST_SIZE)));
         model.addAttribute("issuedCouponIds", couponService.getUserIssuedCouponIds(userId));
         return "coupon/index";
     }

@@ -7,6 +7,7 @@ import com.shop.domain.user.dto.PasswordChangeRequest;
 import com.shop.domain.user.dto.ProfileUpdateRequest;
 import com.shop.domain.user.entity.User;
 import com.shop.domain.user.service.UserService;
+import com.shop.global.common.PageDefaults;
 import com.shop.global.common.PagingParams;
 import com.shop.global.exception.BusinessException;
 import com.shop.global.exception.DuplicateConstraintMessageResolver;
@@ -45,7 +46,7 @@ public class MyPageController {
         Long userId = SecurityUtil.getCurrentUserId().orElseThrow();
         User user = userService.findById(userId);
         model.addAttribute("user", user);
-        model.addAttribute("recentOrders", orderService.getOrdersByUser(userId, PageRequest.of(0, 5)));
+        model.addAttribute("recentOrders", orderService.getOrdersByUser(userId, PageRequest.of(0, PageDefaults.MYPAGE_RECENT_ORDERS)));
         model.addAttribute("coupons", couponService.getAvailableCoupons(userId));
         return "mypage/index";
     }
@@ -113,7 +114,7 @@ public class MyPageController {
     public String myReviews(@RequestParam(defaultValue = "0") int page, Model model) {
         Long userId = SecurityUtil.getCurrentUserId().orElseThrow();
         int normalizedPage = PagingParams.normalizePage(page);
-        model.addAttribute("reviews", reviewService.getUserReviews(userId, PageRequest.of(normalizedPage, 10)));
+        model.addAttribute("reviews", reviewService.getUserReviews(userId, PageRequest.of(normalizedPage, PageDefaults.DEFAULT_LIST_SIZE)));
         return "mypage/reviews";
     }
 

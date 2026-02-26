@@ -57,7 +57,15 @@ public class UserCoupon {
     }
 
     public boolean isAvailable() {
-        return !isUsed && LocalDateTime.now().isBefore(expiresAt) && coupon.isValid();
+        return isAvailable(LocalDateTime.now());
+    }
+
+    /**
+     * 주어진 시각 기준으로 쿠폰 사용 가능 여부를 판정한다.
+     * 테스트에서 시간을 제어할 수 있도록 시각을 파라미터로 받는다.
+     */
+    public boolean isAvailable(LocalDateTime now) {
+        return !isUsed && now.isBefore(expiresAt) && coupon.isValid(now);
     }
 
     public Long getUserCouponId() { return userCouponId; }

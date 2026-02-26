@@ -8,6 +8,7 @@ import com.shop.domain.review.service.ReviewService;
 import com.shop.domain.order.entity.OrderItem;
 import com.shop.domain.review.entity.Review;
 import com.shop.domain.wishlist.service.WishlistService;
+import com.shop.global.common.PageDefaults;
 import com.shop.global.common.PagingParams;
 import com.shop.global.security.SecurityUtil;
 import org.springframework.data.domain.Page;
@@ -58,7 +59,7 @@ public class ProductController {
                                 Model model) {
         Product product = productService.findByIdAndIncrementView(productId);
         int normalizedReviewPage = PagingParams.normalizePage(reviewPage);
-        Page<Review> reviews = reviewService.getProductReviews(productId, PageRequest.of(normalizedReviewPage, 10));
+        Page<Review> reviews = reviewService.getProductReviews(productId, PageRequest.of(normalizedReviewPage, PageDefaults.DEFAULT_LIST_SIZE));
 
         model.addAttribute("product", product);
         model.addAttribute("reviews", reviews);

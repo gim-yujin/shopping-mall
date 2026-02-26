@@ -1,280 +1,99 @@
 package com.shop.domain.order.service;
 
-import com.shop.domain.cart.entity.Cart;
-import com.shop.domain.cart.repository.CartRepository;
-import com.shop.domain.coupon.entity.UserCoupon;
-import com.shop.domain.coupon.repository.UserCouponRepository;
-import com.shop.domain.inventory.entity.ProductInventoryHistory;
-import com.shop.domain.inventory.repository.ProductInventoryHistoryRepository;
 import com.shop.domain.order.dto.OrderCreateRequest;
 import com.shop.domain.order.entity.Order;
-import com.shop.domain.order.entity.PaymentMethod;
-import com.shop.domain.order.entity.OrderItem;
 import com.shop.domain.order.entity.OrderStatus;
 import com.shop.domain.order.repository.OrderRepository;
-import com.shop.domain.product.entity.Product;
-import com.shop.domain.product.repository.ProductRepository;
-import com.shop.domain.user.entity.User;
 import com.shop.domain.user.entity.UserTier;
-import com.shop.domain.user.repository.UserRepository;
-import com.shop.domain.user.repository.UserTierRepository;
 import com.shop.global.exception.BusinessException;
-import com.shop.global.exception.InsufficientStockException;
 import com.shop.global.exception.ResourceNotFoundException;
-import jakarta.persistence.EntityManager;
-import org.springframework.cache.Cache;
-import org.springframework.cache.CacheManager;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.UUID;
 
+/**
+ * 주문 서비스 파사드.
+ *
+ * 이전: 주문 생성, 취소, 조회, 배송비 계산, 상태 관리가 모두 하나의 클래스에 있었다.
+ *       (280줄, 9개 의존성 — God Class)
+ *
+ * 이후: 역할별로 분리된 전문 서비스에 위임하되, 기존 public API는 그대로 유지한다.
+ *   - ShippingFeeCalculator: 배송비/최종금액 순수 계산
+ *   - OrderCreationService:  주문 생성 (재고 차감, 쿠폰/포인트 처리)
+ *   - OrderCancellationService: 주문 취소 (재고 복구, 포인트 환불, 쿠폰 복원)
+ *   - OrderQueryService:     조회 (사용자/관리자)
+ *
+ * updateOrderStatus는 조회 + 취소를 조합하는 조정(coordination) 로직이므로
+ * 파사드에 유지한다.
+ */
 @Service
 @Transactional(readOnly = true)
 public class OrderService {
 
+    private final OrderCreationService creationService;
+    private final OrderCancellationService cancellationService;
+    private final OrderQueryService queryService;
+    private final ShippingFeeCalculator shippingFeeCalculator;
     private final OrderRepository orderRepository;
-    private final CartRepository cartRepository;
-    private final ProductRepository productRepository;
-    private final UserRepository userRepository;
-    private final ProductInventoryHistoryRepository inventoryHistoryRepository;
-    private final UserCouponRepository userCouponRepository;
-    private final UserTierRepository userTierRepository;
-    private final EntityManager entityManager;
-    private final CacheManager cacheManager;
 
-    public OrderService(OrderRepository orderRepository, CartRepository cartRepository,
-                        ProductRepository productRepository, UserRepository userRepository,
-                        ProductInventoryHistoryRepository inventoryHistoryRepository,
-                        UserCouponRepository userCouponRepository,
-                        UserTierRepository userTierRepository,
-                        EntityManager entityManager,
-                        CacheManager cacheManager) {
+    public OrderService(OrderCreationService creationService,
+                        OrderCancellationService cancellationService,
+                        OrderQueryService queryService,
+                        ShippingFeeCalculator shippingFeeCalculator,
+                        OrderRepository orderRepository) {
+        this.creationService = creationService;
+        this.cancellationService = cancellationService;
+        this.queryService = queryService;
+        this.shippingFeeCalculator = shippingFeeCalculator;
         this.orderRepository = orderRepository;
-        this.cartRepository = cartRepository;
-        this.productRepository = productRepository;
-        this.userRepository = userRepository;
-        this.inventoryHistoryRepository = inventoryHistoryRepository;
-        this.userCouponRepository = userCouponRepository;
-        this.userTierRepository = userTierRepository;
-        this.entityManager = entityManager;
-        this.cacheManager = cacheManager;
     }
 
-    private static final BigDecimal SHIPPING_FEE_BASE = new BigDecimal("3000");
+    // ── 배송비/금액 계산 ──────────────────────────────────
 
     public BigDecimal calculateShippingFee(UserTier tier, BigDecimal itemTotalAmount) {
-        BigDecimal freeThreshold = tier.getFreeShippingThreshold();
-        if (freeThreshold.compareTo(BigDecimal.ZERO) == 0 || itemTotalAmount.compareTo(freeThreshold) >= 0) {
-            return BigDecimal.ZERO;
-        }
-        return SHIPPING_FEE_BASE;
+        return shippingFeeCalculator.calculateShippingFee(tier, itemTotalAmount);
     }
 
     public BigDecimal calculateFinalAmount(BigDecimal itemTotalAmount, BigDecimal totalDiscount, BigDecimal shippingFee) {
-        BigDecimal finalAmount = itemTotalAmount.subtract(totalDiscount).add(shippingFee);
-        if (finalAmount.compareTo(BigDecimal.ZERO) < 0) {
-            return BigDecimal.ZERO;
-        }
-        return finalAmount;
+        return shippingFeeCalculator.calculateFinalAmount(itemTotalAmount, totalDiscount, shippingFee);
     }
+
+    // ── 주문 생성 ─────────────────────────────────────────
 
     @Transactional
     public Order createOrder(Long userId, OrderCreateRequest request) {
-        PaymentMethod paymentMethod = PaymentMethod.fromCode(request.paymentMethod())
-                .orElseThrow(() -> new BusinessException("UNSUPPORTED_PAYMENT_METHOD", "지원하지 않는 결제수단"));
-
-        // 같은 사용자의 동시 주문 요청을 트랜잭션 단위로 직렬화
-        cartRepository.acquireUserCartLock(userId);
-
-        List<Cart> cartItems = cartRepository.findByUserIdWithProduct(userId);
-        if (cartItems.isEmpty()) {
-            throw new BusinessException("EMPTY_CART", "장바구니가 비어있습니다.");
-        }
-        // 데드락 예방을 위해 상품 ID 순으로 정렬 (자원 획득 순서 일관성 유지)
-        cartItems.sort(java.util.Comparator.comparing(cart -> cart.getProduct().getProductId()));
-
-        // 0) 사용자 & 등급 정보 로드
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new ResourceNotFoundException("사용자", userId));
-        UserTier tier = user.getTier();
-        BigDecimal tierDiscountRate = tier.getDiscountRate();  // e.g. 5.00 = 5%
-
-        BigDecimal totalAmount = BigDecimal.ZERO;
-        BigDecimal tierDiscountTotal = BigDecimal.ZERO;
-        String orderNumber = generateOrderNumber();
-        List<OrderLine> orderLines = new ArrayList<>();
-
-        // 1) 재고 차감 & 주문 금액 계산
-        for (Cart cart : cartItems) {
-            Product product = productRepository.findByIdWithLock(cart.getProduct().getProductId())
-                    .orElseThrow(() -> new ResourceNotFoundException("상품", cart.getProduct().getProductId()));
-
-            // JOIN FETCH로 L1 캐시에 로드된 낡은 상태를 DB 최신값으로 갱신
-            // PESSIMISTIC_WRITE 락을 잡은 상태이므로 다른 트랜잭션이 변경할 수 없음
-            entityManager.refresh(product);
-
-            if (product.getStockQuantity() < cart.getQuantity()) {
-                throw new InsufficientStockException(product.getProductName(),
-                        cart.getQuantity(), product.getStockQuantity());
-            }
-
-            int beforeStock = product.getStockQuantity();
-            product.decreaseStock(cart.getQuantity());
-
-            BigDecimal subtotal = product.getPrice().multiply(BigDecimal.valueOf(cart.getQuantity()));
-            totalAmount = totalAmount.add(subtotal);
-
-            orderLines.add(new OrderLine(
-                    product.getProductId(),
-                    product.getProductName(),
-                    cart.getQuantity(),
-                    product.getPrice(),
-                    subtotal
-            ));
-
-            // 등급 할인 계산 (아이템별)
-            BigDecimal itemTierDiscount = subtotal.multiply(tierDiscountRate)
-                    .divide(BigDecimal.valueOf(100), 0, java.math.RoundingMode.FLOOR);
-            tierDiscountTotal = tierDiscountTotal.add(itemTierDiscount);
-
-            inventoryHistoryRepository.save(new ProductInventoryHistory(
-                    product.getProductId(), "OUT", cart.getQuantity(),
-                    beforeStock, product.getStockQuantity(),
-                    "ORDER", null, userId
-            ));
-        }
-
-        // 2) 쿠폰 할인 적용 (상품 금액 기준)
-        BigDecimal couponDiscount = BigDecimal.ZERO;
-        UserCoupon userCoupon = null;
-        if (request.userCouponId() != null) {
-            userCoupon = userCouponRepository.findByIdWithLock(request.userCouponId())
-                    .orElseThrow(() -> new BusinessException("COUPON_NOT_FOUND", "쿠폰을 찾을 수 없습니다."));
-
-            if (!userCoupon.getUserId().equals(userId)) {
-                throw new BusinessException("COUPON_INVALID", "본인의 쿠폰만 사용할 수 있습니다.");
-            }
-            if (!userCoupon.isAvailable()) {
-                throw new BusinessException("COUPON_EXPIRED", "사용할 수 없는 쿠폰입니다.");
-            }
-
-            // 쿠폰 최소 주문 기준은 "상품 금액(등급 할인/쿠폰 할인 전)" 기준으로 적용한다.
-            couponDiscount = userCoupon.getCoupon().calculateDiscount(totalAmount);
-        }
-
-        BigDecimal totalDiscount = tierDiscountTotal.add(couponDiscount);
-
-        // 3) 포인트 사용 (1P = 1원)
-        int usePoints = request.usePoints();
-        if (usePoints > 0) {
-            if (usePoints > user.getPointBalance()) {
-                throw new BusinessException("INSUFFICIENT_POINTS",
-                        "보유 포인트가 부족합니다. (보유: " + user.getPointBalance() + "P, 요청: " + usePoints + "P)");
-            }
-            // 포인트 사용 상한: 상품금액 - 할인 (배송비 제외, 최종금액이 0 미만이 되지 않도록)
-            BigDecimal maxUsable = totalAmount.subtract(totalDiscount);
-            if (maxUsable.compareTo(BigDecimal.ZERO) < 0) {
-                maxUsable = BigDecimal.ZERO;
-            }
-            if (BigDecimal.valueOf(usePoints).compareTo(maxUsable) > 0) {
-                usePoints = maxUsable.intValue();
-            }
-            user.usePoints(usePoints);
-        }
-        BigDecimal usedPointsAmount = BigDecimal.valueOf(usePoints);
-
-        // 4) 배송비 계산 (등급별 무료배송 기준)
-        BigDecimal shippingFee = calculateShippingFee(tier, totalAmount);
-
-        // 5) 최종 금액 & 주문 생성
-        BigDecimal finalAmount = calculateFinalAmount(totalAmount, totalDiscount.add(usedPointsAmount), shippingFee);
-
-        BigDecimal pointRateSnapshot = tier.getPointEarnRate(); // e.g. 1.50 = 1.5%
-        int earnedPointsSnapshot = finalAmount.multiply(pointRateSnapshot)
-                .divide(BigDecimal.valueOf(100), 0, java.math.RoundingMode.FLOOR).intValue();
-
-        Order order = new Order(orderNumber, userId, totalAmount, totalDiscount,
-                shippingFee, finalAmount, pointRateSnapshot, earnedPointsSnapshot,
-                usePoints,
-                paymentMethod.getCode(), request.shippingAddress(),
-                request.recipientName(), request.recipientPhone());
-
-        for (OrderLine orderLine : orderLines) {
-            OrderItem item = new OrderItem(orderLine.productId(), orderLine.productName(),
-                    orderLine.quantity(), orderLine.unitPrice(), tierDiscountRate, orderLine.subtotal());
-            order.addItem(item);
-        }
-
-        order.markPaid();
-        Order savedOrder = orderRepository.save(order);
-
-        // 5) 쿠폰 사용 처리 (DB 레벨 원자적 전환 보장)
-        if (userCoupon != null) {
-            int updatedRows = userCouponRepository.markAsUsedIfUnused(
-                    userCoupon.getUserCouponId(),
-                    savedOrder.getOrderId(),
-                    LocalDateTime.now()
-            );
-            if (updatedRows != 1) {
-                throw new BusinessException("COUPON_ALREADY_USED", "이미 사용된 쿠폰입니다.");
-            }
-        }
-
-        // 6) 포인트 적립 (등급별 적립률 적용)
-        user.addTotalSpent(finalAmount);
-        user.addPoints(earnedPointsSnapshot);
-
-        // 7) 등급 재계산
-        userTierRepository.findFirstByMinSpentLessThanEqualOrderByTierLevelDesc(user.getTotalSpent())
-                .ifPresent(user::updateTier);
-
-        cartRepository.deleteByUserId(userId);
-
-        // 8) 재고가 변경된 상품의 상세 캐시 무효화
-        evictProductDetailCaches(orderLines.stream().map(OrderLine::productId).toList());
-
-        return savedOrder;
+        return creationService.createOrder(userId, request);
     }
 
+    // ── 주문 조회 ─────────────────────────────────────────
+
     public Page<Order> getOrdersByUser(Long userId, Pageable pageable) {
-        Page<Order> orders = orderRepository.findByUserId(userId, pageable);
-        initializeOrderItems(orders);
-        return orders;
+        return queryService.getOrdersByUser(userId, pageable);
     }
 
     public Order getOrderDetail(Long orderId, Long userId) {
-        return orderRepository.findByIdAndUserId(orderId, userId)
-                .orElseThrow(() -> new ResourceNotFoundException("주문", orderId));
-    }
-
-    @Transactional
-    public void cancelOrder(Long orderId, Long userId) {
-        // 이중 취소 방지를 위해 Order에 비관적 락 적용
-        Order order = orderRepository.findByIdAndUserIdWithLock(orderId, userId)
-                .orElseThrow(() -> new ResourceNotFoundException("주문", orderId));
-        cancelOrderInternal(order, userId);
+        return queryService.getOrderDetail(orderId, userId);
     }
 
     public Page<Order> getAllOrders(Pageable pageable) {
-        Page<Order> orders = orderRepository.findAllByOrderByOrderDateDesc(pageable);
-        initializeOrderItems(orders);
-        return orders;
+        return queryService.getAllOrders(pageable);
     }
 
     public Page<Order> getOrdersByStatus(String status, Pageable pageable) {
-        OrderStatus orderStatus = OrderStatus.fromOrThrow(status);
-        Page<Order> orders = orderRepository.findByStatus(orderStatus, pageable);
-        initializeOrderItems(orders);
-        return orders;
+        return queryService.getOrdersByStatus(status, pageable);
     }
+
+    // ── 주문 취소 ─────────────────────────────────────────
+
+    @Transactional
+    public void cancelOrder(Long orderId, Long userId) {
+        cancellationService.cancelOrder(orderId, userId);
+    }
+
+    // ── 관리자 상태 변경 (조회 + 취소 조합) ──────────────────
 
     @Transactional
     public void updateOrderStatus(Long orderId, String status) {
@@ -300,101 +119,10 @@ public class OrderService {
             case PAID -> order.markPaid();
             case SHIPPED -> order.markShipped();
             case DELIVERED -> order.markDelivered();
-            case CANCELLED -> cancelOrderInternal(order, order.getUserId());
+            case CANCELLED -> cancellationService.cancelOrderInternal(order, order.getUserId());
             case PENDING -> {
                 // no-op
             }
         }
-    }
-
-    private void cancelOrderInternal(Order order, Long userId) {
-        if (!order.isCancellable()) {
-            throw new BusinessException("CANCEL_FAIL", "취소할 수 없는 주문 상태입니다.");
-        }
-
-        Long orderId = order.getOrderId();
-
-        // 1) 재고 복구 — 데드락 예방을 위해 상품 ID 순으로 정렬
-        List<OrderItem> sortedItems = order.getItems().stream()
-                .sorted(java.util.Comparator.comparing(OrderItem::getProductId))
-                .toList();
-
-        for (OrderItem item : sortedItems) {
-            Product product = productRepository.findByIdWithLock(item.getProductId())
-                    .orElse(null);
-            if (product != null) {
-                entityManager.refresh(product);
-                int before = product.getStockQuantity();
-                product.increaseStockAndRollbackSales(item.getQuantity());
-                inventoryHistoryRepository.save(new ProductInventoryHistory(
-                        product.getProductId(), "IN", item.getQuantity(),
-                        before, product.getStockQuantity(), "RETURN", orderId, userId));
-            }
-        }
-
-        // 2) 누적금액 & 포인트 차감 & 사용 포인트 환불 & 등급 재계산
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new ResourceNotFoundException("사용자", userId));
-        BigDecimal finalAmount = order.getFinalAmount();
-        user.addTotalSpent(finalAmount.negate());
-
-        // [BUG FIX] 포인트 적립 차감과 사용 환불을 net 값으로 한 번에 처리.
-        // 이전: addPoints(-earned) → addPoints(+used) 순차 호출 시,
-        //   addPoints 내부의 음수→0 클램핑이 중간 단계에서 발생하여
-        //   예) 잔액 100P, 적립 500P, 사용 300P → 100-500=→0 → 0+300=300P (오류)
-        //   올바른 결과: 100 - 500 + 300 = -100 → 0P
-        // 이후: net = usedPoints - earnedPoints 를 한 번에 addPoints 호출하여
-        //   중간 클램핑으로 인한 부당 지급을 방지한다.
-        int netPointChange = order.getUsedPoints() - order.getEarnedPointsSnapshot();
-        user.addPoints(netPointChange);
-
-        userTierRepository.findFirstByMinSpentLessThanEqualOrderByTierLevelDesc(user.getTotalSpent())
-                .ifPresent(user::updateTier);
-
-        // 3) 쿠폰 복원
-        userCouponRepository.findByOrderId(orderId).ifPresent(UserCoupon::cancelUse);
-
-        order.cancel();
-
-        // 4) 재고가 변경된 상품의 상세 캐시 무효화
-        evictProductDetailCaches(sortedItems.stream().map(OrderItem::getProductId).toList());
-    }
-
-    /**
-     * OSIV off 환경에서 Page<Order>의 Lazy 컬렉션(items)을 초기화한다.
-     * batch_fetch_size=100이 적용되어 있으므로, 페이지 크기가 100 이하인 한
-     * 추가 쿼리 1회로 모든 주문의 아이템이 일괄 로드된다.
-     *
-     * 참고: Page 쿼리에 JOIN FETCH를 사용하면 Hibernate가 전체 결과를 메모리에
-     * 로드한 뒤 페이징하므로(HHH000104 경고), batch fetch가 더 효율적이다.
-     */
-    private void initializeOrderItems(Page<Order> orders) {
-        orders.getContent().forEach(order -> order.getItems().size());
-    }
-
-    /**
-     * 재고가 변경된 상품의 상세 캐시를 즉시 무효화한다.
-     * 주문 생성/취소로 재고가 바뀌었을 때 호출하여
-     * 상품 상세 페이지에 stale 재고가 표시되는 것을 방지한다.
-     */
-    private void evictProductDetailCaches(List<Long> productIds) {
-        Cache cache = cacheManager.getCache("productDetail");
-        if (cache == null) {
-            return;
-        }
-        for (Long productId : productIds) {
-            cache.evict(productId);
-        }
-    }
-
-    private String generateOrderNumber() {
-        String datePart = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmssSSS"));
-        String randomPart = UUID.randomUUID().toString().replace("-", "").substring(0, 12).toUpperCase();
-        return datePart + "-" + randomPart;
-    }
-
-    // 주문 생성 중 계산된 상품별 스냅샷 데이터를 임시로 보관하는 내부 DTO
-    private record OrderLine(Long productId, String productName, int quantity,
-                             BigDecimal unitPrice, BigDecimal subtotal) {
     }
 }

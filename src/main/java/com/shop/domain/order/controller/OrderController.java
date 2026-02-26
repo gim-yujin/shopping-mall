@@ -12,6 +12,7 @@ import com.shop.domain.order.entity.PaymentMethod;
 import com.shop.domain.order.service.OrderService;
 import com.shop.domain.user.entity.User;
 import com.shop.domain.user.service.UserService;
+import com.shop.global.common.PageDefaults;
 import com.shop.global.common.PagingParams;
 import com.shop.global.exception.BusinessException;
 import com.shop.global.security.SecurityUtil;
@@ -100,7 +101,7 @@ public class OrderController {
     public String orderList(@RequestParam(defaultValue = "0") int page, Model model) {
         Long userId = SecurityUtil.getCurrentUserId().orElseThrow();
         int normalizedPage = PagingParams.normalizePage(page);
-        model.addAttribute("orders", orderService.getOrdersByUser(userId, PageRequest.of(normalizedPage, 10)));
+        model.addAttribute("orders", orderService.getOrdersByUser(userId, PageRequest.of(normalizedPage, PageDefaults.DEFAULT_LIST_SIZE)));
         model.addAttribute("orderStatusLabels", OrderStatus.labelsByCode());
         model.addAttribute("orderStatusBadgeClasses", OrderStatus.badgeClassesByCode());
         return "order/list";

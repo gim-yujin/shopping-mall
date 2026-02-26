@@ -45,12 +45,30 @@ spring:
 
 server:
   port: 8080
+  shutdown: graceful  # 배포 시 진행 중인 요청 완료 후 종료
   servlet:
     session:
       timeout: 30m
   compression:
     enabled: true
     mime-types: text/html,text/css,application/javascript,application/json
+
+spring.lifecycle:
+  timeout-per-shutdown-phase: 30s  # graceful shutdown 최대 대기 시간
+
+# ── Actuator 설정 ────────────────────────────────────
+# health: 로드밸런서 헬스체크, DB/디스크 상태 모니터링
+# info: 빌드 정보, 환경 확인
+# metrics: 응답 시간, JVM, HikariCP 풀 모니터링
+# caches: Caffeine 캐시 적중률/크기 확인
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,caches
+  endpoint:
+    health:
+      show-details: when-authorized  # 인증된 사용자만 상세 정보 표시
 
 logging:
   level:

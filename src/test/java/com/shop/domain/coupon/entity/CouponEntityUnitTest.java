@@ -96,34 +96,49 @@ class CouponEntityUnitTest {
     @Test
     @DisplayName("isValid — validFrom 경계 시각 포함 → true")
     void isValid_atValidFromBoundary_returnsTrue() throws Exception {
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime validFrom = LocalDateTime.of(2025, 1, 1, 0, 0, 0);
         Coupon coupon = createCoupon("FIXED", BigDecimal.valueOf(1000),
                 BigDecimal.ZERO, null, 100, 0,
-                true, now.minusNanos(1_000_000), now.plusSeconds(5));
+                true, validFrom, validFrom.plusDays(30));
 
-        assertThat(coupon.isValid()).isTrue();
+        // validFrom과 정확히 같은 시각 → 유효
+        assertThat(coupon.isValid(validFrom)).isTrue();
     }
 
     @Test
     @DisplayName("isValid — validUntil 경계 시각 포함 → true")
     void isValid_atValidUntilBoundary_returnsTrue() throws Exception {
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime validUntil = LocalDateTime.of(2025, 1, 31, 23, 59, 59);
         Coupon coupon = createCoupon("FIXED", BigDecimal.valueOf(1000),
                 BigDecimal.ZERO, null, 100, 0,
-                true, now.minusSeconds(5), now.plusNanos(1_000_000));
+                true, validUntil.minusDays(30), validUntil);
 
-        assertThat(coupon.isValid()).isTrue();
+        // validUntil과 정확히 같은 시각 → 유효
+        assertThat(coupon.isValid(validUntil)).isTrue();
     }
 
     @Test
-    @DisplayName("isValid — validUntil 경계 1ms 초과 시각 → false")
-    void isValid_afterValidUntilByOneMillisecond_returnsFalse() throws Exception {
-        LocalDateTime now = LocalDateTime.now();
+    @DisplayName("isValid — validUntil 1나노초 초과 → false")
+    void isValid_afterValidUntilByOneNano_returnsFalse() throws Exception {
+        LocalDateTime validUntil = LocalDateTime.of(2025, 1, 31, 23, 59, 59);
         Coupon coupon = createCoupon("FIXED", BigDecimal.valueOf(1000),
                 BigDecimal.ZERO, null, 100, 0,
-                true, now.minusSeconds(5), now.minusNanos(1_000_000));
+                true, validUntil.minusDays(30), validUntil);
 
-        assertThat(coupon.isValid()).isFalse();
+        // validUntil보다 1나노초 뒤 → 무효
+        assertThat(coupon.isValid(validUntil.plusNanos(1))).isFalse();
+    }
+
+    @Test
+    @DisplayName("isValid — validFrom 1나노초 전 → false")
+    void isValid_beforeValidFromByOneNano_returnsFalse() throws Exception {
+        LocalDateTime validFrom = LocalDateTime.of(2025, 1, 1, 0, 0, 0);
+        Coupon coupon = createCoupon("FIXED", BigDecimal.valueOf(1000),
+                BigDecimal.ZERO, null, 100, 0,
+                true, validFrom, validFrom.plusDays(30));
+
+        // validFrom보다 1나노초 전 → 무효
+        assertThat(coupon.isValid(validFrom.minusNanos(1))).isFalse();
     }
 
     @Test

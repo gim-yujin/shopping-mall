@@ -56,7 +56,14 @@ public class Coupon {
     }
 
     public boolean isValid() {
-        LocalDateTime now = LocalDateTime.now();
+        return isValid(LocalDateTime.now());
+    }
+
+    /**
+     * 주어진 시각 기준으로 쿠폰이 유효한지 판정한다.
+     * 테스트에서 시간을 제어할 수 있도록 시각을 파라미터로 받는다.
+     */
+    public boolean isValid(LocalDateTime now) {
         return isActive
                && (now.isAfter(validFrom) || now.isEqual(validFrom))
                && (now.isBefore(validUntil) || now.isEqual(validUntil))
