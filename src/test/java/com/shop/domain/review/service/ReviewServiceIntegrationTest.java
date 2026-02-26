@@ -582,10 +582,17 @@ class ReviewServiceIntegrationTest {
     @DisplayName("getHelpedReviewIds — 도움돼요 누른 리뷰 ID 반환")
     void getHelpedReviewIds_returnsCorrectIds() {
         // Given
+        Long anotherProductId = jdbcTemplate.queryForObject(
+                "SELECT product_id FROM products WHERE is_active = true AND product_id <> ? ORDER BY product_id LIMIT 1",
+                Long.class,
+                testProductId
+        );
+        assertThat(anotherProductId).as("테스트용 다른 상품이 필요합니다.").isNotNull();
+
         Review r1 = reviewService.createReview(testUserId,
                 new ReviewCreateRequest(testProductId, null, 5, "리뷰A", null));
         Review r2 = reviewService.createReview(testUserId,
-                new ReviewCreateRequest(testProductId, null, 4, "리뷰B", null));
+                new ReviewCreateRequest(anotherProductId, null, 4, "리뷰B", null));
         createdReviewIds.add(r1.getReviewId());
         createdReviewIds.add(r2.getReviewId());
 
