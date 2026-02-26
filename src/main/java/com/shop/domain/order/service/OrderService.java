@@ -87,6 +87,9 @@ public class OrderService {
         PaymentMethod paymentMethod = PaymentMethod.fromCode(request.paymentMethod())
                 .orElseThrow(() -> new BusinessException("UNSUPPORTED_PAYMENT_METHOD", "지원하지 않는 결제수단"));
 
+        // 같은 사용자의 동시 주문 요청을 트랜잭션 단위로 직렬화
+        cartRepository.acquireUserCartLock(userId);
+
         List<Cart> cartItems = cartRepository.findByUserIdWithProduct(userId);
         if (cartItems.isEmpty()) {
             throw new BusinessException("EMPTY_CART", "장바구니가 비어있습니다.");
