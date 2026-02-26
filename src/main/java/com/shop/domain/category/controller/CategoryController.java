@@ -3,6 +3,7 @@ package com.shop.domain.category.controller;
 import com.shop.domain.category.entity.Category;
 import com.shop.domain.category.service.CategoryService;
 import com.shop.domain.product.service.ProductService;
+import com.shop.global.common.PagingParams;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.*;
@@ -31,10 +32,14 @@ public class CategoryController {
 
         model.addAttribute("category", category);
         model.addAttribute("subCategories", categoryService.getSubCategories(categoryId));
-        model.addAttribute("products", productService.findByCategoryIdsSorted(categoryIds, page, size, sort));
+        int normalizedPage = PagingParams.normalizePage(page);
+        int normalizedSize = PagingParams.normalizeSize(size);
+        String normalizedSort = PagingParams.normalizeProductSort(sort);
+
+        model.addAttribute("products", productService.findByCategoryIdsSorted(categoryIds, normalizedPage, normalizedSize, normalizedSort));
         model.addAttribute("breadcrumb", categoryService.getBreadcrumb(categoryId));
         model.addAttribute("allCategories", categoryService.getTopLevelCategories());
-        model.addAttribute("currentSort", sort);
+        model.addAttribute("currentSort", normalizedSort);
         model.addAttribute("baseUrl", "/categories/" + categoryId);
         return "product/list";
     }

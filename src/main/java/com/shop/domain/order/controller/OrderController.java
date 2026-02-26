@@ -10,6 +10,7 @@ import com.shop.domain.order.entity.Order;
 import com.shop.domain.order.service.OrderService;
 import com.shop.domain.user.entity.User;
 import com.shop.domain.user.service.UserService;
+import com.shop.global.common.PagingParams;
 import com.shop.global.exception.BusinessException;
 import com.shop.global.security.SecurityUtil;
 import jakarta.validation.Valid;
@@ -84,7 +85,8 @@ public class OrderController {
     @GetMapping
     public String orderList(@RequestParam(defaultValue = "0") int page, Model model) {
         Long userId = SecurityUtil.getCurrentUserId().orElseThrow();
-        model.addAttribute("orders", orderService.getOrdersByUser(userId, PageRequest.of(page, 10)));
+        int normalizedPage = PagingParams.normalizePage(page);
+        model.addAttribute("orders", orderService.getOrdersByUser(userId, PageRequest.of(normalizedPage, 10)));
         model.addAttribute("orderStatusLabels", orderStatusLabels());
         model.addAttribute("orderStatusBadgeClasses", orderStatusBadgeClasses());
         return "order/list";
