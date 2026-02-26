@@ -75,25 +75,14 @@
                 <div class="bg-white rounded-lg shadow p-6">
                     <h2 class="text-lg font-bold mb-4">결제 수단</h2>
                     <div class="grid grid-cols-2 gap-3">
-                        <label class="border rounded-lg p-3 cursor-pointer hover:border-blue-500 flex items-center gap-2 has-[:checked]:border-blue-600 has-[:checked]:bg-blue-50">
-                            <input type="radio" name="paymentMethod" value="CARD" checked class="text-blue-600"/>
-                            <span>신용/체크카드</span>
-                        </label>
-                        <label class="border rounded-lg p-3 cursor-pointer hover:border-blue-500 flex items-center gap-2 has-[:checked]:border-blue-600 has-[:checked]:bg-blue-50">
-                            <input type="radio" name="paymentMethod" value="BANK" class="text-blue-600"/>
-                            <span>계좌이체</span>
-                        </label>
-                        <label class="border rounded-lg p-3 cursor-pointer hover:border-blue-500 flex items-center gap-2 has-[:checked]:border-blue-600 has-[:checked]:bg-blue-50">
-                            <input type="radio" name="paymentMethod" value="KAKAO" class="text-blue-600"/>
-                            <span>카카오페이</span>
-                        </label>
-                        <label class="border rounded-lg p-3 cursor-pointer hover:border-blue-500 flex items-center gap-2 has-[:checked]:border-blue-600 has-[:checked]:bg-blue-50">
-                            <input type="radio" name="paymentMethod" value="NAVER" class="text-blue-600"/>
-                            <span>네이버페이</span>
-                        </label>
-                        <label class="border rounded-lg p-3 cursor-pointer hover:border-blue-500 flex items-center gap-2 has-[:checked]:border-blue-600 has-[:checked]:bg-blue-50">
-                            <input type="radio" name="paymentMethod" value="PAYCO" class="text-blue-600"/>
-                            <span>페이코</span>
+                        <label th:each="method, stat : ${paymentMethods}"
+                               class="border rounded-lg p-3 cursor-pointer hover:border-blue-500 flex items-center gap-2 has-[:checked]:border-blue-600 has-[:checked]:bg-blue-50">
+                            <input type="radio"
+                                   name="paymentMethod"
+                                   th:value="${method.code}"
+                                   th:checked="${stat.index == 0}"
+                                   class="text-blue-600"/>
+                            <span th:text="${method.displayName}">결제수단</span>
                         </label>
                     </div>
                 </div>

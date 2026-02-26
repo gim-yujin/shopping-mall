@@ -8,6 +8,7 @@ import com.shop.domain.inventory.entity.ProductInventoryHistory;
 import com.shop.domain.inventory.repository.ProductInventoryHistoryRepository;
 import com.shop.domain.order.dto.OrderCreateRequest;
 import com.shop.domain.order.entity.Order;
+import com.shop.domain.order.entity.PaymentMethod;
 import com.shop.domain.order.entity.OrderItem;
 import com.shop.domain.order.repository.OrderRepository;
 import com.shop.domain.product.entity.Product;
@@ -83,6 +84,9 @@ public class OrderService {
 
     @Transactional
     public Order createOrder(Long userId, OrderCreateRequest request) {
+        PaymentMethod paymentMethod = PaymentMethod.fromCode(request.paymentMethod())
+                .orElseThrow(() -> new BusinessException("UNSUPPORTED_PAYMENT_METHOD", "지원하지 않는 결제수단"));
+
         List<Cart> cartItems = cartRepository.findByUserIdWithProduct(userId);
         if (cartItems.isEmpty()) {
             throw new BusinessException("EMPTY_CART", "장바구니가 비어있습니다.");
@@ -173,7 +177,7 @@ public class OrderService {
 
         Order order = new Order(orderNumber, userId, totalAmount, totalDiscount,
                 shippingFee, finalAmount, pointRateSnapshot, earnedPointsSnapshot,
-                request.paymentMethod(), request.shippingAddress(),
+                paymentMethod.getCode(), request.shippingAddress(),
                 request.recipientName(), request.recipientPhone());
 
         for (OrderLine orderLine : orderLines) {

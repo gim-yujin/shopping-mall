@@ -1,7 +1,10 @@
 package com.shop.domain.order.dto;
 
+import com.shop.domain.order.validation.ValidPaymentMethod;
 import jakarta.validation.constraints.NotBlank;
+
 import java.math.BigDecimal;
+import java.util.Locale;
 
 public record OrderCreateRequest(
     @NotBlank(message = "배송지를 입력해주세요.")
@@ -13,6 +16,7 @@ public record OrderCreateRequest(
     @NotBlank(message = "수령인 연락처를 입력해주세요.")
     String recipientPhone,
 
+    @ValidPaymentMethod
     String paymentMethod,
 
     BigDecimal shippingFee,
@@ -20,7 +24,11 @@ public record OrderCreateRequest(
     Long userCouponId
 ) {
     public OrderCreateRequest {
-        if (paymentMethod == null || paymentMethod.isBlank()) paymentMethod = "CARD";
+        if (paymentMethod == null || paymentMethod.isBlank()) {
+            paymentMethod = "CARD";
+        } else {
+            paymentMethod = paymentMethod.trim().toUpperCase(Locale.ROOT);
+        }
         if (shippingFee == null) shippingFee = BigDecimal.ZERO;
     }
 }

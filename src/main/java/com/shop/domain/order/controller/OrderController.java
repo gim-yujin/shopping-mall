@@ -7,6 +7,7 @@ import com.shop.domain.coupon.entity.Coupon;
 import com.shop.domain.coupon.entity.UserCoupon;
 import com.shop.domain.order.dto.OrderCreateRequest;
 import com.shop.domain.order.entity.Order;
+import com.shop.domain.order.entity.PaymentMethod;
 import com.shop.domain.order.service.OrderService;
 import com.shop.domain.user.entity.User;
 import com.shop.domain.user.service.UserService;
@@ -23,6 +24,7 @@ import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 
 import java.math.BigDecimal;
 import java.text.NumberFormat;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -65,6 +67,7 @@ public class OrderController {
         List<UserCoupon> availableCoupons = couponService.getAvailableCoupons(userId);
         model.addAttribute("availableCoupons", availableCoupons);
         model.addAttribute("couponDisplayNames", buildCouponDisplayNames(availableCoupons));
+        model.addAttribute("paymentMethods", Arrays.asList(PaymentMethod.values()));
         return "order/checkout";
     }
 
