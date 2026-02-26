@@ -8,6 +8,7 @@ import org.springframework.mock.web.MockHttpServletResponse;
 import org.springframework.mock.web.MockHttpSession;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.web.savedrequest.HttpSessionRequestCache;
+import org.springframework.security.web.savedrequest.SimpleSavedRequest;
 
 import java.io.IOException;
 
@@ -23,30 +24,24 @@ class LoginAuthenticationSuccessHandlerTest {
     void redirectsToSavedRequestAfterLogin() throws ServletException, IOException {
         LoginAttemptService loginAttemptService = mock(LoginAttemptService.class);
         LoginAuthenticationSuccessHandler handler = new LoginAuthenticationSuccessHandler(loginAttemptService);
-        HttpSessionRequestCache requestCache = new HttpSessionRequestCache();
 
-        MockHttpSession session = new MockHttpSession();
-        MockHttpServletRequest protectedRequest = new MockHttpServletRequest("GET", "/orders");
-        protectedRequest.setServerName("localhost");
-        protectedRequest.setServerPort(80);
-        protectedRequest.setScheme("http");
-        protectedRequest.setSession(session);
-        requestCache.saveRequest(protectedRequest, new MockHttpServletResponse());
-
-        MockHttpServletRequest loginRequest = new MockHttpServletRequest("POST", "/auth/login");
-        loginRequest.setContextPath("");
-        loginRequest.setSession(session);
+        MockHttpServletRequest request = new MockHttpServletRequest("POST", "/auth/login");
+        request.setContextPath("");
+        request.setSession(new MockHttpSession());
+        request.getSession().setAttribute(
+            HttpSessionRequestCache.SAVED_REQUEST,
+            new SimpleSavedRequest("http://localhost/orders")
+        );
 
         MockHttpServletResponse response = new MockHttpServletResponse();
         Authentication authentication = mock(Authentication.class);
 
-        when(loginAttemptService.extractClientIp(loginRequest)).thenReturn("127.0.0.1");
+        when(loginAttemptService.extractClientIp(request)).thenReturn("127.0.0.1");
         when(authentication.getName()).thenReturn("user1");
 
-        handler.onAuthenticationSuccess(loginRequest, response, authentication);
+        handler.onAuthenticationSuccess(request, response, authentication);
 
-        assertThat(response.getRedirectedUrl()).endsWith("/orders");
-        verify(loginAttemptService).extractClientIp(loginRequest);
+        assertThat(response.getRedirectedUrl()).isEqualTo("http://localhost/orders");
         verify(loginAttemptService).clearFailures("user1", "127.0.0.1");
     }
 
@@ -69,7 +64,6 @@ class LoginAuthenticationSuccessHandlerTest {
         handler.onAuthenticationSuccess(request, response, authentication);
 
         assertThat(response.getRedirectedUrl()).isEqualTo("/");
-        verify(loginAttemptService).extractClientIp(request);
         verify(loginAttemptService).clearFailures("user1", "127.0.0.1");
     }
 }
