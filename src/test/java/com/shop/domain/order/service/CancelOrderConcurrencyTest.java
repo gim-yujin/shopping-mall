@@ -2,6 +2,10 @@ package com.shop.domain.order.service;
 
 import com.shop.domain.order.dto.OrderCreateRequest;
 import com.shop.domain.order.entity.Order;
+import com.shop.domain.user.entity.User;
+import com.shop.domain.user.entity.UserTier;
+import com.shop.domain.user.repository.UserRepository;
+import com.shop.domain.user.repository.UserTierRepository;
 import com.shop.domain.user.scheduler.TierScheduler;
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -14,6 +18,8 @@ import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.lang.reflect.Method;
+import java.time.Year;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -46,6 +52,12 @@ class CancelOrderConcurrencyTest {
 
     @Autowired
     private TierScheduler tierScheduler;
+
+    @Autowired
+    private UserRepository userRepository;
+
+    @Autowired
+    private UserTierRepository userTierRepository;
 
     // 테스트 대상
     private Long testUserId;
@@ -401,7 +413,7 @@ class CancelOrderConcurrencyTest {
             ready.countDown();
             try {
                 start.await();
-                tierScheduler.recalculateTiers();
+                runTierChunkForUsers(List.of(testUserId, userIdB));
                 tierRecalcSuccess.incrementAndGet();
             } catch (Exception e) {
                 errors.add("[TierScheduler] " + e.getClass().getSimpleName() + " - " + e.getMessage());
@@ -506,4 +518,22 @@ class CancelOrderConcurrencyTest {
                 "UPDATE users SET total_spent = ?, point_balance = ?, tier_id = ? WHERE user_id = ?",
                 userBState.get("total_spent"), userBState.get("point_balance"), userBState.get("tier_id"), userIdB);
     }
+    private void runTierChunkForUsers(List<Long> userIds) {
+        try {
+            List<User> users = userIds.stream()
+                    .map(userId -> userRepository.findByIdWithTier(userId)
+                            .orElseThrow(() -> new IllegalStateException("등급 갱신 대상 사용자가 없습니다. userId=" + userId)))
+                    .toList();
+            UserTier defaultTier = userTierRepository.findByTierLevel(1)
+                    .orElseThrow(() -> new IllegalStateException("기본 등급이 존재하지 않습니다."));
+
+            Method processTierChunk = TierScheduler.class.getDeclaredMethod(
+                    "processTierChunk", int.class, Map.class, UserTier.class, List.class);
+            processTierChunk.setAccessible(true);
+            processTierChunk.invoke(tierScheduler, Year.now().getValue() - 1, Map.of(), defaultTier, users);
+        } catch (Exception e) {
+            throw new RuntimeException("테스트용 등급 갱신 실행 실패", e);
+        }
+    }
+
 }
