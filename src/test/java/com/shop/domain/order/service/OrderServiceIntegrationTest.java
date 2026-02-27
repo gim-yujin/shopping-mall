@@ -138,6 +138,18 @@ class OrderServiceIntegrationTest {
                 userId, productId, quantity, now, now);
     }
 
+    private Long addCartItemAndReturnId(Long userId, Long productId, int quantity) {
+        String now = LocalDateTime.now().toString();
+        return jdbcTemplate.queryForObject(
+                """
+                INSERT INTO carts (user_id, product_id, quantity, added_at, updated_at)
+                VALUES (?, ?, ?, ?, ?)
+                RETURNING cart_id
+                """,
+                Long.class,
+                userId, productId, quantity, now, now);
+    }
+
     private OrderCreateRequest defaultRequest() {
         return new OrderCreateRequest(
                 "서울시 강남구 테스트로 123", "테스트수령인", "010-0000-0000",
@@ -232,6 +244,41 @@ class OrderServiceIntegrationTest {
         assertThat(stock).isEqualTo(1);
 
         System.out.println("  [PASS] 재고 부족 시 InsufficientStockException 발생, 재고 변경 없음");
+    }
+
+    @Test
+    @DisplayName("createOrder 실패 — 선택 주문 요청 ID 일부 누락 시 실패")
+    void createOrder_partialOrderWithMissingRequestedIds_throwsBusinessException() {
+        // Given: 서로 다른 장바구니 항목 2개를 선택 주문 대상으로 구성
+        Long secondProductId = jdbcTemplate.queryForObject(
+                "SELECT product_id FROM products WHERE is_active = true AND stock_quantity >= 10 AND product_id <> ? LIMIT 1",
+                Long.class, testProductId);
+
+        Long firstCartId = addCartItemAndReturnId(testUserId, testProductId, 1);
+        Long secondCartId = addCartItemAndReturnId(testUserId, secondProductId, 1);
+
+        Long invalidCartId = jdbcTemplate.queryForObject(
+                "SELECT COALESCE(MAX(cart_id), 0) + 9999 FROM carts",
+                Long.class);
+
+        OrderCreateRequest request = new OrderCreateRequest(
+                "서울시 강남구 테스트로 123", "테스트수령인", "010-0000-0000",
+                "CARD", BigDecimal.ZERO, null, null,
+                List.of(firstCartId, secondCartId, secondCartId, invalidCartId));
+
+        // When
+        Throwable thrown = catchThrowable(() -> orderService.createOrder(testUserId, request));
+
+        // Then
+        assertThat(thrown).isInstanceOf(BusinessException.class);
+        BusinessException businessException = (BusinessException) thrown;
+        assertThat(businessException.getCode()).isEqualTo("INVALID_CART_SELECTION");
+        assertThat(businessException).hasMessageContaining("유효하지 않거나 접근 불가한 장바구니 항목이 포함됨");
+
+        Integer cartCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM carts WHERE user_id = ?",
+                Integer.class, testUserId);
+        assertThat(cartCount).isEqualTo(2);
     }
 
     // ==================== createOrder + 쿠폰 ====================

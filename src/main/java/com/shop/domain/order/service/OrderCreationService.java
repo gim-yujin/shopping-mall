@@ -28,8 +28,10 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.LinkedHashSet;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -88,7 +90,18 @@ public class OrderCreationService {
         List<Cart> cartItems;
         boolean isPartialOrder;
         if (request.cartItemIds() != null && !request.cartItemIds().isEmpty()) {
-            cartItems = cartRepository.findByUserIdAndCartIdIn(userId, request.cartItemIds());
+            Set<Long> requestedCartItemIds = new LinkedHashSet<>(request.cartItemIds());
+            cartItems = cartRepository.findByUserIdAndCartIdIn(userId, new ArrayList<>(requestedCartItemIds));
+            Set<Long> foundCartItemIds = cartItems.stream()
+                    .map(Cart::getCartId)
+                    .collect(java.util.stream.Collectors.toSet());
+
+            if (!requestedCartItemIds.equals(foundCartItemIds)) {
+                throw new BusinessException(
+                        "INVALID_CART_SELECTION",
+                        "유효하지 않거나 접근 불가한 장바구니 항목이 포함됨"
+                );
+            }
             isPartialOrder = true;
         } else {
             cartItems = cartRepository.findByUserIdWithProduct(userId);
