@@ -85,7 +85,7 @@ class OrderCancellationServiceUnitTest {
         when(product.getProductId()).thenReturn(7L);
         when(product.getStockQuantity()).thenReturn(5, 7);
 
-        when(userRepository.findById(userId)).thenReturn(Optional.of(user));
+        when(userRepository.findByIdWithLockAndTier(userId)).thenReturn(Optional.of(user));
         when(userCouponRepository.findByOrderId(orderId)).thenReturn(Optional.of(userCoupon));
         when(user.getTotalSpent()).thenReturn(BigDecimal.ZERO);
         when(userTierRepository.findFirstByMinSpentLessThanEqualOrderByTierLevelDesc(any()))
@@ -121,7 +121,7 @@ class OrderCancellationServiceUnitTest {
                 .isInstanceOf(ResourceNotFoundException.class)
                 .hasMessageContaining("상품");
 
-        verify(userRepository, never()).findById(any());
+        verify(userRepository, never()).findByIdWithLockAndTier(any());
         verify(userCouponRepository, never()).findByOrderId(any());
         verify(order, never()).cancel();
         verifyNoInteractions(inventoryHistoryRepository, userTierRepository, entityManager, eventPublisher);
