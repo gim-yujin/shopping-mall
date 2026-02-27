@@ -4,11 +4,14 @@ import com.shop.domain.order.dto.OrderCreateRequest;
 import com.shop.domain.order.entity.Order;
 import com.shop.domain.order.entity.OrderStatus;
 import com.shop.domain.order.repository.OrderRepository;
+import com.shop.domain.product.service.ProductService;
 import com.shop.global.exception.BusinessException;
 import com.shop.global.exception.InsufficientStockException;
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.cache.Cache;
+import org.springframework.cache.CacheManager;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -49,6 +52,12 @@ class OrderServiceIntegrationTest {
 
     @Autowired
     private OrderRepository orderRepository;
+
+    @Autowired
+    private CacheManager cacheManager;
+
+    @Autowired
+    private ProductService productService;
 
     // 테스트 대상
     private Long testUserId;
@@ -159,6 +168,10 @@ class OrderServiceIntegrationTest {
         return new OrderCreateRequest(
                 "서울시 강남구 테스트로 123", "테스트수령인", "010-0000-0000",
                 "CARD", BigDecimal.ZERO, null, null, null);
+    }
+
+    private Cache productDetailCache() {
+        return Objects.requireNonNull(cacheManager.getCache("productDetail"));
     }
 
     // ==================== createOrder 정상 플로우 ====================
@@ -306,6 +319,34 @@ class OrderServiceIntegrationTest {
         assertThat(stock).isEqualTo(1);
 
         System.out.println("  [PASS] 재고 부족 시 InsufficientStockException 발생, 재고 변경 없음");
+    }
+
+
+
+    @Test
+    @DisplayName("createOrder 캐시 무효화 — 성공 시 evict, 실패(롤백) 시 유지")
+    void createOrder_cacheEvictOnlyOnSuccess() {
+        Cache cache = productDetailCache();
+
+        productService.findByIdCached(testProductId);
+        assertThat(cache.get(testProductId)).isNotNull();
+
+        int originalStock = jdbcTemplate.queryForObject(
+                "SELECT stock_quantity FROM products WHERE product_id = ?",
+                Integer.class, testProductId);
+
+        addCartItem(testUserId, testProductId, originalStock + 1);
+        assertThatThrownBy(() -> orderService.createOrder(testUserId, defaultRequest()))
+                .isInstanceOf(InsufficientStockException.class);
+        assertThat(cache.get(testProductId)).isNotNull();
+
+        jdbcTemplate.update("DELETE FROM carts WHERE user_id = ?", testUserId);
+        addCartItem(testUserId, testProductId, 1);
+
+        Order created = orderService.createOrder(testUserId, defaultRequest());
+        createdOrderIds.add(created.getOrderId());
+
+        assertThat(cache.get(testProductId)).isNull();
     }
 
     @Test
@@ -555,6 +596,32 @@ class OrderServiceIntegrationTest {
                 .hasMessageContaining("취소할 수 없는");
 
         System.out.println("  [PASS] 이미 취소된 주문 재취소 시 BusinessException 발생");
+    }
+
+
+
+    @Test
+    @DisplayName("cancelOrder 캐시 무효화 — 성공 시 evict, 실패 시 유지")
+    void cancelOrder_cacheEvictOnlyOnSuccess() {
+        Cache cache = productDetailCache();
+
+        addCartItem(testUserId, testProductId, 1);
+        Order order = orderService.createOrder(testUserId, defaultRequest());
+        createdOrderIds.add(order.getOrderId());
+
+        productService.findByIdCached(testProductId);
+        assertThat(cache.get(testProductId)).isNotNull();
+
+        orderService.cancelOrder(order.getOrderId(), testUserId);
+        assertThat(cache.get(testProductId)).isNull();
+
+        productService.findByIdCached(testProductId);
+        assertThat(cache.get(testProductId)).isNotNull();
+
+        assertThatThrownBy(() -> orderService.cancelOrder(order.getOrderId(), testUserId))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("취소할 수 없는");
+        assertThat(cache.get(testProductId)).isNotNull();
     }
 
     @Test
