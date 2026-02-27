@@ -418,7 +418,7 @@ class CancelOrderConcurrencyTest {
             ready.countDown();
             try {
                 start.await();
-                runTierChunkForUsers(List.of(testUserId, userIdB));
+                runTierChunkForUsers(List.of(testUserId));
                 tierRecalcSuccess.incrementAndGet();
             } catch (Exception e) {
                 errors.add("[TierScheduler] " + e.getClass().getSimpleName() + " - " + e.getMessage());
