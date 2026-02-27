@@ -200,10 +200,13 @@ public class TierScheduler {
                                                     List<User> users) {
         TierProcessingResult result = new TierProcessingResult();
 
-        for (User user : users) {
+        for (User userSnapshot : users) {
             result.processed++;
 
             try {
+                User user = userRepository.findByIdWithLockAndTier(userSnapshot.getUserId())
+                        .orElseThrow(() -> new IllegalStateException("등급 재산정 대상 사용자를 찾을 수 없습니다. userId=" + userSnapshot.getUserId()));
+
                 BigDecimal lastYearSpent = yearlySpentMap.getOrDefault(user.getUserId(), BigDecimal.ZERO);
                 Integer oldTierId = user.getTier().getTierId();
 
@@ -230,7 +233,7 @@ public class TierScheduler {
                 }
             } catch (Exception e) {
                 result.errors++;
-                log.error("회원 등급 재산정 실패 - userId={}", user.getUserId(), e);
+                log.error("회원 등급 재산정 실패 - userId={}", userSnapshot.getUserId(), e);
             }
         }
 
