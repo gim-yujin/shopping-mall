@@ -591,7 +591,8 @@ class OrderServiceIntegrationTest {
 
         assertThat(pointEarnRateSnapshot).isEqualByComparingTo(order.getPointEarnRateSnapshot());
         assertThat(earnedPointsSnapshot).isEqualTo(order.getEarnedPointsSnapshot());
-        assertThat(pointsAfterOrder - pointsBeforeOrder).isEqualTo(order.getEarnedPointsSnapshot());
+        // 포인트 적립은 주문 생성 시점이 아니라 배송 완료 시점에 반영된다.
+        assertThat(pointsAfterOrder - pointsBeforeOrder).isEqualTo(0);
 
         // When: 주문 취소
         orderService.cancelOrder(order.getOrderId(), testUserId);
@@ -904,8 +905,8 @@ class OrderServiceIntegrationTest {
                 "SELECT point_balance FROM users WHERE user_id = ?",
                 Integer.class, testUserId);
 
-        // 차감된 포인트 = usePoints - 적립 포인트 (순 차감)
-        assertThat(pointsAfterOrder).isEqualTo(pointsBefore - usePoints + order.getEarnedPointsSnapshot());
+        // 주문 시점에는 사용 포인트만 차감된다. (적립은 DELIVERED 시점)
+        assertThat(pointsAfterOrder).isEqualTo(pointsBefore - usePoints);
 
         // DB에 used_points 저장 확인
         Integer storedUsedPoints = jdbcTemplate.queryForObject(
@@ -925,14 +926,14 @@ class OrderServiceIntegrationTest {
         // When: 취소
         orderService.cancelOrder(order.getOrderId(), testUserId);
 
-        // Then: 포인트 완전 원복 (적립 취소 + 사용분 환불)
+        // Then: 포인트 완전 원복 (사용분 환불)
         int pointsAfterCancel = jdbcTemplate.queryForObject(
                 "SELECT point_balance FROM users WHERE user_id = ?",
                 Integer.class, testUserId);
         assertThat(pointsAfterCancel).isEqualTo(pointsBefore);
 
         System.out.println("  [PASS] 포인트 사용 주문-취소 왕복: 포인트 " + pointsBefore
-                + " → " + pointsAfterOrder + " (사용 " + usePoints + ", 적립 " + order.getEarnedPointsSnapshot() + ")"
+                + " → " + pointsAfterOrder + " (사용 " + usePoints + ")"
                 + " → " + pointsAfterCancel + " (환불)");
     }
 
