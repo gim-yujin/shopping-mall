@@ -138,9 +138,9 @@ class OrderServiceIntegrationTest {
 
         // 테스트용 쿠폰 정리
         jdbcTemplate.update(
-                "DELETE FROM user_coupons WHERE coupon_id IN (SELECT coupon_id FROM coupons WHERE coupon_code IN ('TEST_ORDER_COUPON', 'TEST_CANCEL_COUPON'))");
+                "DELETE FROM user_coupons WHERE coupon_id IN (SELECT coupon_id FROM coupons WHERE coupon_code IN ('TEST_ORDER_COUPON', 'TEST_ORDER_SOLDOUT_COUPON', 'TEST_CANCEL_COUPON'))");
         jdbcTemplate.update(
-                "DELETE FROM coupons WHERE coupon_code IN ('TEST_ORDER_COUPON', 'TEST_CANCEL_COUPON')");
+                "DELETE FROM coupons WHERE coupon_code IN ('TEST_ORDER_COUPON', 'TEST_ORDER_SOLDOUT_COUPON', 'TEST_CANCEL_COUPON')");
     }
 
     // ==================== 장바구니에 상품 추가 (공통 헬퍼) ====================
@@ -456,6 +456,56 @@ class OrderServiceIntegrationTest {
 
         System.out.println("  [PASS] 쿠폰 적용 주문: 총액=" + order.getTotalAmount()
                 + ", 할인=" + order.getDiscountAmount() + ", 최종=" + order.getFinalAmount());
+    }
+
+
+    @Test
+    @DisplayName("createOrder + 소진 쿠폰 적용 — 발급된 userCouponId면 주문에 정상 적용")
+    void createOrder_withIssuedCouponAfterSoldOut_appliesDiscount() {
+        addCartItem(testUserId, testProductId, 1);
+
+        jdbcTemplate.update(
+                """
+                INSERT INTO coupons (coupon_code, coupon_name, discount_type, discount_value,
+                    min_order_amount, max_discount, total_quantity, used_quantity,
+                    valid_from, valid_until, is_active, created_at)
+                VALUES ('TEST_ORDER_SOLDOUT_COUPON', '소진쿠폰주문테스트', 'FIXED', 1000,
+                    0, NULL, 1, 0,
+                    '2024-01-01'::timestamp, '2027-12-31'::timestamp, true, NOW())
+                ON CONFLICT (coupon_code) DO NOTHING
+                """);
+
+        Integer testCouponId = jdbcTemplate.queryForObject(
+                "SELECT coupon_id FROM coupons WHERE coupon_code = 'TEST_ORDER_SOLDOUT_COUPON'",
+                Integer.class);
+
+        jdbcTemplate.update(
+                """
+                INSERT INTO user_coupons (user_id, coupon_id, is_used, issued_at, expires_at)
+                VALUES (?, ?, false, NOW(), '2027-12-31'::timestamp)
+                ON CONFLICT DO NOTHING
+                """,
+                testUserId, testCouponId);
+
+        Long userCouponId = jdbcTemplate.queryForObject(
+                "SELECT user_coupon_id FROM user_coupons WHERE user_id = ? AND coupon_id = ? AND is_used = false",
+                Long.class, testUserId, testCouponId);
+
+        jdbcTemplate.update("UPDATE coupons SET used_quantity = total_quantity WHERE coupon_id = ?", testCouponId);
+
+        OrderCreateRequest request = new OrderCreateRequest(
+                "서울시 강남구 테스트로 123", "테스트수령인", "010-0000-0000",
+                "CARD", BigDecimal.ZERO, userCouponId, null, null);
+
+        Order order = orderService.createOrder(testUserId, request);
+        createdOrderIds.add(order.getOrderId());
+
+        assertThat(order.getDiscountAmount()).isGreaterThan(BigDecimal.ZERO);
+
+        Boolean isUsed = jdbcTemplate.queryForObject(
+                "SELECT is_used FROM user_coupons WHERE user_coupon_id = ?",
+                Boolean.class, userCouponId);
+        assertThat(isUsed).isTrue();
     }
 
     @Test
