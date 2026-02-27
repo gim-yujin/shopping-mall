@@ -35,6 +35,6 @@ public interface CartRepository extends JpaRepository<Cart, Long> {
      * 트랜잭션이 커밋/롤백되면 자동 해제됨.
      * 같은 userId에 대한 동시 addToCart 호출을 순차 실행으로 만듦.
      */
-    @Query(value = "SELECT pg_advisory_xact_lock(:userId)", nativeQuery = true)
-    void acquireUserCartLock(@Param("userId") Long userId);
+    @Query(value = "SELECT pg_advisory_xact_lock(CAST(:userId AS BIGINT))", nativeQuery = true)
+    Long acquireUserCartLock(@Param("userId") Long userId);
 }
