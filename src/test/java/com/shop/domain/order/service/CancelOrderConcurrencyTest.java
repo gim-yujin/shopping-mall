@@ -2,6 +2,7 @@ package com.shop.domain.order.service;
 
 import com.shop.domain.order.dto.OrderCreateRequest;
 import com.shop.domain.order.entity.Order;
+import com.shop.domain.user.scheduler.TierScheduler;
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -41,6 +42,9 @@ class CancelOrderConcurrencyTest {
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
+
+    @Autowired
+    private TierScheduler tierScheduler;
 
     // 테스트 대상
     private Long testUserId;
@@ -299,7 +303,7 @@ class CancelOrderConcurrencyTest {
      */
     @Test
     @org.junit.jupiter.api.Order(2)
-    @DisplayName("시나리오 2: 취소(재고+1) + 생성(재고-1) 동시 실행 → 최종 재고 정확")
+    @DisplayName("시나리오 2: 취소 + 생성 + 등급 갱신 동시 실행 → 사용자 집계/재고 불변식 유지")
     void cancelAndCreate_stockConsistency() throws InterruptedException {
         // Given: 주문 A 생성 (재고 1 소비됨)
         Long orderIdA = createTestOrder();
@@ -341,14 +345,15 @@ class CancelOrderConcurrencyTest {
         System.out.println("  기대 최종 재고: " + stockAfterOrderA + " (취소 +1과 생성 -1 상쇄 → 주문A 후 재고와 동일)");
         System.out.println("========================================");
 
-        // When: 동시 실행
-        ExecutorService executor = Executors.newFixedThreadPool(2);
-        CountDownLatch ready = new CountDownLatch(2);
+        // When: 동시 실행 (취소 + 생성 + 등급 갱신)
+        ExecutorService executor = Executors.newFixedThreadPool(3);
+        CountDownLatch ready = new CountDownLatch(3);
         CountDownLatch start = new CountDownLatch(1);
-        CountDownLatch done = new CountDownLatch(2);
+        CountDownLatch done = new CountDownLatch(3);
 
         AtomicInteger cancelSuccess = new AtomicInteger(0);
         AtomicInteger createSuccess = new AtomicInteger(0);
+        AtomicInteger tierRecalcSuccess = new AtomicInteger(0);
         List<String> errors = Collections.synchronizedList(new ArrayList<>());
 
         OrderCreateRequest requestB = new OrderCreateRequest(
@@ -388,6 +393,20 @@ class CancelOrderConcurrencyTest {
             }
         });
 
+        // Thread C: 등급 재산정 스케줄러 실행
+        executor.submit(() -> {
+            ready.countDown();
+            try {
+                start.await();
+                tierScheduler.recalculateTiers();
+                tierRecalcSuccess.incrementAndGet();
+            } catch (Exception e) {
+                errors.add("[TierScheduler] " + e.getClass().getSimpleName() + " - " + e.getMessage());
+            } finally {
+                done.countDown();
+            }
+        });
+
         ready.await(10, TimeUnit.SECONDS);
         start.countDown();
         done.await(60, TimeUnit.SECONDS);
@@ -405,6 +424,7 @@ class CancelOrderConcurrencyTest {
         System.out.println("[테스트 결과]");
         System.out.println("  취소 성공: " + cancelSuccess.get());
         System.out.println("  생성 성공: " + createSuccess.get());
+        System.out.println("  등급 갱신 성공: " + tierRecalcSuccess.get());
         System.out.println("  최종 재고: " + finalStock + " (기대: " + stockAfterOrderA + ")");
         System.out.println("  최종 판매량: " + finalSalesCount + " (기대: " + salesAfterOrderA + ")");
         if (!errors.isEmpty()) {
@@ -413,13 +433,53 @@ class CancelOrderConcurrencyTest {
         }
         System.out.println("========================================");
 
-        // ① 양쪽 모두 성공
+        BigDecimal userATotalSpent = jdbcTemplate.queryForObject(
+                "SELECT total_spent FROM users WHERE user_id = ?", BigDecimal.class, testUserId);
+        Integer userAPointBalance = jdbcTemplate.queryForObject(
+                "SELECT point_balance FROM users WHERE user_id = ?", Integer.class, testUserId);
+
+        Long orderIdB = jdbcTemplate.queryForObject(
+                "SELECT order_id FROM orders WHERE user_id = ? ORDER BY order_id DESC LIMIT 1",
+                Long.class, userIdB);
+        BigDecimal orderBFinalAmount = jdbcTemplate.queryForObject(
+                "SELECT final_amount FROM orders WHERE order_id = ?",
+                BigDecimal.class, orderIdB);
+        Integer orderBEarnedPoints = jdbcTemplate.queryForObject(
+                "SELECT earned_points_snapshot FROM orders WHERE order_id = ?",
+                Integer.class, orderIdB);
+
+        BigDecimal userBTotalSpent = jdbcTemplate.queryForObject(
+                "SELECT total_spent FROM users WHERE user_id = ?", BigDecimal.class, userIdB);
+        Integer userBPointBalance = jdbcTemplate.queryForObject(
+                "SELECT point_balance FROM users WHERE user_id = ?", Integer.class, userIdB);
+
+        BigDecimal expectedUserATotalSpent = (BigDecimal) originalUserState.get("total_spent");
+        Integer expectedUserAPointBalance = ((Number) originalUserState.get("point_balance")).intValue();
+        BigDecimal expectedUserBTotalSpent = ((BigDecimal) userBState.get("total_spent")).add(orderBFinalAmount);
+        Integer expectedUserBPointBalance = ((Number) userBState.get("point_balance")).intValue() + orderBEarnedPoints;
+
+        // ① 양쪽 모두 성공 + 등급 갱신 성공
         assertThat(cancelSuccess.get())
                 .as("취소가 성공해야 합니다")
                 .isEqualTo(1);
         assertThat(createSuccess.get())
                 .as("생성이 성공해야 합니다")
                 .isEqualTo(1);
+        assertThat(tierRecalcSuccess.get())
+                .as("등급 갱신 작업이 성공해야 합니다")
+                .isEqualTo(1);
+
+        // ② 사용자 집계 불변식: 음수 불가
+        assertThat(userATotalSpent).as("User A total_spent는 음수가 될 수 없습니다").isGreaterThanOrEqualTo(BigDecimal.ZERO);
+        assertThat(userBTotalSpent).as("User B total_spent는 음수가 될 수 없습니다").isGreaterThanOrEqualTo(BigDecimal.ZERO);
+        assertThat(userAPointBalance).as("User A point_balance는 음수가 될 수 없습니다").isGreaterThanOrEqualTo(0);
+        assertThat(userBPointBalance).as("User B point_balance는 음수가 될 수 없습니다").isGreaterThanOrEqualTo(0);
+
+        // ③ 사용자 집계 계산 일치 검증
+        assertThat(userATotalSpent).as("User A 취소 후 total_spent는 원복되어야 합니다").isEqualByComparingTo(expectedUserATotalSpent);
+        assertThat(userAPointBalance).as("User A 취소 후 point_balance는 원복되어야 합니다").isEqualTo(expectedUserAPointBalance);
+        assertThat(userBTotalSpent).as("User B total_spent는 생성 주문 금액만큼 증가해야 합니다").isEqualByComparingTo(expectedUserBTotalSpent);
+        assertThat(userBPointBalance).as("User B point_balance는 생성 주문 적립 포인트만큼 증가해야 합니다").isEqualTo(expectedUserBPointBalance);
 
         // ② 최종 재고 = 주문A 후 재고 (취소 +1, 생성 -1 = 상쇄 → 변화 없음)
         assertThat(finalStock)
