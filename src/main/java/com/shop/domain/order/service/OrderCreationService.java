@@ -7,6 +7,7 @@ import com.shop.domain.coupon.repository.UserCouponRepository;
 import com.shop.domain.inventory.entity.ProductInventoryHistory;
 import com.shop.domain.inventory.repository.ProductInventoryHistoryRepository;
 import com.shop.domain.order.dto.OrderCreateRequest;
+import com.shop.domain.order.event.ProductStockChangedEvent;
 import com.shop.domain.order.entity.Order;
 import com.shop.domain.order.entity.PaymentMethod;
 import com.shop.domain.order.entity.OrderItem;
@@ -21,8 +22,8 @@ import com.shop.global.exception.BusinessException;
 import com.shop.global.exception.InsufficientStockException;
 import com.shop.global.exception.ResourceNotFoundException;
 import jakarta.persistence.EntityManager;
-import com.shop.domain.product.service.ProductCacheEvictHelper;
 import org.springframework.stereotype.Service;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
@@ -52,8 +53,7 @@ public class OrderCreationService {
     private final UserCouponRepository userCouponRepository;
     private final UserTierRepository userTierRepository;
     private final EntityManager entityManager;
-    // [P1-7] 캐시 무효화 로직을 공유 헬퍼로 위임 (기존 CacheManager 직접 사용에서 전환)
-    private final ProductCacheEvictHelper productCacheEvictHelper;
+    private final ApplicationEventPublisher eventPublisher;
     private final ShippingFeeCalculator shippingFeeCalculator;
 
     public OrderCreationService(OrderRepository orderRepository, CartRepository cartRepository,
@@ -62,7 +62,7 @@ public class OrderCreationService {
                                 UserCouponRepository userCouponRepository,
                                 UserTierRepository userTierRepository,
                                 EntityManager entityManager,
-                                ProductCacheEvictHelper productCacheEvictHelper,
+                                ApplicationEventPublisher eventPublisher,
                                 ShippingFeeCalculator shippingFeeCalculator) {
         this.orderRepository = orderRepository;
         this.cartRepository = cartRepository;
@@ -72,7 +72,7 @@ public class OrderCreationService {
         this.userCouponRepository = userCouponRepository;
         this.userTierRepository = userTierRepository;
         this.entityManager = entityManager;
-        this.productCacheEvictHelper = productCacheEvictHelper;
+        this.eventPublisher = eventPublisher;
         this.shippingFeeCalculator = shippingFeeCalculator;
     }
 
@@ -278,9 +278,10 @@ public class OrderCreationService {
             cartRepository.deleteByUserId(userId);
         }
 
-        // 8) 재고가 변경된 상품의 상세 캐시 무효화
-        // [P1-7] 공유 헬퍼로 위임 (기존 private 중복 메서드 제거)
-        productCacheEvictHelper.evictProductDetailCaches(orderLines.stream().map(OrderLine::productId).toList());
+        // 8) 재고 변경 이벤트 발행 (캐시 무효화는 AFTER_COMMIT 리스너에서 처리)
+        eventPublisher.publishEvent(new ProductStockChangedEvent(
+                orderLines.stream().map(OrderLine::productId).toList()
+        ));
 
         return savedOrder;
     }

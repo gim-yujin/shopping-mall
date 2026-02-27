@@ -4,6 +4,7 @@ import com.shop.domain.coupon.entity.UserCoupon;
 import com.shop.domain.coupon.repository.UserCouponRepository;
 import com.shop.domain.inventory.entity.ProductInventoryHistory;
 import com.shop.domain.inventory.repository.ProductInventoryHistoryRepository;
+import com.shop.domain.order.event.ProductStockChangedEvent;
 import com.shop.domain.order.entity.Order;
 import com.shop.domain.order.entity.OrderItem;
 import com.shop.domain.order.repository.OrderRepository;
@@ -15,9 +16,9 @@ import com.shop.domain.user.repository.UserTierRepository;
 import com.shop.global.exception.BusinessException;
 import com.shop.global.exception.ResourceNotFoundException;
 import jakarta.persistence.EntityManager;
-import com.shop.domain.product.service.ProductCacheEvictHelper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -42,8 +43,7 @@ public class OrderCancellationService {
     private final UserCouponRepository userCouponRepository;
     private final UserTierRepository userTierRepository;
     private final EntityManager entityManager;
-    // [P1-7] 캐시 무효화 로직을 공유 헬퍼로 위임 (기존 CacheManager 직접 사용에서 전환)
-    private final ProductCacheEvictHelper productCacheEvictHelper;
+    private final ApplicationEventPublisher eventPublisher;
 
     public OrderCancellationService(OrderRepository orderRepository,
                                      ProductRepository productRepository,
@@ -52,7 +52,7 @@ public class OrderCancellationService {
                                      UserCouponRepository userCouponRepository,
                                      UserTierRepository userTierRepository,
                                      EntityManager entityManager,
-                                     ProductCacheEvictHelper productCacheEvictHelper) {
+                                     ApplicationEventPublisher eventPublisher) {
         this.orderRepository = orderRepository;
         this.productRepository = productRepository;
         this.userRepository = userRepository;
@@ -60,7 +60,7 @@ public class OrderCancellationService {
         this.userCouponRepository = userCouponRepository;
         this.userTierRepository = userTierRepository;
         this.entityManager = entityManager;
-        this.productCacheEvictHelper = productCacheEvictHelper;
+        this.eventPublisher = eventPublisher;
     }
 
     /**
@@ -139,8 +139,9 @@ public class OrderCancellationService {
 
         order.cancel();
 
-        // 4) 재고가 변경된 상품의 상세 캐시 무효화
-        // [P1-7] 공유 헬퍼로 위임 (기존 private 중복 메서드 제거)
-        productCacheEvictHelper.evictProductDetailCaches(sortedItems.stream().map(OrderItem::getProductId).toList());
+        // 4) 재고 변경 이벤트 발행 (캐시 무효화는 AFTER_COMMIT 리스너에서 처리)
+        eventPublisher.publishEvent(new ProductStockChangedEvent(
+                sortedItems.stream().map(OrderItem::getProductId).toList()
+        ));
     }
 }

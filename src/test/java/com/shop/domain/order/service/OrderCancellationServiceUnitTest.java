@@ -5,6 +5,7 @@ import com.shop.domain.coupon.repository.UserCouponRepository;
 import com.shop.domain.inventory.repository.ProductInventoryHistoryRepository;
 import com.shop.domain.order.entity.Order;
 import com.shop.domain.order.entity.OrderItem;
+import com.shop.domain.order.event.ProductStockChangedEvent;
 import com.shop.domain.order.repository.OrderRepository;
 import com.shop.domain.product.entity.Product;
 import com.shop.domain.product.repository.ProductRepository;
@@ -19,7 +20,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import com.shop.domain.product.service.ProductCacheEvictHelper;
+import org.springframework.context.ApplicationEventPublisher;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -46,7 +47,7 @@ class OrderCancellationServiceUnitTest {
     @Mock private UserCouponRepository userCouponRepository;
     @Mock private UserTierRepository userTierRepository;
     @Mock private EntityManager entityManager;
-    @Mock private ProductCacheEvictHelper productCacheEvictHelper;
+    @Mock private ApplicationEventPublisher eventPublisher;
 
     private OrderCancellationService cancellationService;
 
@@ -55,7 +56,7 @@ class OrderCancellationServiceUnitTest {
         cancellationService = new OrderCancellationService(
                 orderRepository, productRepository, userRepository,
                 inventoryHistoryRepository, userCouponRepository,
-                userTierRepository, entityManager, productCacheEvictHelper);
+                userTierRepository, entityManager, eventPublisher);
     }
 
     @Test
@@ -97,6 +98,7 @@ class OrderCancellationServiceUnitTest {
         verify(user).addPoints(-100);
         verify(userCoupon).cancelUse();
         verify(order).cancel();
+        verify(eventPublisher).publishEvent(new ProductStockChangedEvent(List.of(7L)));
     }
 
     @Test
@@ -122,6 +124,6 @@ class OrderCancellationServiceUnitTest {
         verify(userRepository, never()).findById(any());
         verify(userCouponRepository, never()).findByOrderId(any());
         verify(order, never()).cancel();
-        verifyNoInteractions(inventoryHistoryRepository, userTierRepository, entityManager, productCacheEvictHelper);
+        verifyNoInteractions(inventoryHistoryRepository, userTierRepository, entityManager, eventPublisher);
     }
 }
