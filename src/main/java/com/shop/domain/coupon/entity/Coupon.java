@@ -108,6 +108,14 @@ public class Coupon {
         return totalQuantity != null && usedQuantity >= totalQuantity;
     }
 
+    public boolean isIssuable() {
+        return isValid() && !isQuantityExhausted();
+    }
+
+    public boolean isIssuable(LocalDateTime now) {
+        return isValid(now) && !isQuantityExhausted();
+    }
+
     public boolean isValid() {
         return isValid(LocalDateTime.now());
     }
@@ -119,8 +127,7 @@ public class Coupon {
     public boolean isValid(LocalDateTime now) {
         return isActive
                && (now.isAfter(validFrom) || now.isEqual(validFrom))
-               && (now.isBefore(validUntil) || now.isEqual(validUntil))
-               && (totalQuantity == null || usedQuantity < totalQuantity);
+               && (now.isBefore(validUntil) || now.isEqual(validUntil));
     }
 
     public BigDecimal calculateDiscount(BigDecimal orderAmount) {

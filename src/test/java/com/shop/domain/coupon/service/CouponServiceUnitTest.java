@@ -32,27 +32,28 @@ class CouponServiceUnitTest {
     private CouponService couponService;
 
     @Test
-    @DisplayName("issueCouponById - coupon.isValid()가 false면 INVALID_COUPON 예외")
+    @DisplayName("issueCouponById - coupon.isIssuable()가 false면 INVALID_COUPON 예외")
     void issueCouponById_whenCouponIsInvalid_throwsBusinessException() {
         Long userId = 1L;
         Integer couponId = 10;
         Coupon coupon = mock(Coupon.class);
 
         when(couponRepository.findById(couponId)).thenReturn(Optional.of(coupon));
-        when(coupon.isValid()).thenReturn(false);
+        when(coupon.isIssuable()).thenReturn(false);
+        when(coupon.isQuantityExhausted()).thenReturn(false);
 
         assertThatThrownBy(() -> couponService.issueCouponById(userId, couponId))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("유효하지 않은 쿠폰");
 
-        verify(coupon).isValid();
+        verify(coupon).isIssuable();
         verify(couponRepository, never()).incrementUsedQuantityIfAvailable(any());
         verify(userCouponRepository, never()).save(any(UserCoupon.class));
         verify(coupon, never()).incrementUsed();
     }
 
     @Test
-    @DisplayName("issueCouponById - coupon.isValid()가 true면 발급 저장")
+    @DisplayName("issueCouponById - coupon.isIssuable()가 true면 발급 저장")
     void issueCouponById_whenCouponIsValid_savesUserCoupon() {
         Long userId = 1L;
         Integer couponId = 11;
@@ -60,7 +61,7 @@ class CouponServiceUnitTest {
         LocalDateTime validUntil = LocalDateTime.now().plusDays(1);
 
         when(couponRepository.findById(couponId)).thenReturn(Optional.of(coupon));
-        when(coupon.isValid()).thenReturn(true);
+        when(coupon.isIssuable()).thenReturn(true);
         when(coupon.getCouponId()).thenReturn(couponId);
         when(coupon.getValidUntil()).thenReturn(validUntil);
         when(couponRepository.incrementUsedQuantityIfAvailable(couponId)).thenReturn(1);
@@ -68,7 +69,7 @@ class CouponServiceUnitTest {
 
         couponService.issueCouponById(userId, couponId);
 
-        verify(coupon).isValid();
+        verify(coupon).isIssuable();
         verify(couponRepository).incrementUsedQuantityIfAvailable(couponId);
         verify(userCouponRepository).save(any(UserCoupon.class));
         verify(coupon, never()).incrementUsed();

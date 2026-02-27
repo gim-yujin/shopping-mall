@@ -107,6 +107,25 @@ class UserCouponEntityUnitTest {
         assertThat(uc.isAvailable()).isFalse();
     }
 
+
+    @Test
+    @DisplayName("isAvailable — 쿠폰 수량 소진 상태여도 이미 발급된 쿠폰은 사용 가능")
+    void isAvailable_couponSoldOutButIssued_returnsTrue() throws Exception {
+        Coupon soldOutCoupon = Coupon.class.getDeclaredConstructor().newInstance();
+        setField(soldOutCoupon, "discountType", DiscountType.FIXED);
+        setField(soldOutCoupon, "discountValue", BigDecimal.valueOf(1000));
+        setField(soldOutCoupon, "minOrderAmount", BigDecimal.ZERO);
+        setField(soldOutCoupon, "totalQuantity", 1);
+        setField(soldOutCoupon, "usedQuantity", 1);
+        setField(soldOutCoupon, "isActive", true);
+        setField(soldOutCoupon, "validFrom", LocalDateTime.now().minusDays(1));
+        setField(soldOutCoupon, "validUntil", LocalDateTime.now().plusDays(30));
+
+        UserCoupon uc = new UserCoupon(1L, soldOutCoupon, LocalDateTime.now().plusDays(30));
+
+        assertThat(uc.isAvailable()).isTrue();
+    }
+
     @Test
     @DisplayName("use 후 cancelUse → 다시 isAvailable true")
     void useThenCancel_becomesAvailableAgain() throws Exception {

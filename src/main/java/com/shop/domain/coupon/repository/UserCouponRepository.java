@@ -28,7 +28,6 @@ public interface UserCouponRepository extends JpaRepository<UserCoupon, Long> {
               AND c.isActive = true
               AND c.validFrom <= CURRENT_TIMESTAMP
               AND c.validUntil >= CURRENT_TIMESTAMP
-              AND (c.totalQuantity IS NULL OR c.usedQuantity < c.totalQuantity)
             ORDER BY uc.expiresAt ASC
             """)
     List<UserCoupon> findAvailableCoupons(@Param("userId") Long userId);

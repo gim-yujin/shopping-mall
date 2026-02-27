@@ -43,7 +43,7 @@ class CouponEntityUnitTest {
     // ==================== isValid ====================
 
     @Test
-    @DisplayName("isValid — 활성, 기간 내, 수량 여유 → true")
+    @DisplayName("isValid — 활성, 기간 내 → true")
     void isValid_allConditionsMet_returnsTrue() throws Exception {
         Coupon coupon = createCoupon("FIXED", BigDecimal.valueOf(1000),
                 BigDecimal.ZERO, null, 100, 50,
@@ -83,15 +83,24 @@ class CouponEntityUnitTest {
     }
 
     @Test
-    @DisplayName("isValid — 수량 소진 → false")
-    void isValid_quantityExhausted_returnsFalse() throws Exception {
+    @DisplayName("isValid — 수량 소진이어도 활성/기간 유효하면 true")
+    void isValid_quantityExhausted_returnsTrue() throws Exception {
         Coupon coupon = createCoupon("FIXED", BigDecimal.valueOf(1000),
                 BigDecimal.ZERO, null, 100, 100,
                 true, LocalDateTime.now().minusDays(1), LocalDateTime.now().plusDays(1));
 
-        assertThat(coupon.isValid()).isFalse();
+        assertThat(coupon.isValid()).isTrue();
     }
 
+    @Test
+    @DisplayName("isIssuable — 수량 소진이면 false")
+    void isIssuable_quantityExhausted_returnsFalse() throws Exception {
+        Coupon coupon = createCoupon("FIXED", BigDecimal.valueOf(1000),
+                BigDecimal.ZERO, null, 100, 100,
+                true, LocalDateTime.now().minusDays(1), LocalDateTime.now().plusDays(1));
+
+        assertThat(coupon.isIssuable()).isFalse();
+    }
 
     @Test
     @DisplayName("isValid — validFrom 경계 시각 포함 → true")

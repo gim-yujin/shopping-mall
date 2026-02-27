@@ -65,7 +65,11 @@ public class UserCoupon {
      * 테스트에서 시간을 제어할 수 있도록 시각을 파라미터로 받는다.
      */
     public boolean isAvailable(LocalDateTime now) {
-        return !isUsed && now.isBefore(expiresAt) && coupon.isValid(now);
+        return !isUsed
+               && now.isBefore(expiresAt)
+               && coupon.getIsActive()
+               && (now.isAfter(coupon.getValidFrom()) || now.isEqual(coupon.getValidFrom()))
+               && (now.isBefore(coupon.getValidUntil()) || now.isEqual(coupon.getValidUntil()));
     }
 
     public Long getUserCouponId() { return userCouponId; }

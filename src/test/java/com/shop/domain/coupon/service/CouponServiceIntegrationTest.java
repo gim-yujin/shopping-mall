@@ -267,7 +267,7 @@ class CouponServiceIntegrationTest {
     }
 
     @Test
-    @DisplayName("getAvailableCoupons — 주문 시점 isAvailable 규칙과 동일한 쿠폰만 반환")
+    @DisplayName("getAvailableCoupons — 수량 소진 후에도 이미 발급된 쿠폰은 반환")
     void getAvailableCoupons_returnsOnlyOrderAvailableCoupons() {
         // Given: 발급 후 상태를 변경해 조회 필터링 대상 쿠폰들을 준비
         String availableCode = "TEST_AVAIL_OK_" + System.currentTimeMillis();
@@ -295,17 +295,33 @@ class CouponServiceIntegrationTest {
         // Then: 주문 시점의 UserCoupon.isAvailable() 규칙과 동일해야 함
         assertThat(available)
                 .extracting(uc -> uc.getCoupon().getCouponId())
-                .contains(availableCouponId)
-                .doesNotContain(inactiveCouponId, soldOutCouponId, notStartedCouponId);
+                .contains(availableCouponId, soldOutCouponId)
+                .doesNotContain(inactiveCouponId, notStartedCouponId);
 
         assertThat(available)
                 .as("조회된 모든 쿠폰은 주문 시점 사용 가능 규칙(isAvailable)을 만족해야 함")
                 .allMatch(UserCoupon::isAvailable);
 
-        System.out.println("  [PASS] 사용 가능 쿠폰 조회/주문 규칙 일치 검증: " + available.size() + "개");
+        System.out.println("  [PASS] 수량 소진 이후 발급 쿠폰 포함 조회 검증: " + available.size() + "개");
     }
 
 
+
+    @Test
+    @DisplayName("findAvailableCoupons — 총 수량 1 쿠폰 발급 후 소진되어도 조회된다")
+    void findAvailableCoupons_includesIssuedCouponAfterSoldOut() {
+        String code = "TEST_SOLDOUT_VISIBLE_" + System.currentTimeMillis();
+        Integer couponId = createTestCoupon(code, "소진 후 조회", "FIXED", 1000, 1, true, false);
+
+        couponService.issueCoupon(testUserId, code);
+        jdbcTemplate.update("UPDATE coupons SET used_quantity = total_quantity WHERE coupon_id = ?", couponId);
+
+        List<UserCoupon> available = couponService.getAvailableCoupons(testUserId);
+
+        assertThat(available)
+                .extracting(uc -> uc.getCoupon().getCouponId())
+                .contains(couponId);
+    }
 
     @Test
     @DisplayName("getActiveCoupons — 활성 + 유효 기간 내 쿠폰만 반환")
