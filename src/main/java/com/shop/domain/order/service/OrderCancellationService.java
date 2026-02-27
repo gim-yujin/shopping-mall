@@ -8,6 +8,8 @@ import com.shop.domain.order.event.ProductStockChangedEvent;
 import com.shop.domain.order.entity.Order;
 import com.shop.domain.order.entity.OrderItem;
 import com.shop.domain.order.repository.OrderRepository;
+import com.shop.domain.point.entity.PointHistory;
+import com.shop.domain.point.repository.PointHistoryRepository;
 import com.shop.domain.product.entity.Product;
 import com.shop.domain.product.repository.ProductRepository;
 import com.shop.domain.user.entity.User;
@@ -42,6 +44,7 @@ public class OrderCancellationService {
     private final ProductInventoryHistoryRepository inventoryHistoryRepository;
     private final UserCouponRepository userCouponRepository;
     private final UserTierRepository userTierRepository;
+    private final PointHistoryRepository pointHistoryRepository;
     private final EntityManager entityManager;
     private final ApplicationEventPublisher eventPublisher;
 
@@ -51,6 +54,7 @@ public class OrderCancellationService {
                                      ProductInventoryHistoryRepository inventoryHistoryRepository,
                                      UserCouponRepository userCouponRepository,
                                      UserTierRepository userTierRepository,
+                                     PointHistoryRepository pointHistoryRepository,
                                      EntityManager entityManager,
                                      ApplicationEventPublisher eventPublisher) {
         this.orderRepository = orderRepository;
@@ -59,6 +63,7 @@ public class OrderCancellationService {
         this.inventoryHistoryRepository = inventoryHistoryRepository;
         this.userCouponRepository = userCouponRepository;
         this.userTierRepository = userTierRepository;
+        this.pointHistoryRepository = pointHistoryRepository;
         this.entityManager = entityManager;
         this.eventPublisher = eventPublisher;
     }
@@ -113,22 +118,34 @@ public class OrderCancellationService {
                     before, product.getStockQuantity(), "RETURN", orderId, userId));
         }
 
-        // 2) 누적금액(total_spent) & 포인트 차감 & 사용 포인트 환불 & 등급 재계산
+        // 2) 누적금액(total_spent) 차감 & 포인트 환불 & 등급 재계산
         User user = userRepository.findByIdWithLockAndTier(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("사용자", userId));
         BigDecimal finalAmount = order.getFinalAmount();
         // total_spent는 주문 생성/취소 이벤트를 누적 반영한다.
         user.addTotalSpent(finalAmount.negate());
 
-        // [BUG FIX] 포인트 적립 차감과 사용 환불을 net 값으로 한 번에 처리.
-        // 이전: addPoints(-earned) → addPoints(+used) 순차 호출 시,
-        //   addPoints 내부의 음수→0 클램핑이 중간 단계에서 발생하여
-        //   예) 잔액 100P, 적립 500P, 사용 300P → 100-500=→0 → 0+300=300P (오류)
-        //   올바른 결과: 100 - 500 + 300 = -100 → 0P
-        // 이후: net = usedPoints - earnedPoints 를 한 번에 addPoints 호출하여
-        //   중간 클램핑으로 인한 부당 지급을 방지한다.
-        int netPointChange = order.getUsedPoints() - order.getEarnedPointsSnapshot();
-        user.addPoints(netPointChange);
+        // [P0 FIX] 포인트 적립 이연에 따른 취소 로직 단순화.
+        //
+        // 기존 문제: 주문 생성 시 즉시 적립된 포인트를 취소 시 차감해야 했다.
+        //   net = usedPoints - earnedPoints 를 한 번에 처리했는데,
+        //   적립된 포인트를 이미 다른 주문에 사용한 경우 음수 → 0 클램핑으로
+        //   포인트 부당 지급이 발생할 수 있었다.
+        //
+        // 수정: 포인트 적립이 배송 완료(DELIVERED) 시점으로 이연되었으므로,
+        //   취소 가능 상태(PENDING, PAID)에서는 적립 포인트가 아직 지급되지 않은 상태이다.
+        //   따라서 취소 시에는 사용 포인트만 환불하면 된다.
+        //   (isCancellable() 조건에 의해 DELIVERED 이후 취소는 불가능하므로
+        //    points_settled=true인 주문이 이 코드에 도달하는 경우는 없다)
+        int usedPoints = order.getUsedPoints();
+        if (usedPoints > 0) {
+            user.addPoints(usedPoints);
+            pointHistoryRepository.save(new PointHistory(
+                    user.getUserId(), PointHistory.REFUND, usedPoints, user.getPointBalance(),
+                    "CANCEL", orderId,
+                    "주문 취소 환불 (주문번호: " + order.getOrderNumber() + ")"
+            ));
+        }
 
         // 등급 산정 기준은 total_spent(누적 구매 금액)로 통일한다.
         userTierRepository.findFirstByMinSpentLessThanEqualOrderByTierLevelDesc(user.getTotalSpent())

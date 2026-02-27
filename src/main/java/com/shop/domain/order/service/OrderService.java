@@ -4,7 +4,11 @@ import com.shop.domain.order.dto.OrderCreateRequest;
 import com.shop.domain.order.entity.Order;
 import com.shop.domain.order.entity.OrderStatus;
 import com.shop.domain.order.repository.OrderRepository;
+import com.shop.domain.point.entity.PointHistory;
+import com.shop.domain.point.repository.PointHistoryRepository;
+import com.shop.domain.user.entity.User;
 import com.shop.domain.user.entity.UserTier;
+import com.shop.domain.user.repository.UserRepository;
 import com.shop.global.exception.BusinessException;
 import com.shop.global.exception.ResourceNotFoundException;
 import org.springframework.data.domain.Page;
@@ -38,17 +42,23 @@ public class OrderService {
     private final OrderQueryService queryService;
     private final ShippingFeeCalculator shippingFeeCalculator;
     private final OrderRepository orderRepository;
+    private final UserRepository userRepository;
+    private final PointHistoryRepository pointHistoryRepository;
 
     public OrderService(OrderCreationService creationService,
                         OrderCancellationService cancellationService,
                         OrderQueryService queryService,
                         ShippingFeeCalculator shippingFeeCalculator,
-                        OrderRepository orderRepository) {
+                        OrderRepository orderRepository,
+                        UserRepository userRepository,
+                        PointHistoryRepository pointHistoryRepository) {
         this.creationService = creationService;
         this.cancellationService = cancellationService;
         this.queryService = queryService;
         this.shippingFeeCalculator = shippingFeeCalculator;
         this.orderRepository = orderRepository;
+        this.userRepository = userRepository;
+        this.pointHistoryRepository = pointHistoryRepository;
     }
 
     // ── 배송비/금액 계산 ──────────────────────────────────
@@ -118,11 +128,48 @@ public class OrderService {
         switch (targetStatus) {
             case PAID -> order.markPaid();
             case SHIPPED -> order.markShipped();
-            case DELIVERED -> order.markDelivered();
+            case DELIVERED -> {
+                order.markDelivered();
+                settleEarnedPoints(order);
+            }
             case CANCELLED -> cancellationService.cancelOrderInternal(order, order.getUserId());
             case PENDING -> {
                 // no-op
             }
         }
+    }
+
+    /**
+     * [P0 FIX] 배송 완료 시 적립 포인트 정산.
+     *
+     * 기존 문제: 주문 생성 즉시 포인트가 적립(user.addPoints)되어,
+     * 적립 포인트를 다른 주문에 사용한 뒤 첫 주문을 취소하면
+     * 취소 시 음수→0 클램핑으로 인해 포인트 부당 지급이 발생했다.
+     *
+     * 수정: 주문 생성 시에는 earnedPointsSnapshot(적립 예정 금액)만 Order에 저장하고,
+     * 실제 적립은 배송 완료(DELIVERED) 시에만 수행한다.
+     * 취소 가능 상태(PENDING, PAID)에서는 points_settled=false이므로,
+     * 취소 시 적립 포인트 차감 없이 사용 포인트 환불만 하면 된다.
+     *
+     * points_settled 플래그로 중복 정산을 방지한다(멱등성 보장).
+     */
+    private void settleEarnedPoints(Order order) {
+        if (order.isPointsSettled()) {
+            return;
+        }
+
+        int earned = order.getEarnedPointsSnapshot();
+        if (earned > 0) {
+            User user = userRepository.findByIdWithLockAndTier(order.getUserId())
+                    .orElseThrow(() -> new ResourceNotFoundException("사용자", order.getUserId()));
+            user.addPoints(earned);
+
+            pointHistoryRepository.save(new PointHistory(
+                    user.getUserId(), PointHistory.EARN, earned, user.getPointBalance(),
+                    "ORDER", order.getOrderId(),
+                    "주문 적립 (주문번호: " + order.getOrderNumber() + ")"
+            ));
+        }
+        order.settlePoints();
     }
 }

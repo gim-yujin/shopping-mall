@@ -12,6 +12,8 @@ import com.shop.domain.order.entity.Order;
 import com.shop.domain.order.entity.PaymentMethod;
 import com.shop.domain.order.entity.OrderItem;
 import com.shop.domain.order.repository.OrderRepository;
+import com.shop.domain.point.entity.PointHistory;
+import com.shop.domain.point.repository.PointHistoryRepository;
 import com.shop.domain.product.entity.Product;
 import com.shop.domain.product.repository.ProductRepository;
 import com.shop.domain.user.entity.User;
@@ -52,6 +54,7 @@ public class OrderCreationService {
     private final ProductInventoryHistoryRepository inventoryHistoryRepository;
     private final UserCouponRepository userCouponRepository;
     private final UserTierRepository userTierRepository;
+    private final PointHistoryRepository pointHistoryRepository;
     private final EntityManager entityManager;
     private final ApplicationEventPublisher eventPublisher;
     private final ShippingFeeCalculator shippingFeeCalculator;
@@ -61,6 +64,7 @@ public class OrderCreationService {
                                 ProductInventoryHistoryRepository inventoryHistoryRepository,
                                 UserCouponRepository userCouponRepository,
                                 UserTierRepository userTierRepository,
+                                PointHistoryRepository pointHistoryRepository,
                                 EntityManager entityManager,
                                 ApplicationEventPublisher eventPublisher,
                                 ShippingFeeCalculator shippingFeeCalculator) {
@@ -71,6 +75,7 @@ public class OrderCreationService {
         this.inventoryHistoryRepository = inventoryHistoryRepository;
         this.userCouponRepository = userCouponRepository;
         this.userTierRepository = userTierRepository;
+        this.pointHistoryRepository = pointHistoryRepository;
         this.entityManager = entityManager;
         this.eventPublisher = eventPublisher;
         this.shippingFeeCalculator = shippingFeeCalculator;
@@ -186,6 +191,22 @@ public class OrderCreationService {
 
             // 쿠폰 최소 주문 기준은 "상품 금액(등급 할인/쿠폰 할인 전)" 기준으로 적용한다.
             couponDiscount = userCoupon.getCoupon().calculateDiscount(totalAmount);
+
+            // [P0 BUG FIX] 쿠폰 할인이 0원이면 쿠폰을 사용하지 않는다.
+            //
+            // 기존 문제: Coupon.calculateDiscount()는 totalAmount < minOrderAmount이면
+            // BigDecimal.ZERO를 반환하지만, 이후 로직에서 이 경우를 체크하지 않고
+            // markAsUsedIfUnused()를 실행하여 할인 0원인데 쿠폰이 소진되었다.
+            //
+            // 수정: 최소 주문 금액 미달로 할인이 0원이면 명시적 에러를 반환한다.
+            // 사용자가 의도적으로 쿠폰을 선택했으므로, 조용히 무시하는 것보다
+            // 명확한 피드백을 제공하는 것이 UX상 올바르다.
+            if (couponDiscount.compareTo(BigDecimal.ZERO) == 0) {
+                throw new BusinessException("COUPON_MIN_ORDER_NOT_MET",
+                        "쿠폰 최소 주문 금액(" +
+                        String.format("%,.0f", userCoupon.getCoupon().getMinOrderAmount()) +
+                        "원)에 미달하여 쿠폰을 적용할 수 없습니다.");
+            }
         }
 
         BigDecimal totalDiscount = tierDiscountTotal.add(couponDiscount);
@@ -260,10 +281,32 @@ public class OrderCreationService {
             }
         }
 
-        // 6) 누적 구매 금액(total_spent) 및 포인트 반영
+        // 6) 누적 구매 금액(total_spent) 반영
         // total_spent는 연간 실적이 아니라 취소 반영 누적 금액으로 유지한다.
         user.addTotalSpent(finalAmount);
-        user.addPoints(earnedPointsSnapshot);
+
+        // [P0 FIX] 포인트 적립을 배송 완료(DELIVERED) 시점으로 이연.
+        //
+        // 기존 문제: 주문 생성 즉시 user.addPoints(earnedPointsSnapshot)을 호출하여
+        // 포인트가 즉시 적립되었다. 이 경우 적립된 포인트를 다른 주문에 사용한 뒤
+        // 첫 주문을 취소하면, 취소 시 addPoints(usedPoints - earnedPoints) 계산에서
+        // 음수 → 0 클램핑이 발생하여 포인트 부당 지급이 가능했다.
+        //
+        // 수정: earnedPointsSnapshot은 Order에 저장하되, 실제 적립은
+        // OrderService.settleEarnedPoints()에서 배송 완료 시에만 수행한다.
+        // 취소 가능 상태(PENDING, PAID)에서는 points_settled=false이므로
+        // 취소 시 사용 포인트 환불만 처리하면 된다.
+        //
+        // (기존 코드 제거: user.addPoints(earnedPointsSnapshot))
+
+        // 포인트 사용 이력 기록
+        if (usePoints > 0) {
+            pointHistoryRepository.save(new PointHistory(
+                    userId, PointHistory.USE, usePoints, user.getPointBalance(),
+                    "ORDER", savedOrder.getOrderId(),
+                    "주문 사용 (주문번호: " + savedOrder.getOrderNumber() + ")"
+            ));
+        }
 
         // 7) 등급 재계산 (누적 구매 금액 기준)
         userTierRepository.findFirstByMinSpentLessThanEqualOrderByTierLevelDesc(user.getTotalSpent())

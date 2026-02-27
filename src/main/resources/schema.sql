@@ -184,6 +184,7 @@ CREATE TABLE orders (
     point_earn_rate_snapshot DECIMAL(5, 2) DEFAULT 0 NOT NULL,
     earned_points_snapshot INT DEFAULT 0 NOT NULL,
     used_points INT DEFAULT 0 NOT NULL,
+    points_settled BOOLEAN DEFAULT FALSE NOT NULL,
     payment_method VARCHAR(20),
     shipping_address TEXT,
     recipient_name VARCHAR(100),
@@ -208,6 +209,7 @@ COMMENT ON COLUMN orders.order_number IS '주문 번호 (예: 20240101-XXXXX)';
 COMMENT ON COLUMN orders.point_earn_rate_snapshot IS '주문 시점 사용자 등급의 포인트 적립률 스냅샷(%)';
 COMMENT ON COLUMN orders.earned_points_snapshot IS '주문 생성 시 실제 적립된 포인트 스냅샷';
 COMMENT ON COLUMN orders.used_points IS '주문 시 사용한 포인트 (1P = 1원, 취소 시 환불)';
+COMMENT ON COLUMN orders.points_settled IS '포인트 정산 완료 여부 (배송 완료 시 TRUE로 전환, 중복 정산 방지)';
 
 -- ============================================================================
 -- 8. ORDER_ITEMS (주문 상세) ⭐️ 1억 건 주인공
@@ -427,6 +429,37 @@ CREATE TABLE review_helpfuls (
 COMMENT ON TABLE review_helpfuls IS '리뷰 도움이 돼요 기록 (사용자당 리뷰당 1회)';
 
 -- ============================================================================
+-- 17. POINT_HISTORY (포인트 변동 이력)
+-- ============================================================================
+-- [신규] 기존에는 포인트 적립/사용/환불이 User.pointBalance에만 반영되어
+-- 개별 변동을 추적할 수 없었다. 재고는 product_inventory_history로 모든 변동을
+-- before/after 스냅샷으로 기록하면서, 같은 금전적 가치를 가진 포인트는
+-- 이력이 없는 비대칭이 존재했다.
+-- 이 테이블은 모든 포인트 변동을 기록하여 고객 문의 대응과 감사 추적을 가능하게 한다.
+CREATE TABLE point_history (
+    history_id BIGSERIAL PRIMARY KEY,
+    user_id BIGINT NOT NULL,
+    change_type VARCHAR(20) NOT NULL,
+    amount INT NOT NULL,
+    balance_after INT NOT NULL,
+    reference_type VARCHAR(20),
+    reference_id BIGINT,
+    description VARCHAR(200),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
+
+    CONSTRAINT fk_point_history_user FOREIGN KEY (user_id)
+        REFERENCES users(user_id),
+    CONSTRAINT chk_point_change_type CHECK (change_type IN ('EARN', 'USE', 'REFUND', 'EXPIRE', 'ADJUST')),
+    CONSTRAINT chk_point_amount CHECK (amount > 0)
+);
+
+COMMENT ON TABLE point_history IS '포인트 변동 이력 (예상: 5천만 건)';
+COMMENT ON COLUMN point_history.change_type IS 'EARN: 적립, USE: 사용, REFUND: 환불, EXPIRE: 만료, ADJUST: 수동조정';
+COMMENT ON COLUMN point_history.amount IS '변동 수량 (항상 양수, 증감 방향은 change_type으로 구분)';
+COMMENT ON COLUMN point_history.balance_after IS '변동 후 잔액 스냅샷';
+COMMENT ON COLUMN point_history.reference_type IS 'ORDER: 주문, CANCEL: 취소, ADMIN: 관리자, SYSTEM: 시스템';
+
+-- ============================================================================
 -- 인덱스 생성
 -- ============================================================================
 
@@ -519,6 +552,10 @@ CREATE INDEX idx_search_keyword ON search_logs(search_keyword, searched_at DESC)
 CREATE INDEX idx_search_user ON search_logs(user_id, searched_at DESC);
 CREATE INDEX idx_search_date ON search_logs(searched_at DESC);
 
+-- Point_History 인덱스
+CREATE INDEX idx_point_history_user ON point_history(user_id, created_at DESC);
+CREATE INDEX idx_point_history_reference ON point_history(reference_type, reference_id);
+
 -- ============================================================================
 -- 완료 메시지
 -- ============================================================================
@@ -526,7 +563,7 @@ DO $$
 BEGIN
     RAISE NOTICE '====================================================';
     RAISE NOTICE '스키마 생성 완료!';
-    RAISE NOTICE '총 16개 테이블, 50+ 인덱스 생성됨';
+    RAISE NOTICE '총 17개 테이블, 50+ 인덱스 생성됨';
     RAISE NOTICE '====================================================';
     RAISE NOTICE '다음 단계: 더미 데이터 생성 스크립트 작성';
     RAISE NOTICE '====================================================';

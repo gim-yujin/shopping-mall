@@ -63,6 +63,20 @@ public class Order {
     @Column(name = "used_points", nullable = false)
     private Integer usedPoints;
 
+    /**
+     * [P0 FIX] 포인트 정산 완료 플래그.
+     *
+     * 기존 문제: 주문 생성 즉시 포인트가 적립되어, 적립 포인트를 다른 주문에
+     * 사용한 뒤 첫 주문을 취소하면 포인트 부당 지급이 발생했다.
+     *
+     * 수정: 포인트 적립을 배송 완료(DELIVERED) 시점으로 이연한다.
+     * 이 플래그는 배송 완료 시 TRUE로 전환되며, 중복 정산을 방지한다.
+     * 취소 가능 상태(PENDING, PAID)에서는 항상 FALSE이므로,
+     * 취소 시 적립 포인트 차감 없이 사용 포인트만 환불하면 된다.
+     */
+    @Column(name = "points_settled", nullable = false)
+    private Boolean pointsSettled;
+
     @Column(name = "payment_method", length = 20)
     private String paymentMethod;
 
@@ -114,6 +128,7 @@ public class Order {
         this.pointEarnRateSnapshot = pointEarnRateSnapshot;
         this.earnedPointsSnapshot = earnedPointsSnapshot;
         this.usedPoints = usedPoints;
+        this.pointsSettled = false;
         this.paymentMethod = paymentMethod;
         this.shippingAddress = shippingAddress;
         this.recipientName = recipientName;
@@ -148,6 +163,19 @@ public class Order {
 
     public boolean isCancellable() {
         return orderStatus == OrderStatus.PENDING || orderStatus == OrderStatus.PAID;
+    }
+
+    /**
+     * [P0 FIX] 포인트 정산 완료 처리.
+     * 배송 완료(DELIVERED) 시 호출되어, 적립 포인트가 사용자 잔액에 반영되었음을 기록한다.
+     * 이 메서드가 호출된 후에는 isPointsSettled() == true가 되어 중복 정산을 방지한다.
+     */
+    public void settlePoints() {
+        this.pointsSettled = true;
+    }
+
+    public boolean isPointsSettled() {
+        return pointsSettled;
     }
 
     // Getters
