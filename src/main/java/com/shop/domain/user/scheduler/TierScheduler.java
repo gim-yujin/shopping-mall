@@ -206,31 +206,33 @@ public class TierScheduler {
                 .toList();
         List<User> lockedUsers = userRepository.findAllByIdInWithLockAndTierOrderByUserId(userIds);
         if (lockedUsers.size() != users.size()) {
-            log.warn("등급 재산정 청크 잠금 조회 결과 불일치 - requested={}, locked={}", users.size(), lockedUsers.size());
+            int missingCount = users.size() - lockedUsers.size();
+            log.warn("등급 재산정 청크 잠금 조회 결과 불일치 - requested={}, locked={}, missing={}",
+                    users.size(), lockedUsers.size(), missingCount);
+            if (missingCount > 0) {
+                result.errors += missingCount;
+            }
         }
 
-        for (User user : lockedUsers) {
+        for (User lockedUser : lockedUsers) {
             result.processed++;
 
             try {
-                User user = userRepository.findByIdWithLockAndTier(userSnapshot.getUserId())
-                        .orElseThrow(() -> new IllegalStateException("등급 재산정 대상 사용자를 찾을 수 없습니다. userId=" + userSnapshot.getUserId()));
-
-                BigDecimal lastYearSpent = yearlySpentMap.getOrDefault(user.getUserId(), BigDecimal.ZERO);
-                Integer oldTierId = user.getTier().getTierId();
+                BigDecimal lastYearSpent = yearlySpentMap.getOrDefault(lockedUser.getUserId(), BigDecimal.ZERO);
+                Integer oldTierId = lockedUser.getTier().getTierId();
 
                 UserTier newTier = userTierRepository
-                        .findFirstByMinSpentLessThanEqualOrderByTierLevelDesc(user.getTotalSpent())
+                        .findFirstByMinSpentLessThanEqualOrderByTierLevelDesc(lockedUser.getTotalSpent())
                         .orElse(defaultTier);
 
                 if (!newTier.getTierId().equals(oldTierId)) {
-                    int oldLevel = user.getTier().getTierLevel();
-                    user.updateTier(newTier);
+                    int oldLevel = lockedUser.getTier().getTierLevel();
+                    lockedUser.updateTier(newTier);
 
                     String reason = String.format("정기 등급 점검(누적 구매 기준, %d년 실적 참고: %s원)", lastYear,
                             String.format("%,.0f", lastYearSpent));
                     tierHistoryRepository.save(new UserTierHistory(
-                            user.getUserId(), oldTierId, newTier.getTierId(), reason));
+                            lockedUser.getUserId(), oldTierId, newTier.getTierId(), reason));
 
                     if (newTier.getTierLevel() > oldLevel) {
                         result.upgraded++;
@@ -242,7 +244,7 @@ public class TierScheduler {
                 }
             } catch (Exception e) {
                 result.errors++;
-                log.error("회원 등급 재산정 실패 - userId={}", userSnapshot.getUserId(), e);
+                log.error("회원 등급 재산정 실패 - userId={}", lockedUser.getUserId(), e);
             }
         }
 
