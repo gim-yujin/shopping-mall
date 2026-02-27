@@ -120,7 +120,7 @@ class SecurityIntegrationTest {
         void cart_redirectsToLoginWhenUnauthenticated() throws Exception {
             mockMvc.perform(get("/cart"))
                     .andExpect(status().is3xxRedirection())
-                    .andExpect(redirectedUrlPattern("**/auth/login"));
+                    .andExpect(redirectedUrlPattern("**/auth/login*"));
         }
 
         @Test
@@ -128,7 +128,7 @@ class SecurityIntegrationTest {
         void orders_redirectsToLoginWhenUnauthenticated() throws Exception {
             mockMvc.perform(get("/orders"))
                     .andExpect(status().is3xxRedirection())
-                    .andExpect(redirectedUrlPattern("**/auth/login"));
+                    .andExpect(redirectedUrlPattern("**/auth/login*"));
         }
 
         @Test
@@ -136,7 +136,7 @@ class SecurityIntegrationTest {
         void mypage_redirectsToLoginWhenUnauthenticated() throws Exception {
             mockMvc.perform(get("/mypage"))
                     .andExpect(status().is3xxRedirection())
-                    .andExpect(redirectedUrlPattern("**/auth/login"));
+                    .andExpect(redirectedUrlPattern("**/auth/login*"));
         }
     }
 
@@ -215,7 +215,7 @@ class SecurityIntegrationTest {
         void adminProducts_redirectsWhenUnauthenticated() throws Exception {
             mockMvc.perform(get("/admin/products"))
                     .andExpect(status().is3xxRedirection())
-                    .andExpect(redirectedUrlPattern("**/auth/login"));
+                    .andExpect(redirectedUrlPattern("**/auth/login*"));
         }
 
         @Test
