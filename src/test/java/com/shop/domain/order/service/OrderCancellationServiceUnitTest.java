@@ -7,6 +7,8 @@ import com.shop.domain.order.entity.Order;
 import com.shop.domain.order.entity.OrderItem;
 import com.shop.domain.order.event.ProductStockChangedEvent;
 import com.shop.domain.order.repository.OrderRepository;
+import com.shop.domain.point.entity.PointHistory;
+import com.shop.domain.point.repository.PointHistoryRepository;
 import com.shop.domain.product.entity.Product;
 import com.shop.domain.product.repository.ProductRepository;
 import com.shop.domain.user.entity.User;
@@ -46,6 +48,7 @@ class OrderCancellationServiceUnitTest {
     @Mock private ProductInventoryHistoryRepository inventoryHistoryRepository;
     @Mock private UserCouponRepository userCouponRepository;
     @Mock private UserTierRepository userTierRepository;
+    @Mock private PointHistoryRepository pointHistoryRepository;
     @Mock private EntityManager entityManager;
     @Mock private ApplicationEventPublisher eventPublisher;
 
@@ -56,7 +59,7 @@ class OrderCancellationServiceUnitTest {
         cancellationService = new OrderCancellationService(
                 orderRepository, productRepository, userRepository,
                 inventoryHistoryRepository, userCouponRepository,
-                userTierRepository, entityManager, eventPublisher);
+                userTierRepository, pointHistoryRepository, entityManager, eventPublisher);
     }
 
     @Test
@@ -75,8 +78,8 @@ class OrderCancellationServiceUnitTest {
         when(order.getOrderId()).thenReturn(orderId);
         when(order.getFinalAmount()).thenReturn(new BigDecimal("10000"));
         when(order.getItems()).thenReturn(List.of(item));
-        when(order.getEarnedPointsSnapshot()).thenReturn(100);
-        when(order.getUsedPoints()).thenReturn(0);
+        when(order.getUsedPoints()).thenReturn(100);
+        when(order.getOrderNumber()).thenReturn("ORD-001");
 
         when(item.getProductId()).thenReturn(7L);
         when(item.getQuantity()).thenReturn(2);
@@ -95,7 +98,8 @@ class OrderCancellationServiceUnitTest {
 
         verify(product).increaseStockAndRollbackSales(2);
         verify(user).addTotalSpent(new BigDecimal("-10000"));
-        verify(user).addPoints(-100);
+        verify(user).addPoints(100);
+        verify(pointHistoryRepository).save(any(PointHistory.class));
         verify(userCoupon).cancelUse();
         verify(order).cancel();
         verify(eventPublisher).publishEvent(new ProductStockChangedEvent(List.of(7L)));
@@ -124,6 +128,6 @@ class OrderCancellationServiceUnitTest {
         verify(userRepository, never()).findByIdWithLockAndTier(any());
         verify(userCouponRepository, never()).findByOrderId(any());
         verify(order, never()).cancel();
-        verifyNoInteractions(inventoryHistoryRepository, userTierRepository, entityManager, eventPublisher);
+        verifyNoInteractions(inventoryHistoryRepository, userTierRepository, pointHistoryRepository, entityManager, eventPublisher);
     }
 }

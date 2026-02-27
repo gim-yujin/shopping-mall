@@ -3,6 +3,8 @@ package com.shop.domain.order.service;
 import com.shop.domain.order.entity.Order;
 import com.shop.domain.order.entity.OrderStatus;
 import com.shop.domain.order.repository.OrderRepository;
+import com.shop.domain.point.repository.PointHistoryRepository;
+import com.shop.domain.user.repository.UserRepository;
 import com.shop.global.exception.BusinessException;
 import com.shop.global.exception.ResourceNotFoundException;
 import org.junit.jupiter.api.BeforeEach;
@@ -31,13 +33,16 @@ class OrderServiceUnitTest {
     @Mock private OrderQueryService queryService;
     @Mock private ShippingFeeCalculator shippingFeeCalculator;
     @Mock private OrderRepository orderRepository;
+    @Mock private UserRepository userRepository;
+    @Mock private PointHistoryRepository pointHistoryRepository;
 
     private OrderService orderService;
 
     @BeforeEach
     void setUp() {
         orderService = new OrderService(creationService, cancellationService,
-                queryService, shippingFeeCalculator, orderRepository);
+                queryService, shippingFeeCalculator, orderRepository,
+                userRepository, pointHistoryRepository);
     }
 
     // ── getOrderDetail 위임 테스트 ──────────────────────────
