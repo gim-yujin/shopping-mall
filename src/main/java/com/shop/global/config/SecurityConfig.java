@@ -67,7 +67,7 @@ public class SecurityConfig {
                 .requestMatchers("/", "/products/**", "/categories/**", "/search/**",
                     "/auth/**", "/static/**", "/css/**", "/images/**", "/error/**").permitAll()
                 // [P1-6] REST API 공개 경로: 상품 목록/상세, 상품별 리뷰 조회
-                .requestMatchers("/api/v1/products/**").permitAll()
+                .requestMatchers("/api/v1/products", "/api/v1/products/**").permitAll()
                 .requestMatchers("/actuator/health").permitAll()  // 로드밸런서 헬스체크용
                 .requestMatchers("/actuator/**").hasRole("ADMIN") // 나머지 Actuator는 관리자만
                 .requestMatchers("/admin/**").hasRole("ADMIN")
