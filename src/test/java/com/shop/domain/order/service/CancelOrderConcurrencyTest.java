@@ -12,6 +12,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.TestPropertySource;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -58,6 +60,9 @@ class CancelOrderConcurrencyTest {
 
     @Autowired
     private UserTierRepository userTierRepository;
+
+    @Autowired
+    private PlatformTransactionManager transactionManager;
 
     // 테스트 대상
     private Long testUserId;
@@ -520,17 +525,24 @@ class CancelOrderConcurrencyTest {
     }
     private void runTierChunkForUsers(List<Long> userIds) {
         try {
-            List<User> users = userIds.stream()
-                    .map(userId -> userRepository.findByIdWithTier(userId)
-                            .orElseThrow(() -> new IllegalStateException("등급 갱신 대상 사용자가 없습니다. userId=" + userId)))
-                    .toList();
-            UserTier defaultTier = userTierRepository.findByTierLevel(1)
-                    .orElseThrow(() -> new IllegalStateException("기본 등급이 존재하지 않습니다."));
+            TransactionTemplate transactionTemplate = new TransactionTemplate(transactionManager);
+            transactionTemplate.executeWithoutResult(status -> {
+                try {
+                    List<User> users = userIds.stream()
+                            .map(userId -> userRepository.findByIdWithTier(userId)
+                                    .orElseThrow(() -> new IllegalStateException("등급 갱신 대상 사용자가 없습니다. userId=" + userId)))
+                            .toList();
+                    UserTier defaultTier = userTierRepository.findByTierLevel(1)
+                            .orElseThrow(() -> new IllegalStateException("기본 등급이 존재하지 않습니다."));
 
-            Method processTierChunk = TierScheduler.class.getDeclaredMethod(
-                    "processTierChunk", int.class, Map.class, UserTier.class, List.class);
-            processTierChunk.setAccessible(true);
-            processTierChunk.invoke(tierScheduler, Year.now().getValue() - 1, Map.of(), defaultTier, users);
+                    Method processTierChunk = TierScheduler.class.getDeclaredMethod(
+                            "processTierChunk", int.class, Map.class, UserTier.class, List.class);
+                    processTierChunk.setAccessible(true);
+                    processTierChunk.invoke(tierScheduler, Year.now().getValue() - 1, Map.of(), defaultTier, users);
+                } catch (Exception e) {
+                    throw new RuntimeException(e);
+                }
+            });
         } catch (Exception e) {
             throw new RuntimeException("테스트용 등급 갱신 실행 실패", e);
         }
