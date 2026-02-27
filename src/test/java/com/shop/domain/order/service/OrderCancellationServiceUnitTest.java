@@ -11,6 +11,7 @@ import com.shop.domain.product.repository.ProductRepository;
 import com.shop.domain.user.entity.User;
 import com.shop.domain.user.repository.UserRepository;
 import com.shop.domain.user.repository.UserTierRepository;
+import com.shop.global.exception.ResourceNotFoundException;
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -25,6 +26,7 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.*;
 
 /**
@@ -95,5 +97,31 @@ class OrderCancellationServiceUnitTest {
         verify(user).addPoints(-100);
         verify(userCoupon).cancelUse();
         verify(order).cancel();
+    }
+
+    @Test
+    @DisplayName("cancelOrderInternal 실패 — 취소 중 상품 누락 시 전체 취소가 롤백된다")
+    void cancelOrderInternal_whenProductMissing_throwsAndStopsCancellation() {
+        Long orderId = 1L;
+        Long userId = 101L;
+        Long missingProductId = 7L;
+
+        Order order = mock(Order.class);
+        OrderItem item = mock(OrderItem.class);
+
+        when(order.isCancellable()).thenReturn(true);
+        when(order.getOrderId()).thenReturn(orderId);
+        when(order.getItems()).thenReturn(List.of(item));
+        when(item.getProductId()).thenReturn(missingProductId);
+        when(productRepository.findByIdWithLock(missingProductId)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> cancellationService.cancelOrderInternal(order, userId))
+                .isInstanceOf(ResourceNotFoundException.class)
+                .hasMessageContaining("상품");
+
+        verify(userRepository, never()).findById(any());
+        verify(userCouponRepository, never()).findByOrderId(any());
+        verify(order, never()).cancel();
+        verifyNoInteractions(inventoryHistoryRepository, userTierRepository, entityManager, productCacheEvictHelper);
     }
 }
