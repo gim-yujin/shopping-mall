@@ -233,13 +233,19 @@ class OrderServiceIntegrationTest {
         BigDecimal orderFinalAmount = order.getFinalAmount();
 
         int lastYear = Year.now().getValue() - 1;
+        LocalDateTime startDate = LocalDateTime.of(lastYear, 1, 1, 0, 0);
+        LocalDateTime endDate = LocalDateTime.of(lastYear + 1, 1, 1, 0, 0);
+
+        BigDecimal baselineSpent = orderRepository.findYearlySpentByUser(startDate, endDate).stream()
+                .filter(row -> Objects.equals(row[0], testUserId))
+                .map(row -> (BigDecimal) row[1])
+                .findFirst()
+                .orElse(BigDecimal.ZERO);
+
         LocalDateTime yearEndOrderDate = LocalDateTime.of(lastYear, 12, 31, 23, 59, 59);
         jdbcTemplate.update(
                 "UPDATE orders SET order_date = ?, paid_at = ? WHERE order_id = ?",
                 yearEndOrderDate, yearEndOrderDate, order.getOrderId());
-
-        LocalDateTime startDate = LocalDateTime.of(lastYear, 1, 1, 0, 0);
-        LocalDateTime endDate = LocalDateTime.of(lastYear + 1, 1, 1, 0, 0);
 
         List<Object[]> beforeCancel = orderRepository.findYearlySpentByUser(startDate, endDate);
         BigDecimal beforeCancelSpent = beforeCancel.stream()
@@ -247,7 +253,7 @@ class OrderServiceIntegrationTest {
                 .map(row -> (BigDecimal) row[1])
                 .findFirst()
                 .orElse(BigDecimal.ZERO);
-        assertThat(beforeCancelSpent).isEqualByComparingTo(orderFinalAmount);
+        assertThat(beforeCancelSpent).isEqualByComparingTo(baselineSpent.add(orderFinalAmount));
 
         // When: 연초 취소(취소 시점은 현재 시각)
         orderService.cancelOrder(order.getOrderId(), testUserId);
@@ -265,7 +271,7 @@ class OrderServiceIntegrationTest {
                 .map(row -> (BigDecimal) row[1])
                 .findFirst()
                 .orElse(BigDecimal.ZERO);
-        assertThat(afterCancelSpent).isZero();
+        assertThat(afterCancelSpent).isEqualByComparingTo(baselineSpent);
     }
 
     @Test

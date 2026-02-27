@@ -49,7 +49,7 @@ class TierSchedulerUnitTest {
     void setUp() {
         // TransactionTemplate이 콜백을 정상 실행하도록 모의 트랜잭션 상태 반환
         TransactionStatus mockStatus = mock(TransactionStatus.class);
-        when(txManager.getTransaction(any())).thenReturn(mockStatus);
+        lenient().when(txManager.getTransaction(any())).thenReturn(mockStatus);
 
         tierScheduler = new TierScheduler(
                 userRepository, userTierRepository, tierHistoryRepository,
