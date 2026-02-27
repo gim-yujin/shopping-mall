@@ -100,6 +100,14 @@ public class OrderCreationService {
         String orderNumber = generateOrderNumber();
         List<OrderLine> orderLines = new ArrayList<>();
 
+        // [BUG FIX] 재고 이력을 Order save 이후에 저장하기 위해 임시 보관하는 리스트.
+        // 기존 코드는 이 루프 안에서 inventoryHistoryRepository.save()를 호출했는데,
+        // 이 시점에는 아직 Order가 persist되지 않아 reference_id(orderId)에 null이 전달되었다.
+        // 주문 취소 시에는 orderId가 정상 전달되므로, 생성 쪽과 취소 쪽의 이력 일관성이 깨졌다.
+        // 수정: 재고 차감은 즉시 수행하되, 이력 데이터는 InventorySnapshot으로 모아두고
+        // Order가 저장된 후에 orderId를 포함하여 일괄 저장한다.
+        List<InventorySnapshot> inventorySnapshots = new ArrayList<>();
+
         // 1) 재고 차감 & 주문 금액 계산
         for (Cart cart : cartItems) {
             Product product = productRepository.findByIdWithLock(cart.getProduct().getProductId())
@@ -133,11 +141,9 @@ public class OrderCreationService {
                     .divide(BigDecimal.valueOf(100), 0, java.math.RoundingMode.FLOOR);
             tierDiscountTotal = tierDiscountTotal.add(itemTierDiscount);
 
-            inventoryHistoryRepository.save(new ProductInventoryHistory(
-                    product.getProductId(), "OUT", cart.getQuantity(),
-                    beforeStock, product.getStockQuantity(),
-                    "ORDER", null, userId
-            ));
+            // 재고 이력 데이터를 임시 보관 (orderId는 Order save 후 설정)
+            inventorySnapshots.add(new InventorySnapshot(
+                    product.getProductId(), cart.getQuantity(), beforeStock, product.getStockQuantity()));
         }
 
         // 2) 쿠폰 할인 적용 (상품 금액 기준)
@@ -204,6 +210,18 @@ public class OrderCreationService {
         order.markPaid();
         Order savedOrder = orderRepository.save(order);
 
+        // [BUG FIX] 재고 이력에 orderId를 포함하여 저장.
+        // 기존: Order save 전에 inventoryHistory를 저장 → reference_id = null
+        // 수정: Order save 후 savedOrder.getOrderId()로 정확한 주문 ID를 기록.
+        // 이로써 주문 생성(OUT)과 취소(IN) 이력 모두 reference_id가 일관되게 채워진다.
+        for (InventorySnapshot snapshot : inventorySnapshots) {
+            inventoryHistoryRepository.save(new ProductInventoryHistory(
+                    snapshot.productId(), "OUT", snapshot.quantity(),
+                    snapshot.beforeStock(), snapshot.afterStock(),
+                    "ORDER", savedOrder.getOrderId(), userId
+            ));
+        }
+
         // 5) 쿠폰 사용 처리 (DB 레벨 원자적 전환 보장)
         if (userCoupon != null) {
             int updatedRows = userCouponRepository.markAsUsedIfUnused(
@@ -251,5 +269,18 @@ public class OrderCreationService {
     // 주문 생성 중 계산된 상품별 스냅샷 데이터를 임시로 보관하는 내부 DTO
     private record OrderLine(Long productId, String productName, int quantity,
                              BigDecimal unitPrice, BigDecimal subtotal) {
+    }
+
+    /**
+     * [BUG FIX] 재고 차감 시점의 before/after 수량을 임시 보관하는 내부 DTO.
+     *
+     * 기존 코드는 재고 차감 루프 안에서 즉시 inventoryHistoryRepository.save()를 호출했으나,
+     * 이 시점에는 Order가 아직 persist되지 않아 reference_id(orderId)에 null이 전달되었다.
+     * (주문 취소 쪽은 이미 존재하는 orderId를 정상 전달하므로 생성/취소 간 이력 일관성이 깨짐)
+     *
+     * 수정: 재고 차감은 즉시 수행하되(비관적 잠금 구간 내), 이력 데이터는 이 DTO로 모아두고
+     * Order가 저장된 후에 savedOrder.getOrderId()를 포함하여 일괄 저장한다.
+     */
+    private record InventorySnapshot(Long productId, int quantity, int beforeStock, int afterStock) {
     }
 }

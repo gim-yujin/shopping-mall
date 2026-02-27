@@ -24,8 +24,36 @@ public interface SearchLogRepository extends JpaRepository<SearchLog, Long> {
      *
      * @param cutoffDate 이 날짜 이전의 로그를 삭제
      * @return 삭제된 행 수
+     * @deprecated 전량 삭제는 대규모 WAL 급증·테이블 잠금을 유발한다.
+     *             {@link #deleteBatchOlderThan(LocalDateTime, int)} 사용을 권장한다.
      */
+    @Deprecated
     @Modifying
     @Query(value = "DELETE FROM search_logs WHERE searched_at < :cutoffDate", nativeQuery = true)
     int deleteLogsOlderThan(@Param("cutoffDate") LocalDateTime cutoffDate);
+
+    /**
+     * [BUG FIX] 배치 단위 검색 로그 삭제.
+     *
+     * 기존 deleteLogsOlderThan()은 보존 기간 초과 로그를 한 번에 전량 삭제하므로,
+     * 수백만 건이 누적된 상태에서 실행 시 다음 문제가 발생한다:
+     *   1) 대규모 WAL(Write-Ahead Log) 급증 → 디스크 I/O 폭증
+     *   2) 삭제 대상 행에 대한 Row-level lock 장시간 유지 → 동시 INSERT 지연
+     *   3) autovacuum 부하 집중 → 이후 쿼리 성능 저하
+     *
+     * 해결: LIMIT으로 한 번에 삭제하는 행 수를 제한하여 WAL 크기와 잠금 시간을 분산한다.
+     * ctid 기반 서브쿼리는 PostgreSQL에서 PK 없이도 효율적인 배치 삭제를 보장한다.
+     *
+     * SearchLogCleanupScheduler에서 반복 호출하여 반환값이 batchSize 미만이 될 때까지 삭제한다.
+     *
+     * @param cutoffDate 이 날짜 이전의 로그를 삭제
+     * @param batchSize  한 번에 삭제할 최대 행 수
+     * @return 실제 삭제된 행 수 (batchSize 미만이면 잔여 데이터 없음)
+     */
+    @Modifying
+    @Query(value = "DELETE FROM search_logs WHERE log_id IN " +
+            "(SELECT log_id FROM search_logs WHERE searched_at < :cutoffDate LIMIT :batchSize)",
+            nativeQuery = true)
+    int deleteBatchOlderThan(@Param("cutoffDate") LocalDateTime cutoffDate,
+                             @Param("batchSize") int batchSize);
 }
