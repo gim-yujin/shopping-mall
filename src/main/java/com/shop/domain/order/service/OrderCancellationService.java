@@ -16,6 +16,8 @@ import com.shop.global.exception.BusinessException;
 import com.shop.global.exception.ResourceNotFoundException;
 import jakarta.persistence.EntityManager;
 import com.shop.domain.product.service.ProductCacheEvictHelper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -30,6 +32,8 @@ import java.util.List;
  */
 @Service
 public class OrderCancellationService {
+
+    private static final Logger log = LoggerFactory.getLogger(OrderCancellationService.class);
 
     private final OrderRepository orderRepository;
     private final ProductRepository productRepository;
@@ -94,16 +98,19 @@ public class OrderCancellationService {
                 .toList();
 
         for (OrderItem item : sortedItems) {
-            Product product = productRepository.findByIdWithLock(item.getProductId())
-                    .orElse(null);
-            if (product != null) {
-                entityManager.refresh(product);
-                int before = product.getStockQuantity();
-                product.increaseStockAndRollbackSales(item.getQuantity());
-                inventoryHistoryRepository.save(new ProductInventoryHistory(
-                        product.getProductId(), "IN", item.getQuantity(),
-                        before, product.getStockQuantity(), "RETURN", orderId, userId));
-            }
+            Long productId = item.getProductId();
+            Product product = productRepository.findByIdWithLock(productId)
+                    .orElseThrow(() -> {
+                        log.error("주문 취소 중 상품을 찾을 수 없습니다. orderId={}, productId={}", orderId, productId);
+                        return new ResourceNotFoundException("상품", productId);
+                    });
+
+            entityManager.refresh(product);
+            int before = product.getStockQuantity();
+            product.increaseStockAndRollbackSales(item.getQuantity());
+            inventoryHistoryRepository.save(new ProductInventoryHistory(
+                    product.getProductId(), "IN", item.getQuantity(),
+                    before, product.getStockQuantity(), "RETURN", orderId, userId));
         }
 
         // 2) 누적금액(total_spent) & 포인트 차감 & 사용 포인트 환불 & 등급 재계산
