@@ -151,6 +151,51 @@ public class ReviewService {
         product.updateRating(BigDecimal.valueOf(avg).setScale(2, RoundingMode.HALF_UP), count);
     }
 
+    /**
+     * 리뷰 "도움이 돼요" 토글 (좋아요/취소).
+     *
+     * [P2-8] 동시성 경합(Race Condition) 설계 결정 문서.
+     *
+     * ── 동작 흐름 ──
+     * 1단계: DELETE 시도 (이미 눌렀으면 취소)
+     *   → deleted > 0 → decrementHelpfulCount → return false (취소됨)
+     * 2단계: INSERT 시도 (ON CONFLICT DO NOTHING)
+     *   → inserted > 0 → incrementHelpfulCount → return true (등록됨)
+     *
+     * ── 경합 시나리오 ──
+     * 두 스레드 T1, T2가 동일 사용자·리뷰에 대해 동시에 markHelpful을 호출하는 경우:
+     *
+     *   T1: DELETE → deleted=0 (아직 없음)
+     *   T2: DELETE → deleted=0 (아직 없음)
+     *   T1: INSERT → inserted=1 (성공)
+     *   T2: INSERT → inserted=0 (ON CONFLICT DO NOTHING, UNIQUE 제약에 의해 무시)
+     *   T1: incrementHelpfulCount → helpfulCount +1 ✅
+     *   T2: (inserted=0이므로 increment 안 함) ✅
+     *
+     * 이 경우 정상 동작한다. 그러나 다음 시나리오에서 count 불일치가 발생할 수 있다:
+     *
+     *   T1: DELETE → deleted=1 (기존 레코드 삭제)
+     *   T2: DELETE → deleted=0 (T1이 이미 삭제)
+     *   T1: decrementHelpfulCount → helpfulCount -1
+     *   T2: INSERT → inserted=1 (새로 삽입)
+     *   T2: incrementHelpfulCount → helpfulCount +1
+     *
+     * 결과: 실제로는 레코드 1개가 존재하지만, -1 +1 = ±0으로 count가 변동 없음.
+     * 원래는 "삭제 후 재등록"이므로 count ±0이 맞을 수 있지만, 의도한 동작은
+     * "T1이 취소, T2가 등록"이므로 count 변동이 사용자 기대와 다를 수 있다.
+     *
+     * ── 보정 전략 ──
+     * {@link com.shop.domain.review.scheduler.ReviewHelpfulSyncScheduler}가 매일 새벽에
+     * review_helpfuls 테이블의 실제 행 수와 reviews.helpful_count를 동기화한다.
+     * 따라서 경합으로 인한 count 불일치는 최대 24시간 내에 자동 보정된다.
+     *
+     * ── 비관적 잠금을 선택하지 않은 이유 ──
+     * "도움이 돼요"는 좋아요 성격의 기능으로, 정확한 실시간 count보다
+     * 응답 속도와 동시성이 더 중요하다. 비관적 잠금은 hot review에 대한
+     * 모든 helpful 요청을 직렬화하여 응답 지연을 유발한다.
+     * count 오차는 비즈니스 영향이 낮고(주문 금액이나 재고가 아님),
+     * 야간 동기화로 24시간 내 보정되므로 eventual consistency를 수용한다.
+     */
     @Transactional
     public boolean markHelpful(Long reviewId, Long userId) {
         Review review = reviewRepository.findById(reviewId)

@@ -46,4 +46,28 @@ public record ProductDetailResponse(
                 product.getCreatedAt()
         );
     }
+
+    /**
+     * [P2-7] 캐시 DTO로부터 API 응답을 생성한다.
+     * findByIdCached()가 CachedProductDetail을 반환하므로 이 팩토리를 추가.
+     */
+    public static ProductDetailResponse from(CachedProductDetail cached) {
+        return new ProductDetailResponse(
+                cached.productId(),
+                cached.productName(),
+                cached.description(),
+                cached.price(),
+                cached.originalPrice(),
+                cached.discountPercent(),
+                cached.thumbnailUrl(),
+                cached.categoryName(),
+                cached.categoryId(),
+                cached.stockQuantity() != null && cached.stockQuantity() > 0,
+                cached.ratingAvg(),
+                cached.reviewCount() != null ? cached.reviewCount() : 0,
+                cached.salesCount() != null ? cached.salesCount() : 0,
+                cached.viewCount() != null ? cached.viewCount() : 0,
+                cached.createdAt()
+        );
+    }
 }

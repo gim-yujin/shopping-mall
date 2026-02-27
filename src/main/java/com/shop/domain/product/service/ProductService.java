@@ -3,6 +3,7 @@ package com.shop.domain.product.service;
 import com.shop.domain.category.entity.Category;
 import com.shop.domain.category.service.CategoryService;
 import com.shop.domain.product.dto.AdminProductRequest;
+import com.shop.domain.product.dto.CachedProductDetail;
 import com.shop.domain.product.entity.Product;
 import com.shop.domain.product.entity.ProductImage;
 import com.shop.domain.product.repository.ProductImageRepository;
@@ -60,12 +61,17 @@ public class ProductService {
      *   캐시 메서드는 순수 조회만 담당하고, 조회수 증가는 컨트롤러에서 별도 호출한다.
      *   이렇게 하면 캐시 히트 여부와 무관하게 매 요청마다 조회수가 정확히 증가한다.
      *
-     * @see ProductController#productDetail — 이 메서드 호출 후 viewCountService.incrementAsync() 호출
+     * [P2-7] 반환 타입을 Product 엔티티 → CachedProductDetail 불변 DTO로 전환.
+     * Caffeine 캐시에 JPA 엔티티 대신 불변 DTO를 저장하여 객체 참조 공유로 인한
+     * 데이터 오염 가능성을 근본적으로 차단한다. 자세한 설명은 CachedProductDetail Javadoc 참조.
+     *
+     * @see CachedProductDetail — 캐시 저장 DTO, 변경 불가
      */
     @Cacheable(value = "productDetail", key = "#productId")
-    public Product findByIdCached(Long productId) {
-        return productRepository.findByIdWithCategory(productId)
+    public CachedProductDetail findByIdCached(Long productId) {
+        Product product = productRepository.findByIdWithCategory(productId)
                 .orElseThrow(() -> new ResourceNotFoundException("상품", productId));
+        return CachedProductDetail.from(product);
     }
 
     /**
@@ -74,7 +80,8 @@ public class ProductService {
      */
     @Deprecated(since = "P0 viewCount fix", forRemoval = true)
     public Product findByIdAndIncrementView(Long productId) {
-        Product product = findByIdCached(productId);
+        Product product = productRepository.findByIdWithCategory(productId)
+                .orElseThrow(() -> new ResourceNotFoundException("상품", productId));
         viewCountService.incrementAsync(productId);
         return product;
     }

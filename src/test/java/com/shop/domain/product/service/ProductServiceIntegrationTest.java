@@ -1,6 +1,6 @@
 package com.shop.domain.product.service;
 
-import com.shop.domain.product.entity.Product;
+import com.shop.domain.product.dto.CachedProductDetail;
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -49,9 +49,8 @@ class ProductServiceIntegrationTest {
     @DisplayName("findByIdCached + incrementAsync - 조회수 1 증가")
     void findByIdCached_withSeparateIncrement_incrementsViewCount() throws InterruptedException {
         // [P0 FIX] 검증: 캐시 메서드와 조회수 증가가 분리되어 매 요청마다 정확히 증가하는지 확인.
-        // 기존: findByIdAndIncrementView() → @Cacheable 내부 increment → 캐시 히트 시 누락
-        // 수정: findByIdCached(캐시 조회) + incrementAsync(별도 호출) 분리
-        Product product = productService.findByIdCached(testProductId);
+        // [P2-7] findByIdCached가 CachedProductDetail 불변 DTO를 반환함을 검증.
+        CachedProductDetail product = productService.findByIdCached(testProductId);
         viewCountService.incrementAsync(testProductId);
 
         // @Async로 변경된 viewCount UPDATE가 별도 스레드에서 완료될 때까지 대기
@@ -61,7 +60,7 @@ class ProductServiceIntegrationTest {
                 "SELECT view_count FROM products WHERE product_id = ?",
                 Integer.class, testProductId);
 
-        assertThat(product.getProductId())
+        assertThat(product.productId())
                 .as("조회한 상품 ID가 요청값과 일치해야 함")
                 .isEqualTo(testProductId);
         assertThat(after)

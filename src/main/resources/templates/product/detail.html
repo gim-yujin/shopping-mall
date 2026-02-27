@@ -49,7 +49,7 @@
                 <div class="mb-6">
                     <div th:if="${product.originalPrice != null && product.originalPrice.compareTo(product.price) > 0}" class="flex items-center gap-3 mb-1">
                         <span class="text-sm text-gray-400 line-through" th:text="${#numbers.formatInteger(product.originalPrice.intValue(), 1, 'COMMA') + '원'}"></span>
-                        <span class="bg-red-500 text-white text-xs font-bold px-2 py-0.5 rounded" th:text="${product.getDiscountPercent() + '% OFF'}"></span>
+                        <span class="bg-red-500 text-white text-xs font-bold px-2 py-0.5 rounded" th:text="${product.discountPercent() + '% OFF'}"></span>
                     </div>
                     <span class="text-3xl font-bold text-gray-900" th:text="${#numbers.formatInteger(product.price.intValue(), 1, 'COMMA') + '원'}"></span>
                 </div>

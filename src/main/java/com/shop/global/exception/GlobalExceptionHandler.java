@@ -52,6 +52,28 @@ public class GlobalExceptionHandler {
         return "error/404";
     }
 
+    /**
+     * 비즈니스 예외 처리.
+     *
+     * [P2-9] AJAX 분기가 ApiExceptionHandler와 별도로 필요한 이유.
+     *
+     * ApiExceptionHandler(@RestControllerAdvice)는 @RestController 어노테이션이 선언된
+     * 컨트롤러에서 발생한 예외만 처리한다.
+     *
+     * 그러나 SSR 컨트롤러(@Controller)에서도 AJAX 호출이 발생한다:
+     *   - 장바구니 수량 변경: CartController.updateQuantity() → @ResponseBody
+     *   - 위시리스트 토글: WishlistController.toggleWishlist() → @ResponseBody
+     *
+     * 이 메서드들은 @Controller 클래스 안에 있지만 @ResponseBody로 JSON을 반환하므로,
+     * @RestControllerAdvice의 적용 대상이 아니다. 따라서 이 AJAX 분기가 필요하다.
+     *
+     * 판별 기준: X-Requested-With 헤더 또는 Accept: application/json 헤더가 있으면
+     * AJAX 요청으로 간주하여 JSON 응답을 반환한다.
+     *
+     * 대안: CartController, WishlistController를 @RestController로 분리하면
+     * 이 분기를 제거할 수 있지만, SSR 엔드포인트와 AJAX 엔드포인트가 같은 컨트롤러에
+     * 공존하는 현재 구조에서는 이 분기가 가장 실용적인 해법이다.
+     */
     @ExceptionHandler(BusinessException.class)
     public Object handleBusiness(BusinessException e,
                                  HttpServletRequest request,

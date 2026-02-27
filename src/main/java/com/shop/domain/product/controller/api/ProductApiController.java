@@ -1,5 +1,6 @@
 package com.shop.domain.product.controller.api;
 
+import com.shop.domain.product.dto.CachedProductDetail;
 import com.shop.domain.product.dto.ProductDetailResponse;
 import com.shop.domain.product.dto.ProductSummaryResponse;
 import com.shop.domain.product.entity.Product;
@@ -60,7 +61,7 @@ public class ProductApiController {
      */
     @GetMapping("/{productId}")
     public ApiResponse<ProductDetailResponse> getProduct(@PathVariable Long productId) {
-        Product product = productService.findByIdCached(productId);
+        CachedProductDetail product = productService.findByIdCached(productId);
         viewCountService.incrementAsync(productId);
         return ApiResponse.ok(ProductDetailResponse.from(product));
     }
