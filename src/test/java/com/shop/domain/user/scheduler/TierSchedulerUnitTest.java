@@ -17,6 +17,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionStatus;
 
+import java.math.BigDecimal;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
@@ -90,5 +91,32 @@ class TierSchedulerUnitTest {
         verify(entityManager, times(2)).flush();
         verify(entityManager, times(2)).clear();
         verify(tierHistoryRepository, never()).save(any());
+    }
+
+
+    @Test
+    @DisplayName("정기 점검은 전년도 실적이 아니라 누적 구매 금액으로 등급을 계산한다")
+    void processTierChunk_usesCumulativeSpentForTierCalculation() {
+        User user = mock(User.class);
+        UserTier oldTier = mock(UserTier.class);
+        UserTier newTier = mock(UserTier.class);
+        UserTier defaultTier = mock(UserTier.class);
+
+        when(user.getUserId()).thenReturn(10L);
+        when(user.getTier()).thenReturn(oldTier);
+        when(user.getTotalSpent()).thenReturn(new BigDecimal("120000"));
+        when(oldTier.getTierId()).thenReturn(1);
+        when(oldTier.getTierLevel()).thenReturn(1);
+        when(newTier.getTierId()).thenReturn(2);
+        when(newTier.getTierLevel()).thenReturn(2);
+
+        when(userTierRepository.findFirstByMinSpentLessThanEqualOrderByTierLevelDesc(new BigDecimal("120000")))
+                .thenReturn(Optional.of(newTier));
+
+        tierScheduler.processTierChunk(2024, Map.of(10L, new BigDecimal("5000")), defaultTier, List.of(user));
+
+        verify(userTierRepository).findFirstByMinSpentLessThanEqualOrderByTierLevelDesc(new BigDecimal("120000"));
+        verify(user, never()).setTotalSpent(any());
+        verify(user).updateTier(newTier);
     }
 }

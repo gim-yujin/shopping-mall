@@ -74,7 +74,8 @@ public class TierScheduler {
 
     /**
      * 매년 1월 1일 00:00:00 실행
-     * 전년도 주문금액 기준으로 모든 회원의 등급을 재산정한다.
+     * 전년도 주문금액은 리포팅/이력 문구에만 사용하고,
+     * 등급 산정은 users.total_spent(누적 구매 금액) 기준으로 통일한다.
      *
      * 트랜잭션 전략: 메서드 전체를 하나의 트랜잭션으로 묶지 않고,
      * 집계 조회(읽기 전용)와 청크별 갱신을 각각 독립 트랜잭션으로 실행한다.
@@ -84,7 +85,7 @@ public class TierScheduler {
     public void recalculateTiers() {
         int lastYear = Year.now().getValue() - 1;
         LocalDateTime startedAt = LocalDateTime.now();
-        log.info("===== {}년도 실적 기준 등급 재산정 시작 =====", lastYear);
+        log.info("===== {}년도 실적 집계 기반 정기 등급 점검 시작 =====", lastYear);
 
         LocalDateTime startDate = LocalDateTime.of(lastYear, 1, 1, 0, 0, 0);
         LocalDateTime endDate = LocalDateTime.of(lastYear + 1, 1, 1, 0, 0, 0);
@@ -207,16 +208,14 @@ public class TierScheduler {
                 Integer oldTierId = user.getTier().getTierId();
 
                 UserTier newTier = userTierRepository
-                        .findFirstByMinSpentLessThanEqualOrderByTierLevelDesc(lastYearSpent)
+                        .findFirstByMinSpentLessThanEqualOrderByTierLevelDesc(user.getTotalSpent())
                         .orElse(defaultTier);
-
-                user.setTotalSpent(lastYearSpent);
 
                 if (!newTier.getTierId().equals(oldTierId)) {
                     int oldLevel = user.getTier().getTierLevel();
                     user.updateTier(newTier);
 
-                    String reason = String.format("%d년 실적 재산정 (주문금액: %s원)", lastYear,
+                    String reason = String.format("정기 등급 점검(누적 구매 기준, %d년 실적 참고: %s원)", lastYear,
                             String.format("%,.0f", lastYearSpent));
                     tierHistoryRepository.save(new UserTierHistory(
                             user.getUserId(), oldTierId, newTier.getTierId(), reason));
