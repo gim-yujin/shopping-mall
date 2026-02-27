@@ -1,5 +1,9 @@
 package com.shop.global.security;
 
+import com.shop.domain.user.entity.User;
+import com.shop.domain.user.entity.UserTier;
+import com.shop.domain.user.repository.UserRepository;
+import com.shop.domain.user.repository.UserTierRepository;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
@@ -7,13 +11,17 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
+import java.util.List;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
@@ -39,6 +47,32 @@ class SecurityIntegrationTest {
 
     @Autowired
     private MockMvc mockMvc;
+
+    @Autowired
+    private UserRepository userRepository;
+
+    @Autowired
+    private UserTierRepository userTierRepository;
+
+    private CustomUserPrincipal ensureAuthenticatedPrincipal(String username) {
+        User userEntity = userRepository.findByUsernameIgnoreCase(username)
+                .orElseGet(() -> {
+                    UserTier basicTier = userTierRepository.findByTierLevel(1)
+                            .orElseThrow(() -> new IllegalStateException("기본 사용자 등급이 존재하지 않습니다."));
+                    User newUser = new User(username, username + "@test.local", "noop-password", "테스트사용자", "010-0000-0000");
+                    newUser.setTier(basicTier);
+                    return userRepository.save(newUser);
+                });
+
+        return new CustomUserPrincipal(
+                userEntity.getUserId(),
+                userEntity.getUsername(),
+                userEntity.getPasswordHash(),
+                userEntity.getName(),
+                userEntity.getRole(),
+                List.of(new SimpleGrantedAuthority(userEntity.getRole()))
+        );
+    }
 
     // ==================== 공개 경로 접근 ====================
 
@@ -269,26 +303,26 @@ class SecurityIntegrationTest {
     class AuthenticatedAccess {
 
         @Test
-        @WithMockUser(username = "testuser", roles = {"USER"})
         @DisplayName("GET /cart — 인증된 사용자는 장바구니 페이지 접근 가능")
         void cart_accessibleWhenAuthenticated() throws Exception {
-            mockMvc.perform(get("/cart"))
+            CustomUserPrincipal principal = ensureAuthenticatedPrincipal("testuser");
+            mockMvc.perform(get("/cart").with(user(principal)))
                     .andExpect(status().isOk());
         }
 
         @Test
-        @WithMockUser(username = "testuser", roles = {"USER"})
         @DisplayName("GET /wishlist — 인증된 사용자는 위시리스트 페이지 접근 가능")
         void wishlist_accessibleWhenAuthenticated() throws Exception {
-            mockMvc.perform(get("/wishlist"))
+            CustomUserPrincipal principal = ensureAuthenticatedPrincipal("testuser");
+            mockMvc.perform(get("/wishlist").with(user(principal)))
                     .andExpect(status().isOk());
         }
 
         @Test
-        @WithMockUser(username = "testuser", roles = {"USER"})
         @DisplayName("GET /orders — 인증된 사용자는 주문 목록 페이지 접근 가능")
         void orders_accessibleWhenAuthenticated() throws Exception {
-            mockMvc.perform(get("/orders"))
+            CustomUserPrincipal principal = ensureAuthenticatedPrincipal("testuser");
+            mockMvc.perform(get("/orders").with(user(principal)))
                     .andExpect(status().isOk());
         }
     }
