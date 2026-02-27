@@ -36,5 +36,5 @@ public interface CartRepository extends JpaRepository<Cart, Long> {
      * 같은 userId에 대한 동시 addToCart 호출을 순차 실행으로 만듦.
      */
     @Query(value = "SELECT pg_advisory_xact_lock(CAST(:userId AS BIGINT))", nativeQuery = true)
-    Long acquireUserCartLock(@Param("userId") Long userId);
+    Object acquireUserCartLock(@Param("userId") Long userId);
 }
