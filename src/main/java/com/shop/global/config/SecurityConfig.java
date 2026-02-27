@@ -21,10 +21,14 @@ import org.springframework.security.web.authentication.LoginUrlAuthenticationEnt
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
+import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
 
 @Configuration
 @EnableWebSecurity
 public class SecurityConfig {
+
+    private static final AntPathRequestMatcher API_REQUEST_MATCHER =
+            new AntPathRequestMatcher("/api/**");
 
     private final CustomUserDetailsService userDetailsService;
     private final LoginAuthenticationFailureHandler loginAuthenticationFailureHandler;
