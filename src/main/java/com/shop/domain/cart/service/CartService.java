@@ -28,6 +28,20 @@ public class CartService {
         return cartRepository.findByUserIdWithProduct(userId);
     }
 
+    /**
+     * [P1-6] 장바구니 선택 주문: 지정된 ID 목록의 장바구니 항목만 조회.
+     *
+     * cartItemIds가 null이거나 비어있으면 전체 장바구니를 반환한다 (기존 동작 호환).
+     * 요청된 ID 중 해당 사용자의 장바구니에 없는 항목은 자동으로 무시된다.
+     * (조작된 ID가 전달되더라도 userId 조건으로 다른 사용자의 장바구니는 조회 불가)
+     */
+    public List<Cart> getSelectedCartItems(Long userId, List<Long> cartItemIds) {
+        if (cartItemIds == null || cartItemIds.isEmpty()) {
+            return getCartItems(userId);
+        }
+        return cartRepository.findByUserIdAndCartIdIn(userId, cartItemIds);
+    }
+
     private static final int MAX_CART_ITEMS = 50;
 
     @Transactional

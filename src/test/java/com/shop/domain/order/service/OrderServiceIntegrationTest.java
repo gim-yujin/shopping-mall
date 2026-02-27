@@ -141,7 +141,7 @@ class OrderServiceIntegrationTest {
     private OrderCreateRequest defaultRequest() {
         return new OrderCreateRequest(
                 "서울시 강남구 테스트로 123", "테스트수령인", "010-0000-0000",
-                "CARD", BigDecimal.ZERO, null, null);
+                "CARD", BigDecimal.ZERO, null, null, null);
     }
 
     // ==================== createOrder 정상 플로우 ====================
@@ -279,7 +279,7 @@ class OrderServiceIntegrationTest {
 
         OrderCreateRequest request = new OrderCreateRequest(
                 "서울시 강남구 테스트로 123", "테스트수령인", "010-0000-0000",
-                "CARD", BigDecimal.ZERO, userCouponId, null);
+                "CARD", BigDecimal.ZERO, userCouponId, null, null);
 
         // When
         Order order = orderService.createOrder(testUserId, request);
@@ -334,7 +334,7 @@ class OrderServiceIntegrationTest {
 
         OrderCreateRequest tamperedRequest = new OrderCreateRequest(
                 "서울시 강남구 테스트로 123", "테스트수령인", "010-0000-0000",
-                "CARD", new BigDecimal("999999"), null, null);
+                "CARD", new BigDecimal("999999"), null, null, null);
 
         // When
         Order order = orderService.createOrder(testUserId, tamperedRequest);
@@ -619,7 +619,7 @@ class OrderServiceIntegrationTest {
 
         OrderCreateRequest request = new OrderCreateRequest(
                 "서울시 강남구 테스트로 123", "테스트수령인", "010-0000-0000",
-                "CARD", BigDecimal.ZERO, userCouponId, null);
+                "CARD", BigDecimal.ZERO, userCouponId, null, null);
 
         Order order = orderService.createOrder(testUserId, request);
         createdOrderIds.add(order.getOrderId());
@@ -667,7 +667,7 @@ class OrderServiceIntegrationTest {
         int usePoints = 2000;
         OrderCreateRequest request = new OrderCreateRequest(
                 "서울시 강남구 테스트로 123", "테스트수령인", "010-0000-0000",
-                "CARD", BigDecimal.ZERO, null, usePoints);
+                "CARD", BigDecimal.ZERO, null, usePoints, null);
 
         // When: 주문 생성
         Order order = orderService.createOrder(testUserId, request);
@@ -721,7 +721,7 @@ class OrderServiceIntegrationTest {
 
         OrderCreateRequest request = new OrderCreateRequest(
                 "서울시 강남구 테스트로 123", "테스트수령인", "010-0000-0000",
-                "CARD", BigDecimal.ZERO, null, 99999);
+                "CARD", BigDecimal.ZERO, null, 99999, null);
 
         // When & Then
         assertThatThrownBy(() -> orderService.createOrder(testUserId, request))

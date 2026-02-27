@@ -218,7 +218,7 @@ class OrderDeadlockTest {
                 "010-0000-0000",
                 "CARD",
                 BigDecimal.ZERO,
-                null, null
+                null, null, null
         );
 
         // When: 2명 동시 주문

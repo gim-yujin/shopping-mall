@@ -82,7 +82,18 @@ public class OrderCreationService {
         // 같은 사용자의 동시 주문 요청을 트랜잭션 단위로 직렬화
         cartRepository.acquireUserCartLock(userId);
 
-        List<Cart> cartItems = cartRepository.findByUserIdWithProduct(userId);
+        // [P1-6] 장바구니 선택 주문 지원.
+        // cartItemIds가 null/빈 리스트이면 전체 장바구니를 주문한다 (기존 동작 호환).
+        // 값이 있으면 해당 ID의 장바구니 항목만 주문 대상으로 사용한다.
+        List<Cart> cartItems;
+        boolean isPartialOrder;
+        if (request.cartItemIds() != null && !request.cartItemIds().isEmpty()) {
+            cartItems = cartRepository.findByUserIdAndCartIdIn(userId, request.cartItemIds());
+            isPartialOrder = true;
+        } else {
+            cartItems = cartRepository.findByUserIdWithProduct(userId);
+            isPartialOrder = false;
+        }
         if (cartItems.isEmpty()) {
             throw new BusinessException("EMPTY_CART", "장바구니가 비어있습니다.");
         }
@@ -244,7 +255,14 @@ public class OrderCreationService {
         userTierRepository.findFirstByMinSpentLessThanEqualOrderByTierLevelDesc(user.getTotalSpent())
                 .ifPresent(user::updateTier);
 
-        cartRepository.deleteByUserId(userId);
+        // [P1-6] 선택 주문인 경우 주문한 장바구니 항목만 삭제, 나머지는 유지한다.
+        // 전체 주문인 경우 기존과 동일하게 장바구니를 통째로 삭제한다.
+        if (isPartialOrder) {
+            List<Long> orderedCartIds = cartItems.stream().map(Cart::getCartId).toList();
+            cartRepository.deleteAllById(orderedCartIds);
+        } else {
+            cartRepository.deleteByUserId(userId);
+        }
 
         // 8) 재고가 변경된 상품의 상세 캐시 무효화
         // [P1-7] 공유 헬퍼로 위임 (기존 private 중복 메서드 제거)

@@ -4,6 +4,7 @@ import com.shop.domain.order.entity.Order;
 import com.shop.domain.order.entity.OrderStatus;
 import com.shop.domain.order.repository.OrderRepository;
 import com.shop.global.exception.ResourceNotFoundException;
+import org.hibernate.Hibernate;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -57,8 +58,12 @@ public class OrderQueryService {
      *
      * 참고: Page 쿼리에 JOIN FETCH를 사용하면 Hibernate가 전체 결과를 메모리에
      * 로드한 뒤 페이징하므로(HHH000104 경고), batch fetch가 더 효율적이다.
+     *
+     * [P1-4] 기존 .size() 호출은 "Lazy 컬렉션 강제 초기화" 의도가 불명확했다.
+     * Hibernate.initialize()로 교체하여 의도를 명시적으로 표현한다.
+     * 동작은 동일: 프록시 컬렉션에 대해 SELECT를 발행하여 데이터를 로드한다.
      */
     private void initializeOrderItems(Page<Order> orders) {
-        orders.getContent().forEach(order -> order.getItems().size());
+        orders.getContent().forEach(order -> Hibernate.initialize(order.getItems()));
     }
 }

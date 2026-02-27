@@ -10,6 +10,13 @@
 
         <form th:action="@{/orders}" method="post" class="grid grid-cols-1 lg:grid-cols-3 gap-8">
             <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}"/>
+            <!--
+                [P1-6] 선택 주문: 장바구니 페이지에서 선택된 항목의 ID를 전달.
+                전체 주문인 경우에도 ID 목록을 포함하여 주문 시점의 장바구니 상태를 확정한다.
+                이렇게 하면 checkout 페이지를 열어둔 사이에 장바구니가 변경되더라도
+                사용자가 확인한 항목만 정확하게 주문된다.
+            -->
+            <input th:each="cartItemId : ${cartItemIds}" type="hidden" name="cartItemIds" th:value="${cartItemId}"/>
 
             <div class="lg:col-span-2 space-y-6">
                 <!-- Shipping Info -->

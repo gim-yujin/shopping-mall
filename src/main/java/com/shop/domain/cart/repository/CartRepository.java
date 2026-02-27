@@ -12,6 +12,15 @@ public interface CartRepository extends JpaRepository<Cart, Long> {
     @Query("SELECT c FROM Cart c JOIN FETCH c.product WHERE c.userId = :userId ORDER BY c.updatedAt DESC")
     List<Cart> findByUserIdWithProduct(@Param("userId") Long userId);
 
+    /**
+     * [P1-6] 장바구니 선택 주문: 특정 장바구니 항목 ID 목록으로 조회.
+     *
+     * userId 조건을 함께 걸어 다른 사용자의 장바구니를 조회하는 것을 방지한다.
+     * JOIN FETCH로 Product를 즉시 로드하여 N+1 문제를 방지한다.
+     */
+    @Query("SELECT c FROM Cart c JOIN FETCH c.product WHERE c.userId = :userId AND c.cartId IN :cartIds ORDER BY c.updatedAt DESC")
+    List<Cart> findByUserIdAndCartIdIn(@Param("userId") Long userId, @Param("cartIds") List<Long> cartIds);
+
     Optional<Cart> findByUserIdAndProduct_ProductId(Long userId, Long productId);
 
     void deleteByUserIdAndProduct_ProductId(Long userId, Long productId);

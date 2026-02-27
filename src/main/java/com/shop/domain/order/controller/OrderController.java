@@ -49,10 +49,17 @@ public class OrderController {
         this.couponService = couponService;
     }
 
+    /**
+     * 주문/결제 페이지.
+     *
+     * [P1-6] cartItemIds 파라미터 추가: 장바구니 선택 주문 지원.
+     * 장바구니 페이지에서 체크된 항목의 ID가 전달되면 해당 항목만 표시한다.
+     * 파라미터가 없으면 전체 장바구니를 표시한다 (기존 동작 호환).
+     */
     @GetMapping("/checkout")
-    public String checkoutPage(Model model) {
+    public String checkoutPage(@RequestParam(required = false) List<Long> cartItemIds, Model model) {
         Long userId = SecurityUtil.getCurrentUserId().orElseThrow();
-        List<Cart> items = cartService.getCartItems(userId);
+        List<Cart> items = cartService.getSelectedCartItems(userId, cartItemIds);
         if (items.isEmpty()) {
             return "redirect:/cart";
         }
@@ -62,6 +69,7 @@ public class OrderController {
         BigDecimal estimatedFinalAmount = orderService.calculateFinalAmount(totalPrice, BigDecimal.ZERO, estimatedShippingFee);
 
         model.addAttribute("cartItems", items);
+        model.addAttribute("cartItemIds", items.stream().map(Cart::getCartId).toList());
         model.addAttribute("totalPrice", totalPrice);
         model.addAttribute("estimatedShippingFee", estimatedShippingFee);
         model.addAttribute("estimatedFinalAmount", estimatedFinalAmount);
