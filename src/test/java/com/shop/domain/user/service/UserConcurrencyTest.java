@@ -4,7 +4,6 @@ import com.shop.domain.user.dto.SignupRequest;
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.TestPropertySource;
 
@@ -19,10 +18,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  *
  * 회원가입/프로필 변경의 UNIQUE 중복은 이전 서비스(쿠폰, 장바구니)와 성격이 다르다:
  * - 쿠폰/장바구니: 금전/수량 영향 → 서비스 레이어 직렬화 필수
- * - 회원가입: 순수 유일성 검증 → UNIQUE 제약이 데이터 보호, GlobalExceptionHandler가 500→409 변환
+ * - 회원가입: 순수 유일성 검증 → UNIQUE 제약이 데이터 보호, 서비스가 DUPLICATE 비즈니스 예외로 변환
  *
- * 이 테스트는 서비스 레이어를 직접 호출하므로 GlobalExceptionHandler를 거치지 않는다.
- * 따라서 DataIntegrityViolationException은 "GlobalExceptionHandler가 처리할 중복"으로 분류한다.
  *
  * 검증 포인트:
  * ① 데이터 무결성 — DB에 정확히 1건만 존재
@@ -47,15 +44,15 @@ class UserConcurrencyTest {
     /**
      * 중복 관련 예외인지 판별.
      * - BusinessException("이미 사용 중인"): 서비스 레이어에서 existsBy()가 잡은 경우
-     * - DataIntegrityViolationException: 동시 요청으로 existsBy() 통과 후 UNIQUE 위반 → GlobalExceptionHandler가 409 처리
+     * - BusinessException("DUPLICATE"): 동시 요청으로 existsBy() 통과 후 UNIQUE 위반을 서비스가 변환한 경우
      */
     private boolean isDuplicateException(Exception e) {
         String msg = e.getMessage();
         if (msg != null && msg.contains("이미 사용 중인")) {
             return true;  // 서비스 레이어에서 감지
         }
-        if (e instanceof DataIntegrityViolationException) {
-            return true;  // GlobalExceptionHandler에서 409로 변환됨
+        if (e instanceof com.shop.global.exception.BusinessException be && "DUPLICATE".equals(be.getCode())) {
+            return true;  // DB UNIQUE 충돌을 서비스가 DUPLICATE로 변환
         }
         return false;
     }
@@ -84,7 +81,7 @@ class UserConcurrencyTest {
 
         AtomicInteger successCount = new AtomicInteger(0);
         AtomicInteger serviceCheckCount = new AtomicInteger(0);     // existsBy()에서 잡힌 중복
-        AtomicInteger constraintCheckCount = new AtomicInteger(0);  // UNIQUE 위반 → GlobalExceptionHandler 처리
+        AtomicInteger constraintCheckCount = new AtomicInteger(0);  // UNIQUE 위반 → 서비스가 DUPLICATE로 변환
         AtomicInteger unknownFailCount = new AtomicInteger(0);
         List<String> errors = Collections.synchronizedList(new ArrayList<>());
 
@@ -104,7 +101,7 @@ class UserConcurrencyTest {
                     userService.signup(request);
                     successCount.incrementAndGet();
                 } catch (Exception e) {
-                    if (e instanceof DataIntegrityViolationException) {
+                    if (e instanceof com.shop.global.exception.BusinessException be && "DUPLICATE".equals(be.getCode())) {
                         constraintCheckCount.incrementAndGet();
                     } else if (e.getMessage() != null && e.getMessage().contains("이미 사용 중인")) {
                         serviceCheckCount.incrementAndGet();
@@ -131,7 +128,7 @@ class UserConcurrencyTest {
         System.out.println("[테스트 결과]");
         System.out.println("  가입 성공:                " + successCount.get() + "명");
         System.out.println("  서비스 레이어 중복 감지:  " + serviceCheckCount.get() + "회 (existsBy)");
-        System.out.println("  DB UNIQUE 중복 감지:      " + constraintCheckCount.get() + "회 (→ GlobalExceptionHandler → 409)");
+        System.out.println("  DB UNIQUE 중복 감지:      " + constraintCheckCount.get() + "회 (→ BusinessException[DUPLICATE])");
         System.out.println("  알 수 없는 실패:          " + unknownFailCount.get() + "회");
         System.out.println("  DB 사용자 수:             " + userCount + "명 (기대: 1명)");
         if (!errors.isEmpty()) {
@@ -203,7 +200,7 @@ class UserConcurrencyTest {
                     userService.signup(request);
                     successCount.incrementAndGet();
                 } catch (Exception e) {
-                    if (e instanceof DataIntegrityViolationException) {
+                    if (e instanceof com.shop.global.exception.BusinessException be && "DUPLICATE".equals(be.getCode())) {
                         constraintCheckCount.incrementAndGet();
                     } else if (e.getMessage() != null && e.getMessage().contains("이미 사용 중인")) {
                         serviceCheckCount.incrementAndGet();
@@ -230,7 +227,7 @@ class UserConcurrencyTest {
         System.out.println("[테스트 결과]");
         System.out.println("  가입 성공:                " + successCount.get() + "명");
         System.out.println("  서비스 레이어 중복 감지:  " + serviceCheckCount.get() + "회 (existsBy)");
-        System.out.println("  DB UNIQUE 중복 감지:      " + constraintCheckCount.get() + "회 (→ GlobalExceptionHandler → 409)");
+        System.out.println("  DB UNIQUE 중복 감지:      " + constraintCheckCount.get() + "회 (→ BusinessException[DUPLICATE])");
         System.out.println("  알 수 없는 실패:          " + unknownFailCount.get() + "회");
         System.out.println("  DB 사용자 수:             " + userCount + "명 (기대: 1명)");
         if (!errors.isEmpty()) {
@@ -354,7 +351,7 @@ class UserConcurrencyTest {
         System.out.println("========================================");
         System.out.println("[테스트 결과]");
         System.out.println("  변경 성공:     " + successCount.get() + "명");
-        System.out.println("  중복 감지:     " + duplicateCount.get() + "명 (→ GlobalExceptionHandler → 409)");
+        System.out.println("  중복 감지:     " + duplicateCount.get() + "명 (→ BusinessException[DUPLICATE])");
         System.out.println("  알 수 없는 실패: " + unknownFailCount.get() + "명");
         System.out.println("  target email 보유자 수: " + emailCount + "명 (기대: 1명)");
         if (!errors.isEmpty()) {

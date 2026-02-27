@@ -6,6 +6,7 @@ import com.shop.domain.user.entity.UserTier;
 import com.shop.domain.user.repository.UserRepository;
 import com.shop.domain.user.repository.UserTierRepository;
 import com.shop.global.exception.BusinessException;
+import com.shop.global.exception.DuplicateConstraintMessageResolver;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -14,6 +15,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.cache.Cache;
 import org.springframework.cache.CacheManager;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.math.BigDecimal;
@@ -38,12 +40,14 @@ class UserServiceUnitTest {
     private PasswordEncoder passwordEncoder;
     @Mock
     private CacheManager cacheManager;
+    @Mock
+    private DuplicateConstraintMessageResolver duplicateConstraintMessageResolver;
 
     private UserService userService;
 
     @BeforeEach
     void setUp() {
-        userService = new UserService(userRepository, userTierRepository, passwordEncoder, cacheManager);
+        userService = new UserService(userRepository, userTierRepository, passwordEncoder, cacheManager, duplicateConstraintMessageResolver);
     }
 
 
@@ -55,7 +59,7 @@ class UserServiceUnitTest {
         UserTier defaultTier = mock(UserTier.class);
         when(userTierRepository.findByTierLevel(1)).thenReturn(Optional.of(defaultTier));
         when(passwordEncoder.encode("Pass1234!")).thenReturn("encoded");
-        when(userRepository.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        when(userRepository.saveAndFlush(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         User saved = userService.signup(new SignupRequest(
                 " tester ",
@@ -71,6 +75,31 @@ class UserServiceUnitTest {
         assertThat(saved.getEmail()).isEqualTo("test@a.com");
         assertThat(saved.getName()).isEqualTo("테스터");
         assertThat(saved.getPhone()).isEqualTo("010-1234-5678");
+    }
+
+    @Test
+    @DisplayName("signup 저장 중 UNIQUE 충돌을 DUPLICATE BusinessException으로 변환")
+    void signup_duplicateOnSave_translatesToBusinessException() {
+        when(userRepository.existsByUsernameIgnoreCase("tester")).thenReturn(false);
+        when(userRepository.existsByEmail("test@a.com")).thenReturn(false);
+        UserTier defaultTier = mock(UserTier.class);
+        when(userTierRepository.findByTierLevel(1)).thenReturn(Optional.of(defaultTier));
+        when(passwordEncoder.encode("Pass1234!")).thenReturn("encoded");
+        DataIntegrityViolationException exception = new DataIntegrityViolationException("duplicate username");
+        when(userRepository.saveAndFlush(any(User.class))).thenThrow(exception);
+        when(duplicateConstraintMessageResolver.resolve(exception)).thenReturn("이미 사용 중인 아이디입니다.");
+
+        assertThatThrownBy(() -> userService.signup(new SignupRequest(
+                "tester",
+                "test@a.com",
+                "Pass1234!",
+                "테스터",
+                "010-1234-5678"
+        )))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("이미 사용 중인 아이디입니다.")
+                .extracting("code")
+                .isEqualTo("DUPLICATE");
     }
 
     @Test
@@ -115,6 +144,23 @@ class UserServiceUnitTest {
                 .hasMessageContaining("이미 사용 중인 이메일");
 
         verify(userRepository).existsByEmail("test@a.com");
+    }
+
+    @Test
+    @DisplayName("updateProfile 저장 중 UNIQUE 충돌을 DUPLICATE BusinessException으로 변환")
+    void updateProfile_duplicateOnSave_translatesToBusinessException() {
+        User user = new User("tester", "origin@a.com", "hash", "테스터", "010-1234-5678");
+        when(userRepository.findByIdWithTier(1L)).thenReturn(Optional.of(user));
+        when(userRepository.existsByEmail("new@a.com")).thenReturn(false);
+        DataIntegrityViolationException exception = new DataIntegrityViolationException("duplicate email");
+        when(userRepository.saveAndFlush(any(User.class))).thenThrow(exception);
+        when(duplicateConstraintMessageResolver.resolve(exception)).thenReturn("이미 사용 중인 이메일입니다.");
+
+        assertThatThrownBy(() -> userService.updateProfile(1L, "테스터", "010-1234-5678", "new@a.com"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("이미 사용 중인 이메일입니다.")
+                .extracting("code")
+                .isEqualTo("DUPLICATE");
     }
 
     @Test
