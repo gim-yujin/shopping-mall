@@ -4,6 +4,7 @@ import com.shop.domain.product.dto.ProductDetailResponse;
 import com.shop.domain.product.dto.ProductSummaryResponse;
 import com.shop.domain.product.entity.Product;
 import com.shop.domain.product.service.ProductService;
+import com.shop.domain.product.service.ViewCountService;
 import com.shop.global.common.PagingParams;
 import com.shop.global.dto.ApiResponse;
 import com.shop.global.dto.PageResponse;
@@ -24,9 +25,11 @@ import org.springframework.web.bind.annotation.*;
 public class ProductApiController {
 
     private final ProductService productService;
+    private final ViewCountService viewCountService;
 
-    public ProductApiController(ProductService productService) {
+    public ProductApiController(ProductService productService, ViewCountService viewCountService) {
         this.productService = productService;
+        this.viewCountService = viewCountService;
     }
 
     /**
@@ -52,11 +55,13 @@ public class ProductApiController {
 
     /**
      * 상품 상세 조회.
-     * 조회수를 증가시키며, 캐시된 데이터를 반환한다.
+     *
+     * [P0 FIX] 조회수 증가를 캐시 메서드 밖에서 호출하여 매 요청마다 정확히 증가시킨다.
      */
     @GetMapping("/{productId}")
     public ApiResponse<ProductDetailResponse> getProduct(@PathVariable Long productId) {
-        Product product = productService.findByIdAndIncrementView(productId);
+        Product product = productService.findByIdCached(productId);
+        viewCountService.incrementAsync(productId);
         return ApiResponse.ok(ProductDetailResponse.from(product));
     }
 }

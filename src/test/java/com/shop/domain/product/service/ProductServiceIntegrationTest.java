@@ -20,6 +20,9 @@ class ProductServiceIntegrationTest {
     private ProductService productService;
 
     @Autowired
+    private ViewCountService viewCountService;
+
+    @Autowired
     private JdbcTemplate jdbcTemplate;
 
     private Long testProductId;
@@ -43,9 +46,13 @@ class ProductServiceIntegrationTest {
     }
 
     @Test
-    @DisplayName("findByIdAndIncrementView - 조회수 1 증가")
-    void findByIdAndIncrementView_incrementsViewCount() throws InterruptedException {
-        Product product = productService.findByIdAndIncrementView(testProductId);
+    @DisplayName("findByIdCached + incrementAsync - 조회수 1 증가")
+    void findByIdCached_withSeparateIncrement_incrementsViewCount() throws InterruptedException {
+        // [P0 FIX] 검증: 캐시 메서드와 조회수 증가가 분리되어 매 요청마다 정확히 증가하는지 확인.
+        // 기존: findByIdAndIncrementView() → @Cacheable 내부 increment → 캐시 히트 시 누락
+        // 수정: findByIdCached(캐시 조회) + incrementAsync(별도 호출) 분리
+        Product product = productService.findByIdCached(testProductId);
+        viewCountService.incrementAsync(testProductId);
 
         // @Async로 변경된 viewCount UPDATE가 별도 스레드에서 완료될 때까지 대기
         Thread.sleep(500);

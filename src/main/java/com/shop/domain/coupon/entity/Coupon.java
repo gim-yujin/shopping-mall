@@ -57,6 +57,53 @@ public class Coupon {
 
     protected Coupon() {}
 
+    /**
+     * 관리자 쿠폰 생성용 생성자.
+     *
+     * usedQuantity는 0으로 초기화되며, createdAt은 현재 시각으로 설정된다.
+     * DB 스키마의 DEFAULT 값과 동일하지만, JPA persist 시 엔티티 레벨에서도
+     * 값을 설정하여 persist 전 검증/로깅에서 null이 나오지 않도록 한다.
+     */
+    public Coupon(String couponCode, String couponName, DiscountType discountType,
+                  BigDecimal discountValue, BigDecimal minOrderAmount, BigDecimal maxDiscount,
+                  Integer totalQuantity, LocalDateTime validFrom, LocalDateTime validUntil) {
+        this.couponCode = couponCode;
+        this.couponName = couponName;
+        this.discountType = discountType;
+        this.discountValue = discountValue;
+        this.minOrderAmount = minOrderAmount;
+        this.maxDiscount = maxDiscount;
+        this.totalQuantity = totalQuantity;
+        this.usedQuantity = 0;
+        this.validFrom = validFrom;
+        this.validUntil = validUntil;
+        this.isActive = true;
+        this.createdAt = LocalDateTime.now();
+    }
+
+    /**
+     * 관리자 쿠폰 수정.
+     * couponCode와 usedQuantity는 생성 후 변경하지 않는 불변 필드이다.
+     * couponCode: 외부 시스템/사용자에게 이미 배포된 코드는 변경 시 혼란 유발.
+     * usedQuantity: 발급/사용 트랜잭션에 의해서만 증가해야 하며, 관리자가 임의 변경 불가.
+     */
+    public void update(String couponName, DiscountType discountType,
+                       BigDecimal discountValue, BigDecimal minOrderAmount, BigDecimal maxDiscount,
+                       Integer totalQuantity, LocalDateTime validFrom, LocalDateTime validUntil) {
+        this.couponName = couponName;
+        this.discountType = discountType;
+        this.discountValue = discountValue;
+        this.minOrderAmount = minOrderAmount;
+        this.maxDiscount = maxDiscount;
+        this.totalQuantity = totalQuantity;
+        this.validFrom = validFrom;
+        this.validUntil = validUntil;
+    }
+
+    public void toggleActive() {
+        this.isActive = !this.isActive;
+    }
+
     public boolean isQuantityExhausted() {
         return totalQuantity != null && usedQuantity >= totalQuantity;
     }

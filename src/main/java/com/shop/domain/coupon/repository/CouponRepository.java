@@ -25,6 +25,14 @@ public interface CouponRepository extends JpaRepository<Coupon, Integer> {
     @Query("SELECT c FROM Coupon c WHERE c.isActive = true AND c.validFrom <= CURRENT_TIMESTAMP AND c.validUntil >= CURRENT_TIMESTAMP ORDER BY c.createdAt DESC")
     Page<Coupon> findActiveCoupons(Pageable pageable);
 
+    /**
+     * 관리자용: 전체 쿠폰 목록 (활성/비활성 포함).
+     * 최신 생성순 정렬.
+     */
+    Page<Coupon> findAllByOrderByCreatedAtDesc(Pageable pageable);
+
+    boolean existsByCouponCode(String couponCode);
+
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("""
             UPDATE Coupon c

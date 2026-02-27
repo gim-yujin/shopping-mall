@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org"
+      xmlns:layout="http://www.ultraq.net.nz/thymeleaf/layout"
+      layout:decorate="~{layout/default}">
+<head><title th:text="${editMode ? '쿠폰 수정' : '쿠폰 생성'}">쿠폰 생성</title></head>
+<body>
+<div layout:fragment="content">
+    <div class="max-w-3xl mx-auto">
+        <div class="flex items-center justify-between mb-6">
+            <h1 class="text-2xl font-bold" th:text="${editMode ? '쿠폰 수정' : '쿠폰 생성'}">쿠폰 생성</h1>
+            <a th:href="@{/admin/coupons}" class="text-sm text-gray-500 hover:text-gray-700">← 쿠폰 목록</a>
+        </div>
+
+        <!-- 인라인 에러 메시지 (BusinessException 등) -->
+        <div th:if="${errorMessage}" class="mb-4 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
+            <span th:text="${errorMessage}"></span>
+        </div>
+
+        <!-- 수정 모드: 기존 쿠폰 정보 표시 -->
+        <form th:if="${editMode}"
+              th:action="@{/admin/coupons/{id}(id=${couponId})}" method="post"
+              th:object="${request}"
+              class="bg-white rounded-lg shadow p-6 space-y-6">
+            <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}"/>
+
+            <div class="flex items-center gap-4 pb-4 border-b text-sm text-gray-500">
+                <span>ID: <span th:text="${couponId}" class="font-medium text-gray-700"></span></span>
+                <span>발급:
+                    <span th:text="${coupon.usedQuantity}" class="font-medium text-gray-700"></span>
+                    <span th:if="${coupon.totalQuantity != null}" th:text="'/' + ${coupon.totalQuantity}"></span>
+                </span>
+                <span class="flex items-center gap-1">
+                    상태:
+                    <span th:if="${coupon.isActive}" class="inline-block w-2 h-2 bg-green-500 rounded-full"></span>
+                    <span th:unless="${coupon.isActive}" class="inline-block w-2 h-2 bg-red-500 rounded-full"></span>
+                    <span th:text="${coupon.isActive ? '활성' : '비활성'}" class="font-medium text-gray-700"></span>
+                </span>
+            </div>
+
+            <th:block th:replace="~{admin/coupon-form :: formFields(${request}, ${discountTypes}, ${editMode})}"/>
+
+            <div class="flex justify-end gap-3 pt-4 border-t">
+                <a th:href="@{/admin/coupons}" class="px-6 py-2.5 border rounded-lg text-gray-700 hover:bg-gray-50">취소</a>
+                <button type="submit" class="px-6 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium">수정 완료</button>
+            </div>
+        </form>
+
+        <!-- 생성 모드 -->
+        <form th:unless="${editMode}"
+              th:action="@{/admin/coupons}" method="post"
+              th:object="${request}"
+              class="bg-white rounded-lg shadow p-6 space-y-6">
+            <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}"/>
+
+            <th:block th:replace="~{admin/coupon-form :: formFields(${request}, ${discountTypes}, ${editMode})}"/>
+
+            <div class="flex justify-end gap-3 pt-4 border-t">
+                <a th:href="@{/admin/coupons}" class="px-6 py-2.5 border rounded-lg text-gray-700 hover:bg-gray-50">취소</a>
+                <button type="submit" class="px-6 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium">쿠폰 생성</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<!-- ─── 공통 폼 필드 프래그먼트 ─── -->
+<th:block th:fragment="formFields(request, discountTypes, editMode)">
+    <!-- 쿠폰 코드 -->
+    <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">쿠폰 코드 <span class="text-red-500">*</span></label>
+        <input type="text" th:field="*{couponCode}" required maxlength="50"
+               th:readonly="${editMode}"
+               th:classappend="${editMode ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : ''}"
+               placeholder="예: WELCOME2025, SUMMER_SALE"
+               class="w-full border rounded-lg px-3 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono uppercase"/>
+        <p th:if="${editMode}" class="text-xs text-gray-400 mt-1">쿠폰 코드는 생성 후 변경할 수 없습니다.</p>
+        <p th:if="${#fields.hasErrors('couponCode')}" th:errors="*{couponCode}"
+           class="text-sm text-red-500 mt-1"></p>
+    </div>
+
+    <!-- 쿠폰명 -->
+    <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">쿠폰명 <span class="text-red-500">*</span></label>
+        <input type="text" th:field="*{couponName}" required maxlength="100"
+               placeholder="예: 신규 가입 환영 쿠폰"
+               class="w-full border rounded-lg px-3 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"/>
+        <p th:if="${#fields.hasErrors('couponName')}" th:errors="*{couponName}"
+           class="text-sm text-red-500 mt-1"></p>
+    </div>
+
+    <!-- 할인 유형 + 할인 값 -->
+    <div class="grid grid-cols-2 gap-4">
+        <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">할인 유형 <span class="text-red-500">*</span></label>
+            <select th:field="*{discountType}" required id="discountTypeSelect"
+                    onchange="toggleMaxDiscount()"
+                    class="w-full border rounded-lg px-3 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                <option value="">선택하세요</option>
+                <option th:each="dt : ${discountTypes}" th:value="${dt.name()}"
+                        th:text="${dt.name() == 'FIXED' ? '정액 할인 (원)' : '정률 할인 (%)'}"></option>
+            </select>
+            <p th:if="${#fields.hasErrors('discountType')}" th:errors="*{discountType}"
+               class="text-sm text-red-500 mt-1"></p>
+        </div>
+        <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">할인 값 <span class="text-red-500">*</span></label>
+            <div class="relative">
+                <input type="number" th:field="*{discountValue}" required min="0.01" step="0.01"
+                       placeholder="0"
+                       class="w-full border rounded-lg px-3 py-2.5 pr-12 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"/>
+                <span id="discountUnit" class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">원/%</span>
+            </div>
+            <p th:if="${#fields.hasErrors('discountValue')}" th:errors="*{discountValue}"
+               class="text-sm text-red-500 mt-1"></p>
+        </div>
+    </div>
+
+    <!-- 최소 주문 금액 + 최대 할인 -->
+    <div class="grid grid-cols-2 gap-4">
+        <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">최소 주문 금액 <span class="text-red-500">*</span></label>
+            <div class="relative">
+                <input type="number" th:field="*{minOrderAmount}" required min="0" step="1"
+                       placeholder="0"
+                       class="w-full border rounded-lg px-3 py-2.5 pr-8 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"/>
+                <span class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">원</span>
+            </div>
+            <p th:if="${#fields.hasErrors('minOrderAmount')}" th:errors="*{minOrderAmount}"
+               class="text-sm text-red-500 mt-1"></p>
+        </div>
+        <div id="maxDiscountField">
+            <label class="block text-sm font-medium text-gray-700 mb-1">최대 할인 상한</label>
+            <div class="relative">
+                <input type="number" th:field="*{maxDiscount}" min="1" step="1"
+                       placeholder="미입력 시 상한 없음"
+                       class="w-full border rounded-lg px-3 py-2.5 pr-8 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"/>
+                <span class="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">원</span>
+            </div>
+            <p class="text-xs text-gray-400 mt-1">정률 할인 시에만 적용됩니다.</p>
+        </div>
+    </div>
+
+    <!-- 발급 수량 -->
+    <div class="w-1/2">
+        <label class="block text-sm font-medium text-gray-700 mb-1">발급 수량</label>
+        <input type="number" th:field="*{totalQuantity}" min="1" step="1"
+               placeholder="미입력 시 무제한"
+               class="w-full border rounded-lg px-3 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"/>
+        <p th:if="${#fields.hasErrors('totalQuantity')}" th:errors="*{totalQuantity}"
+           class="text-sm text-red-500 mt-1"></p>
+    </div>
+
+    <!-- 유효기간 -->
+    <div class="grid grid-cols-2 gap-4">
+        <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">유효 시작일 <span class="text-red-500">*</span></label>
+            <input type="datetime-local" th:field="*{validFrom}" required
+                   class="w-full border rounded-lg px-3 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"/>
+            <p th:if="${#fields.hasErrors('validFrom')}" th:errors="*{validFrom}"
+               class="text-sm text-red-500 mt-1"></p>
+        </div>
+        <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">유효 종료일 <span class="text-red-500">*</span></label>
+            <input type="datetime-local" th:field="*{validUntil}" required
+                   class="w-full border rounded-lg px-3 py-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"/>
+            <p th:if="${#fields.hasErrors('validUntil')}" th:errors="*{validUntil}"
+               class="text-sm text-red-500 mt-1"></p>
+        </div>
+    </div>
+</th:block>
+
+<!-- 할인 유형에 따라 최대 할인 필드 표시/숨김 + 단위 표시 -->
+<script th:inline="javascript">
+    function toggleMaxDiscount() {
+        const type = document.getElementById('discountTypeSelect').value;
+        const maxField = document.getElementById('maxDiscountField');
+        const unit = document.getElementById('discountUnit');
+        if (type === 'FIXED') {
+            maxField.style.opacity = '0.4';
+            maxField.querySelector('input').disabled = true;
+            unit.textContent = '원';
+        } else if (type === 'PERCENT') {
+            maxField.style.opacity = '1';
+            maxField.querySelector('input').disabled = false;
+            unit.textContent = '%';
+        } else {
+            maxField.style.opacity = '1';
+            maxField.querySelector('input').disabled = false;
+            unit.textContent = '원/%';
+        }
+    }
+    // 페이지 로드 시 초기 상태 설정
+    document.addEventListener('DOMContentLoaded', toggleMaxDiscount);
+</script>
+</body>
+</html>

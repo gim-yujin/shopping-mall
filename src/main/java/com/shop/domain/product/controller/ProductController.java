@@ -4,6 +4,7 @@ import com.shop.domain.category.entity.Category;
 import com.shop.domain.category.service.CategoryService;
 import com.shop.domain.product.entity.Product;
 import com.shop.domain.product.service.ProductService;
+import com.shop.domain.product.service.ViewCountService;
 import com.shop.domain.review.service.ReviewService;
 import com.shop.domain.order.entity.OrderItem;
 import com.shop.domain.review.entity.Review;
@@ -28,13 +29,16 @@ public class ProductController {
     private final CategoryService categoryService;
     private final ReviewService reviewService;
     private final WishlistService wishlistService;
+    private final ViewCountService viewCountService;
 
     public ProductController(ProductService productService, CategoryService categoryService,
-                             ReviewService reviewService, WishlistService wishlistService) {
+                             ReviewService reviewService, WishlistService wishlistService,
+                             ViewCountService viewCountService) {
         this.productService = productService;
         this.categoryService = categoryService;
         this.reviewService = reviewService;
         this.wishlistService = wishlistService;
+        this.viewCountService = viewCountService;
     }
 
     @GetMapping
@@ -57,7 +61,11 @@ public class ProductController {
     public String productDetail(@PathVariable Long productId,
                                 @RequestParam(defaultValue = "0") int reviewPage,
                                 Model model) {
-        Product product = productService.findByIdAndIncrementView(productId);
+        // [P0 FIX] 조회수 증가를 캐시 메서드 밖에서 호출하여 매 요청마다 정확히 증가시킨다.
+        // 기존: findByIdAndIncrementView() → @Cacheable 내부에서 increment → 캐시 히트 시 조회수 누락
+        // 수정: findByIdCached(캐시 조회) + incrementAsync(매 요청 비동기 증가) 분리
+        Product product = productService.findByIdCached(productId);
+        viewCountService.incrementAsync(productId);
         int normalizedReviewPage = PagingParams.normalizePage(reviewPage);
         Page<Review> reviews = reviewService.getProductReviews(productId, PageRequest.of(normalizedReviewPage, PageDefaults.DEFAULT_LIST_SIZE));
 

@@ -47,15 +47,34 @@ public class ProductService {
     }
 
     /**
-     * 상품 상세 조회 + 조회수 증가 (비동기).
-     * 캐시 히트 시 메서드 본문이 실행되지 않으므로:
-     *   - DB 조회 0회, viewCount 증가는 캐시 미스 시에만 발생
-     *   - TTL 2분 = 상품당 2분에 1회만 DB 접근
+     * 상품 상세 조회 (캐시 적용).
+     *
+     * [P0 BUG FIX] 조회수 증가 로직을 이 메서드에서 분리함.
+     *
+     * 기존 문제:
+     *   @Cacheable 메서드 안에서 viewCountService.incrementAsync()를 호출했으므로,
+     *   캐시 히트 시 메서드 본문 자체가 실행되지 않아 조회수가 캐시 미스 시에만 증가했다.
+     *   TTL 2분 기준으로 상품당 2분에 1회만 조회수가 오르는 결과를 초래했다.
+     *
+     * 수정:
+     *   캐시 메서드는 순수 조회만 담당하고, 조회수 증가는 컨트롤러에서 별도 호출한다.
+     *   이렇게 하면 캐시 히트 여부와 무관하게 매 요청마다 조회수가 정확히 증가한다.
+     *
+     * @see ProductController#productDetail — 이 메서드 호출 후 viewCountService.incrementAsync() 호출
      */
     @Cacheable(value = "productDetail", key = "#productId")
-    public Product findByIdAndIncrementView(Long productId) {
-        Product product = productRepository.findByIdWithCategory(productId)
+    public Product findByIdCached(Long productId) {
+        return productRepository.findByIdWithCategory(productId)
                 .orElseThrow(() -> new ResourceNotFoundException("상품", productId));
+    }
+
+    /**
+     * @deprecated findByIdCached + ViewCountService.incrementAsync 조합으로 대체됨.
+     *             기존 호출처 호환을 위해 유지하되, 신규 코드에서는 사용하지 말 것.
+     */
+    @Deprecated(since = "P0 viewCount fix", forRemoval = true)
+    public Product findByIdAndIncrementView(Long productId) {
+        Product product = findByIdCached(productId);
         viewCountService.incrementAsync(productId);
         return product;
     }
