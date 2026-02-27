@@ -15,6 +15,7 @@ import org.springframework.security.config.annotation.web.configuration.EnableWe
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.LoginUrlAuthenticationEntryPoint;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
@@ -67,7 +68,7 @@ public class SecurityConfig {
                 .requestMatchers("/", "/products/**", "/categories/**", "/search/**",
                     "/auth/**", "/static/**", "/css/**", "/images/**", "/error/**").permitAll()
                 // [P1-6] REST API 공개 경로: 상품 목록/상세, 상품별 리뷰 조회
-                .requestMatchers("/api/v1/products/**").permitAll()
+                .requestMatchers("/api/v1/products", "/api/v1/products/**").permitAll()
                 .requestMatchers("/actuator/health").permitAll()  // 로드밸런서 헬스체크용
                 .requestMatchers("/actuator/**").hasRole("ADMIN") // 나머지 Actuator는 관리자만
                 .requestMatchers("/admin/**").hasRole("ADMIN")
@@ -113,8 +114,9 @@ public class SecurityConfig {
                             response.getWriter().write(
                                     "{\"success\":false,\"error\":{\"code\":\"UNAUTHORIZED\",\"message\":\"인증이 필요합니다.\"}}");
                         },
-                        request -> request.getRequestURI().startsWith("/api/")
+                        request -> request.getRequestURI() != null && request.getRequestURI().startsWith("/api/")
                 )
+                .authenticationEntryPoint(new LoginUrlAuthenticationEntryPoint("/auth/login"))
             )
             .addFilterBefore(loginBlockPreAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
