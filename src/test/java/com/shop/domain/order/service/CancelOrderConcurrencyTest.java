@@ -476,7 +476,9 @@ class CancelOrderConcurrencyTest {
         BigDecimal expectedUserATotalSpent = (BigDecimal) originalUserState.get("total_spent");
         Integer expectedUserAPointBalance = ((Number) originalUserState.get("point_balance")).intValue();
         BigDecimal expectedUserBTotalSpent = ((BigDecimal) userBState.get("total_spent")).add(orderBFinalAmount);
-        Integer expectedUserBPointBalance = ((Number) userBState.get("point_balance")).intValue() + orderBEarnedPoints;
+        // 포인트 적립은 배송 완료(DELIVERED) 시점에 정산되므로,
+        // createOrder 직후에는 point_balance가 증가하지 않는다.
+        Integer expectedUserBPointBalance = ((Number) userBState.get("point_balance")).intValue();
 
         // ① 양쪽 모두 성공 + 등급 갱신 성공
         assertThat(cancelSuccess.get())
