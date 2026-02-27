@@ -260,11 +260,12 @@ public class OrderCreationService {
             }
         }
 
-        // 6) 포인트 적립 (등급별 적립률 적용)
+        // 6) 누적 구매 금액(total_spent) 및 포인트 반영
+        // total_spent는 연간 실적이 아니라 취소 반영 누적 금액으로 유지한다.
         user.addTotalSpent(finalAmount);
         user.addPoints(earnedPointsSnapshot);
 
-        // 7) 등급 재계산
+        // 7) 등급 재계산 (누적 구매 금액 기준)
         userTierRepository.findFirstByMinSpentLessThanEqualOrderByTierLevelDesc(user.getTotalSpent())
                 .ifPresent(user::updateTier);
 
