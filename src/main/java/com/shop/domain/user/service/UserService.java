@@ -6,9 +6,11 @@ import com.shop.domain.user.entity.UserTier;
 import com.shop.domain.user.repository.UserRepository;
 import com.shop.domain.user.repository.UserTierRepository;
 import com.shop.global.exception.BusinessException;
+import com.shop.global.exception.DuplicateConstraintMessageResolver;
 import com.shop.global.exception.ResourceNotFoundException;
 import org.springframework.cache.Cache;
 import org.springframework.cache.CacheManager;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -28,16 +30,19 @@ public class UserService {
     private final UserTierRepository tierRepository;
     private final PasswordEncoder passwordEncoder;
     private final CacheManager cacheManager;
+    private final DuplicateConstraintMessageResolver duplicateConstraintMessageResolver;
 
     private static final String USER_DETAILS_CACHE = "userDetails";
 
     public UserService(UserRepository userRepository, UserTierRepository tierRepository,
                        PasswordEncoder passwordEncoder,
-                       CacheManager cacheManager) {
+                       CacheManager cacheManager,
+                       DuplicateConstraintMessageResolver duplicateConstraintMessageResolver) {
         this.userRepository = userRepository;
         this.tierRepository = tierRepository;
         this.passwordEncoder = passwordEncoder;
         this.cacheManager = cacheManager;
+        this.duplicateConstraintMessageResolver = duplicateConstraintMessageResolver;
     }
 
     @Transactional
@@ -47,6 +52,7 @@ public class UserService {
         String normalizedName = normalizeName(request.name());
         String normalizedPhone = normalizePhone(request.phone());
 
+        // existsBy 사전 검증은 UX 개선 목적이며, 동시성 상황의 최종 방어선은 DB UNIQUE 제약이다.
         if (userRepository.existsByUsernameIgnoreCase(normalizedUsername)) {
             throw new BusinessException("DUPLICATE", "이미 사용 중인 아이디입니다.");
         }
@@ -69,7 +75,11 @@ public class UserService {
         );
         user.setTier(defaultTier);
 
-        return userRepository.save(user);
+        try {
+            return userRepository.saveAndFlush(user);
+        } catch (DataIntegrityViolationException exception) {
+            throw new BusinessException("DUPLICATE", duplicateConstraintMessageResolver.resolve(exception));
+        }
     }
 
     public User findById(Long userId) {
@@ -91,10 +101,16 @@ public class UserService {
         String normalizedEmail = normalizeEmail(email);
 
         User user = findById(userId);
+        // existsBy 사전 검증은 UX 개선 목적이며, 동시성 상황의 최종 방어선은 DB UNIQUE 제약이다.
         if (!user.getEmail().equals(normalizedEmail) && userRepository.existsByEmail(normalizedEmail)) {
             throw new BusinessException("DUPLICATE", "이미 사용 중인 이메일입니다.");
         }
         user.updateProfile(normalizedName, normalizedPhone, normalizedEmail);
+        try {
+            userRepository.saveAndFlush(user);
+        } catch (DataIntegrityViolationException exception) {
+            throw new BusinessException("DUPLICATE", duplicateConstraintMessageResolver.resolve(exception));
+        }
     }
 
     @Transactional
