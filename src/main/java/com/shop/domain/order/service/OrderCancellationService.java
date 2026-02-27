@@ -114,7 +114,7 @@ public class OrderCancellationService {
         }
 
         // 2) 누적금액(total_spent) & 포인트 차감 & 사용 포인트 환불 & 등급 재계산
-        User user = userRepository.findById(userId)
+        User user = userRepository.findByIdWithLockAndTier(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("사용자", userId));
         BigDecimal finalAmount = order.getFinalAmount();
         // total_spent는 주문 생성/취소 이벤트를 누적 반영한다.
