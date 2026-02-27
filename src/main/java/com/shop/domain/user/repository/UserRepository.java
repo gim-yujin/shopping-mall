@@ -5,8 +5,11 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+
+import jakarta.persistence.LockModeType;
 import java.util.List;
 import java.util.Optional;
 
@@ -20,6 +23,14 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
     @Query("SELECT u FROM User u JOIN FETCH u.tier WHERE u.userId = :userId")
     Optional<User> findByIdWithTier(@Param("userId") Long userId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT u FROM User u JOIN FETCH u.tier WHERE u.userId = :userId")
+    Optional<User> findByIdWithLockAndTier(@Param("userId") Long userId);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT u FROM User u JOIN FETCH u.tier WHERE u.userId IN :userIds ORDER BY u.userId ASC")
+    List<User> findAllByIdInWithLockAndTierOrderByUserId(@Param("userIds") List<Long> userIds);
 
     @EntityGraph(attributePaths = "tier")
     Page<User> findAll(Pageable pageable);

@@ -84,6 +84,10 @@ class TierSchedulerUnitTest {
                 .thenReturn(List.of(secondUser));
         when(userRepository.findUsersAfterIdWithTier(eq(2L), any()))
                 .thenReturn(Collections.emptyList());
+        when(userRepository.findAllByIdInWithLockAndTierOrderByUserId(List.of(1L)))
+                .thenReturn(List.of(firstUser));
+        when(userRepository.findAllByIdInWithLockAndTierOrderByUserId(List.of(2L)))
+                .thenReturn(List.of(secondUser));
 
         tierScheduler.recalculateTiers();
 
@@ -113,6 +117,8 @@ class TierSchedulerUnitTest {
 
         when(userTierRepository.findFirstByMinSpentLessThanEqualOrderByTierLevelDesc(new BigDecimal("120000")))
                 .thenReturn(Optional.of(newTier));
+        when(userRepository.findAllByIdInWithLockAndTierOrderByUserId(List.of(10L)))
+                .thenReturn(List.of(user));
 
         tierScheduler.processTierChunk(2024, Map.of(10L, new BigDecimal("5000")), defaultTier, List.of(user));
 

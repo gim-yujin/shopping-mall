@@ -114,7 +114,7 @@ public class OrderCreationService {
         cartItems.sort(java.util.Comparator.comparing(cart -> cart.getProduct().getProductId()));
 
         // 0) 사용자 & 등급 정보 로드
-        User user = userRepository.findById(userId)
+        User user = userRepository.findByIdWithLockAndTier(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("사용자", userId));
         UserTier tier = user.getTier();
         BigDecimal tierDiscountRate = tier.getDiscountRate();  // e.g. 5.00 = 5%
