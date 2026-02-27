@@ -3,6 +3,7 @@ package com.shop.domain.order.service;
 import com.shop.domain.order.dto.OrderCreateRequest;
 import com.shop.domain.order.entity.Order;
 import com.shop.domain.order.entity.OrderStatus;
+import com.shop.domain.order.repository.OrderRepository;
 import com.shop.global.exception.BusinessException;
 import com.shop.global.exception.InsufficientStockException;
 import org.junit.jupiter.api.*;
@@ -15,6 +16,7 @@ import org.springframework.test.context.TestPropertySource;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.time.Year;
 import java.util.*;
 
 import static org.assertj.core.api.Assertions.*;
@@ -44,6 +46,9 @@ class OrderServiceIntegrationTest {
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
+
+    @Autowired
+    private OrderRepository orderRepository;
 
     // 테스트 대상
     private Long testUserId;
@@ -210,6 +215,63 @@ class OrderServiceIntegrationTest {
         assertThat(historyCount).isGreaterThanOrEqualTo(1);
 
         System.out.println("  [PASS] 주문 #" + order.getOrderNumber() + " 생성 완료, 재고: " + stockBefore + " → " + stockAfter);
+    }
+
+
+    @Test
+    @DisplayName("연말 주문을 연초에 취소하면 누적 구매 금액에서 차감되고 전년도 실적 집계에서도 제외된다")
+    void cancelOrderAcrossYearBoundary_updatesCumulativeAndYearlyAggregation() {
+        // Given
+        addCartItem(testUserId, testProductId, 1);
+        BigDecimal originalTotalSpent = jdbcTemplate.queryForObject(
+                "SELECT total_spent FROM users WHERE user_id = ?",
+                BigDecimal.class, testUserId);
+
+        Order order = orderService.createOrder(testUserId, defaultRequest());
+        createdOrderIds.add(order.getOrderId());
+
+        BigDecimal orderFinalAmount = order.getFinalAmount();
+
+        int lastYear = Year.now().getValue() - 1;
+        LocalDateTime startDate = LocalDateTime.of(lastYear, 1, 1, 0, 0);
+        LocalDateTime endDate = LocalDateTime.of(lastYear + 1, 1, 1, 0, 0);
+
+        BigDecimal baselineSpent = orderRepository.findYearlySpentByUser(startDate, endDate).stream()
+                .filter(row -> Objects.equals(row[0], testUserId))
+                .map(row -> (BigDecimal) row[1])
+                .findFirst()
+                .orElse(BigDecimal.ZERO);
+
+        LocalDateTime yearEndOrderDate = LocalDateTime.of(lastYear, 12, 31, 23, 59, 59);
+        jdbcTemplate.update(
+                "UPDATE orders SET order_date = ?, paid_at = ? WHERE order_id = ?",
+                yearEndOrderDate, yearEndOrderDate, order.getOrderId());
+
+        List<Object[]> beforeCancel = orderRepository.findYearlySpentByUser(startDate, endDate);
+        BigDecimal beforeCancelSpent = beforeCancel.stream()
+                .filter(row -> Objects.equals(row[0], testUserId))
+                .map(row -> (BigDecimal) row[1])
+                .findFirst()
+                .orElse(BigDecimal.ZERO);
+        assertThat(beforeCancelSpent).isEqualByComparingTo(baselineSpent.add(orderFinalAmount));
+
+        // When: 연초 취소(취소 시점은 현재 시각)
+        orderService.cancelOrder(order.getOrderId(), testUserId);
+
+        // Then: 누적 구매 금액 원복
+        BigDecimal totalSpentAfterCancel = jdbcTemplate.queryForObject(
+                "SELECT total_spent FROM users WHERE user_id = ?",
+                BigDecimal.class, testUserId);
+        assertThat(totalSpentAfterCancel).isEqualByComparingTo(originalTotalSpent);
+
+        // Then: 전년도 실적 집계에서 제외(CANCELLED 제외 규칙)
+        List<Object[]> afterCancel = orderRepository.findYearlySpentByUser(startDate, endDate);
+        BigDecimal afterCancelSpent = afterCancel.stream()
+                .filter(row -> Objects.equals(row[0], testUserId))
+                .map(row -> (BigDecimal) row[1])
+                .findFirst()
+                .orElse(BigDecimal.ZERO);
+        assertThat(afterCancelSpent).isEqualByComparingTo(baselineSpent);
     }
 
     @Test
