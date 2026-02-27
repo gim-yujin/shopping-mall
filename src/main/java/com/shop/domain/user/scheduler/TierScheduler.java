@@ -200,7 +200,16 @@ public class TierScheduler {
                                                     List<User> users) {
         TierProcessingResult result = new TierProcessingResult();
 
-        for (User userSnapshot : users) {
+        List<Long> userIds = users.stream()
+                .map(User::getUserId)
+                .sorted()
+                .toList();
+        List<User> lockedUsers = userRepository.findAllByIdInWithLockAndTierOrderByUserId(userIds);
+        if (lockedUsers.size() != users.size()) {
+            log.warn("등급 재산정 청크 잠금 조회 결과 불일치 - requested={}, locked={}", users.size(), lockedUsers.size());
+        }
+
+        for (User user : lockedUsers) {
             result.processed++;
 
             try {

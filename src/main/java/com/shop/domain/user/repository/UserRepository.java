@@ -28,6 +28,10 @@ public interface UserRepository extends JpaRepository<User, Long> {
     @Query("SELECT u FROM User u JOIN FETCH u.tier WHERE u.userId = :userId")
     Optional<User> findByIdWithLockAndTier(@Param("userId") Long userId);
 
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT u FROM User u JOIN FETCH u.tier WHERE u.userId IN :userIds ORDER BY u.userId ASC")
+    List<User> findAllByIdInWithLockAndTierOrderByUserId(@Param("userIds") List<Long> userIds);
+
     @EntityGraph(attributePaths = "tier")
     Page<User> findAll(Pageable pageable);
 

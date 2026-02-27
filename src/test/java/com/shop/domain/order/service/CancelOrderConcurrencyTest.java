@@ -14,6 +14,7 @@ import java.time.LocalDateTime;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -354,6 +355,7 @@ class CancelOrderConcurrencyTest {
         AtomicInteger cancelSuccess = new AtomicInteger(0);
         AtomicInteger createSuccess = new AtomicInteger(0);
         AtomicInteger tierRecalcSuccess = new AtomicInteger(0);
+        AtomicReference<Long> createdOrderIdByUserB = new AtomicReference<>();
         List<String> errors = Collections.synchronizedList(new ArrayList<>());
 
         OrderCreateRequest requestB = new OrderCreateRequest(
@@ -384,7 +386,8 @@ class CancelOrderConcurrencyTest {
             ready.countDown();
             try {
                 start.await();
-                orderService.createOrder(userIdB, requestB);
+                Order createdOrder = orderService.createOrder(userIdB, requestB);
+                createdOrderIdByUserB.set(createdOrder.getOrderId());
                 createSuccess.incrementAndGet();
             } catch (Exception e) {
                 errors.add("[Create] " + e.getClass().getSimpleName() + " - " + e.getMessage());
@@ -438,9 +441,9 @@ class CancelOrderConcurrencyTest {
         Integer userAPointBalance = jdbcTemplate.queryForObject(
                 "SELECT point_balance FROM users WHERE user_id = ?", Integer.class, testUserId);
 
-        Long orderIdB = jdbcTemplate.queryForObject(
-                "SELECT order_id FROM orders WHERE user_id = ? ORDER BY order_id DESC LIMIT 1",
-                Long.class, userIdB);
+        Long orderIdB = createdOrderIdByUserB.get();
+        assertThat(orderIdB).as("User B 생성 주문 ID는 기록되어야 합니다").isNotNull();
+
         BigDecimal orderBFinalAmount = jdbcTemplate.queryForObject(
                 "SELECT final_amount FROM orders WHERE order_id = ?",
                 BigDecimal.class, orderIdB);
