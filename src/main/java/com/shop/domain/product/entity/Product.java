@@ -2,6 +2,8 @@ package com.shop.domain.product.entity;
 
 import com.shop.domain.category.entity.Category;
 import jakarta.persistence.*;
+import org.hibernate.Hibernate;
+
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -148,6 +150,10 @@ public class Product {
     }
 
     public String getThumbnailUrl() {
+        if (!Hibernate.isInitialized(images) || images == null) {
+            return "/images/product-placeholder.svg";
+        }
+
         return images.stream()
                 .filter(ProductImage::getIsThumbnail)
                 .findFirst()

@@ -7,11 +7,13 @@ import com.shop.global.security.LoginBlockPreAuthenticationFilter;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.annotation.Order;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
+import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
@@ -58,7 +60,39 @@ public class SecurityConfig {
     }
 
     @Bean
-    public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+    @Order(1)
+    public SecurityFilterChain apiFilterChain(HttpSecurity http) throws Exception {
+        http
+            .securityMatcher("/api/**")
+            .authenticationProvider(authenticationProvider())
+            .authorizeHttpRequests(auth -> auth
+                .requestMatchers("/api/v1/products", "/api/v1/products/**").permitAll()
+                .anyRequest().authenticated()
+            )
+            // API는 세션 쿠키 기반 브라우저 폼 제출이 아니므로 CSRF 비활성화
+            .csrf(AbstractHttpConfigurer::disable)
+            .exceptionHandling(ex -> ex
+                .authenticationEntryPoint((request, response, authException) -> {
+                    response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                    response.setContentType("application/json;charset=UTF-8");
+                    response.getWriter().write(
+                        "{\"success\":false,\"error\":{\"code\":\"UNAUTHORIZED\",\"message\":\"인증이 필요합니다.\"}}"
+                    );
+                })
+            )
+            // API 요청에서 로그인 페이지 리다이렉트를 유발하는 RequestCache 제거
+            .requestCache(AbstractHttpConfigurer::disable)
+            .formLogin(AbstractHttpConfigurer::disable)
+            .logout(AbstractHttpConfigurer::disable)
+            .rememberMe(AbstractHttpConfigurer::disable)
+            .httpBasic(AbstractHttpConfigurer::disable);
+
+        return http.build();
+    }
+
+    @Bean
+    @Order(2)
+    public SecurityFilterChain webFilterChain(HttpSecurity http) throws Exception {
         CsrfTokenRequestAttributeHandler requestHandler = new CsrfTokenRequestAttributeHandler();
         requestHandler.setCsrfRequestAttributeName(null);
 
@@ -67,8 +101,6 @@ public class SecurityConfig {
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/", "/products/**", "/categories/**", "/search/**",
                     "/auth/**", "/static/**", "/css/**", "/images/**", "/error/**").permitAll()
-                // [P1-6] REST API 공개 경로: 상품 목록/상세, 상품별 리뷰 조회
-                .requestMatchers("/api/v1/products", "/api/v1/products/**").permitAll()
                 .requestMatchers("/actuator/health").permitAll()  // 로드밸런서 헬스체크용
                 .requestMatchers("/actuator/**").hasRole("ADMIN") // 나머지 Actuator는 관리자만
                 .requestMatchers("/admin/**").hasRole("ADMIN")
@@ -93,29 +125,13 @@ public class SecurityConfig {
             .csrf(csrf -> csrf
                 .csrfTokenRepository(CookieCsrfTokenRepository.withHttpOnlyFalse())
                 .csrfTokenRequestHandler(requestHandler)
-                // [P1-6] REST API 경로는 CSRF 보호 제외.
-                // REST 클라이언트(모바일 앱, SPA 등)는 쿠키 기반 CSRF 토큰을 사용하지 않으며,
-                // 향후 JWT 등 stateless 인증으로 전환 시 CSRF 자체가 불필요하다.
-                // SSR 경로의 CSRF 보호는 기존과 동일하게 유지된다.
-                .ignoringRequestMatchers("/api/**")
             )
             .rememberMe(remember -> remember
                 .key("shopping-mall-remember-key")
                 .tokenValiditySeconds(86400 * 7)
                 .userDetailsService(userDetailsService)
             )
-            // [P1-6] REST API 요청에 대해 로그인 페이지 리다이렉트 대신 401 JSON 응답 반환.
-            // Accept: application/json 헤더가 포함된 요청은 API 클라이언트로 간주한다.
             .exceptionHandling(ex -> ex
-                .defaultAuthenticationEntryPointFor(
-                        (request, response, authException) -> {
-                            response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-                            response.setContentType("application/json;charset=UTF-8");
-                            response.getWriter().write(
-                                    "{\"success\":false,\"error\":{\"code\":\"UNAUTHORIZED\",\"message\":\"인증이 필요합니다.\"}}");
-                        },
-                        request -> request.getRequestURI() != null && request.getRequestURI().startsWith("/api/")
-                )
                 .authenticationEntryPoint(new LoginUrlAuthenticationEntryPoint("/auth/login"))
             )
             .addFilterBefore(loginBlockPreAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
