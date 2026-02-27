@@ -71,7 +71,7 @@ CREATE TABLE users (
 );
 
 COMMENT ON TABLE users IS '사용자 테이블 (예상: 100만 명)';
-COMMENT ON COLUMN users.total_spent IS '누적 구매 금액 (등급 산정 기준)';
+COMMENT ON COLUMN users.total_spent IS '취소 반영 누적 구매 금액 (등급 산정 기준)';
 COMMENT ON COLUMN users.point_balance IS '현재 보유 포인트';
 
 -- username은 대소문자 비구분 정책(Case-insensitive)을 적용한다.
@@ -97,7 +97,7 @@ CREATE TABLE user_tier_history (
 );
 
 COMMENT ON TABLE user_tier_history IS '회원 등급 변경 이력 (예상: 500만 건)';
-COMMENT ON COLUMN user_tier_history.reason IS 'PURCHASE_AMOUNT, MANUAL, PROMOTION';
+COMMENT ON COLUMN user_tier_history.reason IS '등급 변경 사유(예: 정기 등급 점검, MANUAL, PROMOTION)';
 
 -- ============================================================================
 -- 4. CATEGORIES (카테고리)

@@ -75,7 +75,7 @@ public class OrderCancellationService {
      *
      * 처리 순서:
      * 1) 재고 복구 (데드락 예방을 위해 상품 ID 순 정렬)
-     * 2) 누적금액 차감 & 포인트 환불 & 등급 재계산
+     * 2) 누적금액(total_spent) 차감 & 포인트 환불 & 등급 재계산
      * 3) 쿠폰 복원
      * 4) 주문 상태 CANCELLED로 변경
      * 5) 상품 상세 캐시 무효화
@@ -106,10 +106,11 @@ public class OrderCancellationService {
             }
         }
 
-        // 2) 누적금액 & 포인트 차감 & 사용 포인트 환불 & 등급 재계산
+        // 2) 누적금액(total_spent) & 포인트 차감 & 사용 포인트 환불 & 등급 재계산
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("사용자", userId));
         BigDecimal finalAmount = order.getFinalAmount();
+        // total_spent는 주문 생성/취소 이벤트를 누적 반영한다.
         user.addTotalSpent(finalAmount.negate());
 
         // [BUG FIX] 포인트 적립 차감과 사용 환불을 net 값으로 한 번에 처리.
@@ -122,6 +123,7 @@ public class OrderCancellationService {
         int netPointChange = order.getUsedPoints() - order.getEarnedPointsSnapshot();
         user.addPoints(netPointChange);
 
+        // 등급 산정 기준은 total_spent(누적 구매 금액)로 통일한다.
         userTierRepository.findFirstByMinSpentLessThanEqualOrderByTierLevelDesc(user.getTotalSpent())
                 .ifPresent(user::updateTier);
 
