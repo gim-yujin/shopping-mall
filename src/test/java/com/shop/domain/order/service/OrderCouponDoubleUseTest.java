@@ -204,6 +204,7 @@ class OrderCouponDoubleUseTest {
                 "CARD",
                 BigDecimal.ZERO,
                 testUserCouponId,
+                null,
                 null
         );
 
