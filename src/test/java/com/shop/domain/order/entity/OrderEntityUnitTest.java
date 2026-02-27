@@ -16,6 +16,7 @@ class OrderEntityUnitTest {
     private Order createOrder() {
         return new Order("ORD-001", 1L,
                 BigDecimal.valueOf(50000), BigDecimal.ZERO,
+                BigDecimal.ZERO, BigDecimal.ZERO,
                 BigDecimal.valueOf(3000), BigDecimal.valueOf(53000),
                 BigDecimal.valueOf(1.50), 795,
                 0,

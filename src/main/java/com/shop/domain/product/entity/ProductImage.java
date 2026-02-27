@@ -30,6 +30,30 @@ public class ProductImage {
 
     protected ProductImage() {}
 
+    /**
+     * [P2-9] 상품 이미지 생성.
+     *
+     * @param product    소속 상품
+     * @param imageUrl   이미지 URL
+     * @param imageOrder 정렬 순서 (0: 대표 이미지, 1~N: 서브 이미지)
+     * @param isThumbnail 대표 이미지 여부
+     */
+    public ProductImage(Product product, String imageUrl, int imageOrder, boolean isThumbnail) {
+        this.product = product;
+        this.imageUrl = imageUrl;
+        this.imageOrder = imageOrder;
+        this.isThumbnail = isThumbnail;
+        this.createdAt = LocalDateTime.now();
+    }
+
+    public void updateOrder(int imageOrder) {
+        this.imageOrder = imageOrder;
+    }
+
+    public void markAsThumbnail(boolean isThumbnail) {
+        this.isThumbnail = isThumbnail;
+    }
+
     public Long getImageId() { return imageId; }
     public Product getProduct() { return product; }
     public String getImageUrl() { return imageUrl; }

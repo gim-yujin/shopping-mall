@@ -31,6 +31,23 @@ public class Order {
     @Column(name = "discount_amount", nullable = false, precision = 15, scale = 2)
     private BigDecimal discountAmount;
 
+    /**
+     * [P2-11] 등급 할인 금액.
+     * 기존 discount_amount는 등급 할인 + 쿠폰 할인의 합산값이어서
+     * 감사/정산 시 개별 할인 출처를 추적할 수 없었다.
+     * 이 필드는 회원 등급(BRONZE~DIAMOND)에 의한 할인 금액만 기록한다.
+     */
+    @Column(name = "tier_discount_amount", nullable = false, precision = 15, scale = 2)
+    private BigDecimal tierDiscountAmount;
+
+    /**
+     * [P2-11] 쿠폰 할인 금액.
+     * 이 필드는 쿠폰 적용에 의한 할인 금액만 기록한다.
+     * discount_amount = tier_discount_amount + coupon_discount_amount 관계가 성립한다.
+     */
+    @Column(name = "coupon_discount_amount", nullable = false, precision = 15, scale = 2)
+    private BigDecimal couponDiscountAmount;
+
     @Column(name = "shipping_fee", nullable = false, precision = 8, scale = 2)
     private BigDecimal shippingFee;
 
@@ -79,6 +96,7 @@ public class Order {
     protected Order() {}
 
     public Order(String orderNumber, Long userId, BigDecimal totalAmount, BigDecimal discountAmount,
+                 BigDecimal tierDiscountAmount, BigDecimal couponDiscountAmount,
                  BigDecimal shippingFee, BigDecimal finalAmount,
                  BigDecimal pointEarnRateSnapshot, Integer earnedPointsSnapshot,
                  Integer usedPoints,
@@ -89,6 +107,8 @@ public class Order {
         this.orderStatus = OrderStatus.PENDING;
         this.totalAmount = totalAmount;
         this.discountAmount = discountAmount;
+        this.tierDiscountAmount = tierDiscountAmount;
+        this.couponDiscountAmount = couponDiscountAmount;
         this.shippingFee = shippingFee;
         this.finalAmount = finalAmount;
         this.pointEarnRateSnapshot = pointEarnRateSnapshot;
@@ -138,6 +158,8 @@ public class Order {
     public String getOrderStatusCode() { return orderStatus.name(); }
     public BigDecimal getTotalAmount() { return totalAmount; }
     public BigDecimal getDiscountAmount() { return discountAmount; }
+    public BigDecimal getTierDiscountAmount() { return tierDiscountAmount; }
+    public BigDecimal getCouponDiscountAmount() { return couponDiscountAmount; }
     public BigDecimal getShippingFee() { return shippingFee; }
     public BigDecimal getFinalAmount() { return finalAmount; }
     public BigDecimal getPointEarnRateSnapshot() { return pointEarnRateSnapshot; }

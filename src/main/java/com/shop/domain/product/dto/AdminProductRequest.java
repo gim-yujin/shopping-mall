@@ -30,6 +30,13 @@ public class AdminProductRequest {
     @Min(value = 0, message = "재고 수량은 0 이상이어야 합니다.")
     private Integer stockQuantity;
 
+    /**
+     * [P2-9] 상품 이미지 URL 목록.
+     * 첫 번째 URL이 대표 이미지(썸네일)로 사용된다.
+     * 빈 리스트 또는 null이면 이미지가 등록되지 않는다.
+     */
+    private java.util.List<String> imageUrls;
+
     public AdminProductRequest() {}
 
     // Getters & Setters (Spring MVC 폼 바인딩용)
@@ -50,4 +57,7 @@ public class AdminProductRequest {
 
     public Integer getStockQuantity() { return stockQuantity; }
     public void setStockQuantity(Integer stockQuantity) { this.stockQuantity = stockQuantity; }
+
+    public java.util.List<String> getImageUrls() { return imageUrls; }
+    public void setImageUrls(java.util.List<String> imageUrls) { this.imageUrls = imageUrls; }
 }

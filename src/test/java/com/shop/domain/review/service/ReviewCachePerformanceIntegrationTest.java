@@ -137,10 +137,11 @@ class ReviewCachePerformanceIntegrationTest {
                 """
                 INSERT INTO orders (
                     order_number, user_id, order_status, total_amount, discount_amount,
+                    tier_discount_amount, coupon_discount_amount,
                     shipping_fee, final_amount, payment_method, shipping_address,
                     recipient_name, recipient_phone, order_date
                 )
-                VALUES (?, ?, 'DELIVERED', 10000, 0, 0, 10000, 'CARD', '테스트주소', '테스터', '010-0000-0000', CURRENT_TIMESTAMP)
+                VALUES (?, ?, 'DELIVERED', 10000, 0, 0, 0, 0, 10000, 'CARD', '테스트주소', '테스터', '010-0000-0000', CURRENT_TIMESTAMP)
                 RETURNING order_id
                 """,
                 Long.class,

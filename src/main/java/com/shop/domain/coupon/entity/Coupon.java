@@ -19,8 +19,14 @@ public class Coupon {
     @Column(name = "coupon_name", nullable = false, length = 100)
     private String couponName;
 
+    /**
+     * [P2-8] String → Enum 전환.
+     * @Enumerated(EnumType.STRING)이므로 DB에는 기존과 동일하게 'FIXED', 'PERCENT'로 저장된다.
+     * 스키마 변경이나 데이터 마이그레이션이 필요 없다.
+     */
+    @Enumerated(EnumType.STRING)
     @Column(name = "discount_type", nullable = false, length = 20)
-    private String discountType;
+    private DiscountType discountType;
 
     @Column(name = "discount_value", nullable = false, precision = 10, scale = 2)
     private BigDecimal discountValue;
@@ -73,7 +79,7 @@ public class Coupon {
     public BigDecimal calculateDiscount(BigDecimal orderAmount) {
         if (orderAmount.compareTo(minOrderAmount) < 0) return BigDecimal.ZERO;
         BigDecimal discount;
-        if ("PERCENT".equals(discountType)) {
+        if (discountType == DiscountType.PERCENT) {
             discount = orderAmount.multiply(discountValue).divide(BigDecimal.valueOf(100), 0, java.math.RoundingMode.FLOOR);
             if (maxDiscount != null && discount.compareTo(maxDiscount) > 0) {
                 discount = maxDiscount;
@@ -89,7 +95,7 @@ public class Coupon {
     public Integer getCouponId() { return couponId; }
     public String getCouponCode() { return couponCode; }
     public String getCouponName() { return couponName; }
-    public String getDiscountType() { return discountType; }
+    public DiscountType getDiscountType() { return discountType; }
     public BigDecimal getDiscountValue() { return discountValue; }
     public BigDecimal getMinOrderAmount() { return minOrderAmount; }
     public BigDecimal getMaxDiscount() { return maxDiscount; }

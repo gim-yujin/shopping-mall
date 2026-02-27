@@ -177,6 +177,8 @@ CREATE TABLE orders (
     order_status VARCHAR(20) NOT NULL,
     total_amount DECIMAL(15, 2) NOT NULL,
     discount_amount DECIMAL(15, 2) DEFAULT 0 NOT NULL,
+    tier_discount_amount DECIMAL(15, 2) DEFAULT 0 NOT NULL,
+    coupon_discount_amount DECIMAL(15, 2) DEFAULT 0 NOT NULL,
     shipping_fee DECIMAL(8, 2) DEFAULT 0 NOT NULL,
     final_amount DECIMAL(15, 2) NOT NULL,
     point_earn_rate_snapshot DECIMAL(5, 2) DEFAULT 0 NOT NULL,

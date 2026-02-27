@@ -3,6 +3,7 @@ package com.shop.domain.product.service;
 import com.shop.domain.category.service.CategoryService;
 import com.shop.domain.product.entity.Product;
 import com.shop.domain.product.repository.ProductRepository;
+import com.shop.domain.product.repository.ProductImageRepository;
 import com.shop.global.exception.ResourceNotFoundException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -32,6 +33,9 @@ class ProductServiceUnitTest {
     private ProductRepository productRepository;
 
     @Mock
+    private ProductImageRepository productImageRepository;
+
+    @Mock
     private ViewCountService viewCountService;
 
     @Mock
@@ -41,7 +45,7 @@ class ProductServiceUnitTest {
 
     @BeforeEach
     void setUp() {
-        productService = new ProductService(productRepository, viewCountService, categoryService);
+        productService = new ProductService(productRepository, productImageRepository, viewCountService, categoryService);
     }
 
     @Test

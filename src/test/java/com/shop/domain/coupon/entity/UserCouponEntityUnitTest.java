@@ -3,6 +3,7 @@ package com.shop.domain.coupon.entity;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import com.shop.domain.coupon.entity.DiscountType;
 import java.lang.reflect.Field;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -16,7 +17,7 @@ class UserCouponEntityUnitTest {
 
     private Coupon createValidCoupon() throws Exception {
         Coupon coupon = Coupon.class.getDeclaredConstructor().newInstance();
-        setField(coupon, "discountType", "FIXED");
+        setField(coupon, "discountType", DiscountType.FIXED);
         setField(coupon, "discountValue", BigDecimal.valueOf(1000));
         setField(coupon, "minOrderAmount", BigDecimal.ZERO);
         setField(coupon, "totalQuantity", 100);
@@ -29,7 +30,7 @@ class UserCouponEntityUnitTest {
 
     private Coupon createInvalidCoupon() throws Exception {
         Coupon coupon = Coupon.class.getDeclaredConstructor().newInstance();
-        setField(coupon, "discountType", "FIXED");
+        setField(coupon, "discountType", DiscountType.FIXED);
         setField(coupon, "discountValue", BigDecimal.valueOf(1000));
         setField(coupon, "minOrderAmount", BigDecimal.ZERO);
         setField(coupon, "totalQuantity", 100);

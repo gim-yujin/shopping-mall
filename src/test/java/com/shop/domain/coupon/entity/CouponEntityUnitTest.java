@@ -22,7 +22,7 @@ class CouponEntityUnitTest {
                                 Integer totalQuantity, int usedQuantity,
                                 boolean isActive, LocalDateTime validFrom, LocalDateTime validUntil) throws Exception {
         Coupon coupon = Coupon.class.getDeclaredConstructor().newInstance();
-        setField(coupon, "discountType", discountType);
+        setField(coupon, "discountType", DiscountType.valueOf(discountType));
         setField(coupon, "discountValue", discountValue);
         setField(coupon, "minOrderAmount", minOrderAmount);
         setField(coupon, "maxDiscount", maxDiscount);

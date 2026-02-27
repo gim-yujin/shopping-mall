@@ -131,7 +131,8 @@ public class OrderController {
 
         for (UserCoupon userCoupon : availableCoupons) {
             Coupon coupon = userCoupon.getCoupon();
-            String discountText = "PERCENT".equals(coupon.getDiscountType())
+            // [P2-8] DiscountType enum으로 타입 안전 비교
+            String discountText = coupon.getDiscountType() == com.shop.domain.coupon.entity.DiscountType.PERCENT
                     ? coupon.getDiscountValue().stripTrailingZeros().toPlainString() + "%"
                     : numberFormat.format(coupon.getDiscountValue()) + "원";
 

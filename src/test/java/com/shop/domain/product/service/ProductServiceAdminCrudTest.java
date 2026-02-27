@@ -5,6 +5,7 @@ import com.shop.domain.category.service.CategoryService;
 import com.shop.domain.product.dto.AdminProductRequest;
 import com.shop.domain.product.entity.Product;
 import com.shop.domain.product.repository.ProductRepository;
+import com.shop.domain.product.repository.ProductImageRepository;
 import com.shop.global.exception.ResourceNotFoundException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -26,6 +27,7 @@ import static org.mockito.Mockito.*;
 class ProductServiceAdminCrudTest {
 
     @Mock private ProductRepository productRepository;
+    @Mock private ProductImageRepository productImageRepository;
     @Mock private ViewCountService viewCountService;
     @Mock private CategoryService categoryService;
 
@@ -33,7 +35,7 @@ class ProductServiceAdminCrudTest {
 
     @BeforeEach
     void setUp() {
-        productService = new ProductService(productRepository, viewCountService, categoryService);
+        productService = new ProductService(productRepository, productImageRepository, viewCountService, categoryService);
     }
 
     private AdminProductRequest buildRequest() {

@@ -4,6 +4,8 @@ import com.shop.domain.category.entity.Category;
 import com.shop.domain.category.service.CategoryService;
 import com.shop.domain.product.dto.AdminProductRequest;
 import com.shop.domain.product.entity.Product;
+import com.shop.domain.product.entity.ProductImage;
+import com.shop.domain.product.repository.ProductImageRepository;
 import com.shop.domain.product.repository.ProductRepository;
 import com.shop.global.cache.CacheKeyGenerator;
 import com.shop.global.common.PagingParams;
@@ -25,12 +27,16 @@ import java.util.List;
 public class ProductService {
 
     private final ProductRepository productRepository;
+    private final ProductImageRepository productImageRepository;
     private final ViewCountService viewCountService;
     private final CategoryService categoryService;
 
-    public ProductService(ProductRepository productRepository, ViewCountService viewCountService,
+    public ProductService(ProductRepository productRepository,
+                          ProductImageRepository productImageRepository,
+                          ViewCountService viewCountService,
                           CategoryService categoryService) {
         this.productRepository = productRepository;
+        this.productImageRepository = productImageRepository;
         this.viewCountService = viewCountService;
         this.categoryService = categoryService;
     }
@@ -173,7 +179,12 @@ public class ProductService {
                 request.getOriginalPrice(),
                 request.getStockQuantity()
         );
-        return productRepository.save(product);
+        Product savedProduct = productRepository.save(product);
+
+        // [P2-9] 이미지 URL 목록이 있으면 ProductImage 엔티티로 저장
+        saveProductImages(savedProduct, request.getImageUrls());
+
+        return savedProduct;
     }
 
     @Transactional
@@ -198,6 +209,15 @@ public class ProductService {
                 request.getOriginalPrice(),
                 request.getStockQuantity()
         );
+
+        // [P2-9] 이미지 전량 교체 전략: 기존 이미지를 모두 삭제 후 새 목록으로 재생성.
+        // 부분 수정(개별 추가/삭제/순서 변경)보다 구현이 단순하며,
+        // 상품당 이미지 수가 적어(평균 3장) 성능 영향이 미미하다.
+        if (request.getImageUrls() != null) {
+            productImageRepository.deleteByProduct_ProductId(productId);
+            saveProductImages(product, request.getImageUrls());
+        }
+
         return product;
     }
 
@@ -215,5 +235,34 @@ public class ProductService {
         Product product = productRepository.findById(productId)
                 .orElseThrow(() -> new ResourceNotFoundException("상품", productId));
         product.toggleActive();
+    }
+
+    /**
+     * [P2-9] 이미지 URL 목록에서 ProductImage 엔티티를 생성하여 저장한다.
+     * 첫 번째 이미지를 썸네일로 지정하고, 나머지는 순서대로 imageOrder를 부여한다.
+     *
+     * @param product   이미지를 연결할 상품
+     * @param imageUrls 이미지 URL 목록 (null 또는 빈 리스트면 무시)
+     */
+    private void saveProductImages(Product product, java.util.List<String> imageUrls) {
+        if (imageUrls == null || imageUrls.isEmpty()) {
+            return;
+        }
+        for (int i = 0; i < imageUrls.size(); i++) {
+            String url = imageUrls.get(i);
+            if (url == null || url.isBlank()) continue;
+            boolean isThumbnail = (i == 0);
+            productImageRepository.save(new ProductImage(product, url.trim(), i, isThumbnail));
+        }
+    }
+
+    /**
+     * [P2-9] 상품의 이미지 목록을 조회한다.
+     *
+     * @param productId 상품 ID
+     * @return 정렬된 이미지 목록
+     */
+    public java.util.List<ProductImage> getProductImages(Long productId) {
+        return productImageRepository.findByProduct_ProductIdOrderByImageOrderAsc(productId);
     }
 }

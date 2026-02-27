@@ -195,7 +195,9 @@ public class OrderCreationService {
         int earnedPointsSnapshot = finalAmount.multiply(pointRateSnapshot)
                 .divide(BigDecimal.valueOf(100), 0, java.math.RoundingMode.FLOOR).intValue();
 
+        // [P2-11] 등급 할인과 쿠폰 할인을 분리하여 저장
         Order order = new Order(orderNumber, userId, totalAmount, totalDiscount,
+                tierDiscountTotal, couponDiscount,
                 shippingFee, finalAmount, pointRateSnapshot, earnedPointsSnapshot,
                 usePoints,
                 paymentMethod.getCode(), request.shippingAddress(),
