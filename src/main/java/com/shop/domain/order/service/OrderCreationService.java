@@ -21,8 +21,7 @@ import com.shop.global.exception.BusinessException;
 import com.shop.global.exception.InsufficientStockException;
 import com.shop.global.exception.ResourceNotFoundException;
 import jakarta.persistence.EntityManager;
-import org.springframework.cache.Cache;
-import org.springframework.cache.CacheManager;
+import com.shop.domain.product.service.ProductCacheEvictHelper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -51,7 +50,8 @@ public class OrderCreationService {
     private final UserCouponRepository userCouponRepository;
     private final UserTierRepository userTierRepository;
     private final EntityManager entityManager;
-    private final CacheManager cacheManager;
+    // [P1-7] 캐시 무효화 로직을 공유 헬퍼로 위임 (기존 CacheManager 직접 사용에서 전환)
+    private final ProductCacheEvictHelper productCacheEvictHelper;
     private final ShippingFeeCalculator shippingFeeCalculator;
 
     public OrderCreationService(OrderRepository orderRepository, CartRepository cartRepository,
@@ -60,7 +60,7 @@ public class OrderCreationService {
                                 UserCouponRepository userCouponRepository,
                                 UserTierRepository userTierRepository,
                                 EntityManager entityManager,
-                                CacheManager cacheManager,
+                                ProductCacheEvictHelper productCacheEvictHelper,
                                 ShippingFeeCalculator shippingFeeCalculator) {
         this.orderRepository = orderRepository;
         this.cartRepository = cartRepository;
@@ -70,7 +70,7 @@ public class OrderCreationService {
         this.userCouponRepository = userCouponRepository;
         this.userTierRepository = userTierRepository;
         this.entityManager = entityManager;
-        this.cacheManager = cacheManager;
+        this.productCacheEvictHelper = productCacheEvictHelper;
         this.shippingFeeCalculator = shippingFeeCalculator;
     }
 
@@ -245,19 +245,10 @@ public class OrderCreationService {
         cartRepository.deleteByUserId(userId);
 
         // 8) 재고가 변경된 상품의 상세 캐시 무효화
-        evictProductDetailCaches(orderLines.stream().map(OrderLine::productId).toList());
+        // [P1-7] 공유 헬퍼로 위임 (기존 private 중복 메서드 제거)
+        productCacheEvictHelper.evictProductDetailCaches(orderLines.stream().map(OrderLine::productId).toList());
 
         return savedOrder;
-    }
-
-    private void evictProductDetailCaches(List<Long> productIds) {
-        Cache cache = cacheManager.getCache("productDetail");
-        if (cache == null) {
-            return;
-        }
-        for (Long productId : productIds) {
-            cache.evict(productId);
-        }
     }
 
     private String generateOrderNumber() {

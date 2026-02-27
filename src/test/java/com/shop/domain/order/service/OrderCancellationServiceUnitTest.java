@@ -18,7 +18,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.cache.CacheManager;
+import com.shop.domain.product.service.ProductCacheEvictHelper;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -44,7 +44,7 @@ class OrderCancellationServiceUnitTest {
     @Mock private UserCouponRepository userCouponRepository;
     @Mock private UserTierRepository userTierRepository;
     @Mock private EntityManager entityManager;
-    @Mock private CacheManager cacheManager;
+    @Mock private ProductCacheEvictHelper productCacheEvictHelper;
 
     private OrderCancellationService cancellationService;
 
@@ -53,7 +53,7 @@ class OrderCancellationServiceUnitTest {
         cancellationService = new OrderCancellationService(
                 orderRepository, productRepository, userRepository,
                 inventoryHistoryRepository, userCouponRepository,
-                userTierRepository, entityManager, cacheManager);
+                userTierRepository, entityManager, productCacheEvictHelper);
     }
 
     @Test

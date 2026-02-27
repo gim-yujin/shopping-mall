@@ -15,8 +15,7 @@ import com.shop.domain.user.repository.UserTierRepository;
 import com.shop.global.exception.BusinessException;
 import com.shop.global.exception.ResourceNotFoundException;
 import jakarta.persistence.EntityManager;
-import org.springframework.cache.Cache;
-import org.springframework.cache.CacheManager;
+import com.shop.domain.product.service.ProductCacheEvictHelper;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -39,7 +38,8 @@ public class OrderCancellationService {
     private final UserCouponRepository userCouponRepository;
     private final UserTierRepository userTierRepository;
     private final EntityManager entityManager;
-    private final CacheManager cacheManager;
+    // [P1-7] 캐시 무효화 로직을 공유 헬퍼로 위임 (기존 CacheManager 직접 사용에서 전환)
+    private final ProductCacheEvictHelper productCacheEvictHelper;
 
     public OrderCancellationService(OrderRepository orderRepository,
                                      ProductRepository productRepository,
@@ -48,7 +48,7 @@ public class OrderCancellationService {
                                      UserCouponRepository userCouponRepository,
                                      UserTierRepository userTierRepository,
                                      EntityManager entityManager,
-                                     CacheManager cacheManager) {
+                                     ProductCacheEvictHelper productCacheEvictHelper) {
         this.orderRepository = orderRepository;
         this.productRepository = productRepository;
         this.userRepository = userRepository;
@@ -56,7 +56,7 @@ public class OrderCancellationService {
         this.userCouponRepository = userCouponRepository;
         this.userTierRepository = userTierRepository;
         this.entityManager = entityManager;
-        this.cacheManager = cacheManager;
+        this.productCacheEvictHelper = productCacheEvictHelper;
     }
 
     /**
@@ -131,16 +131,7 @@ public class OrderCancellationService {
         order.cancel();
 
         // 4) 재고가 변경된 상품의 상세 캐시 무효화
-        evictProductDetailCaches(sortedItems.stream().map(OrderItem::getProductId).toList());
-    }
-
-    private void evictProductDetailCaches(List<Long> productIds) {
-        Cache cache = cacheManager.getCache("productDetail");
-        if (cache == null) {
-            return;
-        }
-        for (Long productId : productIds) {
-            cache.evict(productId);
-        }
+        // [P1-7] 공유 헬퍼로 위임 (기존 private 중복 메서드 제거)
+        productCacheEvictHelper.evictProductDetailCaches(sortedItems.stream().map(OrderItem::getProductId).toList());
     }
 }
