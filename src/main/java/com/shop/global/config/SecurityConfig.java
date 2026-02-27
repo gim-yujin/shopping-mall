@@ -19,10 +19,14 @@ import org.springframework.security.web.authentication.LoginUrlAuthenticationEnt
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
+import org.springframework.security.web.util.matcher.AntPathRequestMatcher;
 
 @Configuration
 @EnableWebSecurity
 public class SecurityConfig {
+
+    private static final AntPathRequestMatcher API_REQUEST_MATCHER =
+            new AntPathRequestMatcher("/api/**");
 
     private final CustomUserDetailsService userDetailsService;
     private final LoginAuthenticationFailureHandler loginAuthenticationFailureHandler;
@@ -68,7 +72,8 @@ public class SecurityConfig {
                 .requestMatchers("/", "/products/**", "/categories/**", "/search/**",
                     "/auth/**", "/static/**", "/css/**", "/images/**", "/error/**").permitAll()
                 // [P1-6] REST API 공개 경로: 상품 목록/상세, 상품별 리뷰 조회
-                .requestMatchers("/api/v1/products", "/api/v1/products/**").permitAll()
+                .requestMatchers(new AntPathRequestMatcher("/api/v1/products"),
+                        new AntPathRequestMatcher("/api/v1/products/**")).permitAll()
                 .requestMatchers("/actuator/health").permitAll()  // 로드밸런서 헬스체크용
                 .requestMatchers("/actuator/**").hasRole("ADMIN") // 나머지 Actuator는 관리자만
                 .requestMatchers("/admin/**").hasRole("ADMIN")
@@ -97,7 +102,7 @@ public class SecurityConfig {
                 // REST 클라이언트(모바일 앱, SPA 등)는 쿠키 기반 CSRF 토큰을 사용하지 않으며,
                 // 향후 JWT 등 stateless 인증으로 전환 시 CSRF 자체가 불필요하다.
                 // SSR 경로의 CSRF 보호는 기존과 동일하게 유지된다.
-                .ignoringRequestMatchers("/api/**")
+                .ignoringRequestMatchers(API_REQUEST_MATCHER)
             )
             .rememberMe(remember -> remember
                 .key("shopping-mall-remember-key")
@@ -114,7 +119,7 @@ public class SecurityConfig {
                             response.getWriter().write(
                                     "{\"success\":false,\"error\":{\"code\":\"UNAUTHORIZED\",\"message\":\"인증이 필요합니다.\"}}");
                         },
-                        request -> request.getRequestURI() != null && request.getRequestURI().startsWith("/api/")
+                        API_REQUEST_MATCHER
                 )
                 .authenticationEntryPoint(new LoginUrlAuthenticationEntryPoint("/auth/login"))
             )
