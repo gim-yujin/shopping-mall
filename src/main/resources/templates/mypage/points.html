@@ -40,7 +40,14 @@
                         </td>
                         <td class="px-4 py-3 text-right text-gray-800"
                             th:text="${#numbers.formatInteger(history.balanceAfter, 1, 'COMMA')}">10,000</td>
-                        <td class="px-4 py-3 text-gray-600" th:text="${history.description}">주문 적립</td>
+                        <td class="px-4 py-3 text-gray-600">
+                            <p th:text="${history.description}">주문 적립</p>
+                            <a th:if="${history.referenceId != null and (history.referenceType == 'ORDER' or history.referenceType == 'CANCEL')}"
+                               th:href="@{/orders/{orderId}(orderId=${history.referenceId})}"
+                               class="inline-block mt-1 text-xs font-medium text-blue-600 hover:text-blue-700 hover:underline">
+                                관련 주문 보기
+                            </a>
+                        </td>
                     </tr>
                     </tbody>
                 </table>
