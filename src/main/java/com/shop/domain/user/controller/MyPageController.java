@@ -2,6 +2,7 @@ package com.shop.domain.user.controller;
 
 import com.shop.domain.coupon.service.CouponService;
 import com.shop.domain.order.service.OrderService;
+import com.shop.domain.point.service.PointQueryService;
 import com.shop.domain.review.service.ReviewService;
 import com.shop.domain.user.dto.PasswordChangeRequest;
 import com.shop.domain.user.dto.ProfileUpdateRequest;
@@ -29,15 +30,18 @@ public class MyPageController {
     private final OrderService orderService;
     private final ReviewService reviewService;
     private final CouponService couponService;
+    private final PointQueryService pointQueryService;
     private final DuplicateConstraintMessageResolver duplicateConstraintMessageResolver;
 
     public MyPageController(UserService userService, OrderService orderService,
                             ReviewService reviewService, CouponService couponService,
+                            PointQueryService pointQueryService,
                             DuplicateConstraintMessageResolver duplicateConstraintMessageResolver) {
         this.userService = userService;
         this.orderService = orderService;
         this.reviewService = reviewService;
         this.couponService = couponService;
+        this.pointQueryService = pointQueryService;
         this.duplicateConstraintMessageResolver = duplicateConstraintMessageResolver;
     }
 
@@ -116,6 +120,15 @@ public class MyPageController {
         int normalizedPage = PagingParams.normalizePage(page);
         model.addAttribute("reviews", reviewService.getUserReviews(userId, PageRequest.of(normalizedPage, PageDefaults.DEFAULT_LIST_SIZE)));
         return "mypage/reviews";
+    }
+
+    @GetMapping("/points")
+    public String myPoints(@RequestParam(defaultValue = "0") int page, Model model) {
+        Long userId = SecurityUtil.getCurrentUserId().orElseThrow();
+        int normalizedPage = PagingParams.normalizePage(page);
+        model.addAttribute("pointHistories", pointQueryService.getPointHistoriesByUser(userId,
+                PageRequest.of(normalizedPage, PageDefaults.DEFAULT_LIST_SIZE)));
+        return "mypage/points";
     }
 
     private void populateProfilePageModel(Model model, User user) {

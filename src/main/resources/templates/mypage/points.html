@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org"
+      xmlns:layout="http://www.ultraq.net.nz/thymeleaf/layout"
+      layout:decorate="~{layout/default}">
+<head><title>포인트 내역</title></head>
+<body>
+<div layout:fragment="content">
+    <div class="max-w-4xl mx-auto">
+        <div class="flex items-center gap-2 mb-6">
+            <a th:href="@{/mypage}" class="text-gray-400 hover:text-gray-600">마이페이지</a>
+            <span class="text-gray-300">/</span>
+            <h1 class="text-2xl font-bold">포인트 내역</h1>
+        </div>
+
+        <div th:if="${pointHistories.isEmpty()}" class="text-center py-20">
+            <p class="text-gray-500">포인트 변동 내역이 없습니다.</p>
+        </div>
+
+        <div th:unless="${pointHistories.isEmpty()}" class="bg-white rounded-lg shadow overflow-hidden">
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead class="bg-gray-50 border-b">
+                    <tr>
+                        <th class="px-4 py-3 text-left font-medium text-gray-600">일시</th>
+                        <th class="px-4 py-3 text-left font-medium text-gray-600">유형</th>
+                        <th class="px-4 py-3 text-right font-medium text-gray-600">증감 금액</th>
+                        <th class="px-4 py-3 text-right font-medium text-gray-600">변동 후 잔액</th>
+                        <th class="px-4 py-3 text-left font-medium text-gray-600">설명</th>
+                    </tr>
+                    </thead>
+                    <tbody class="divide-y">
+                    <tr th:each="history : ${pointHistories.content}">
+                        <td class="px-4 py-3 text-gray-600" th:text="${#temporals.format(history.createdAt, 'yyyy.MM.dd HH:mm')}">2026.01.01 12:00</td>
+                        <td class="px-4 py-3" th:text="${history.changeType}">EARN</td>
+                        <td class="px-4 py-3 text-right font-semibold"
+                            th:classappend="${history.changeType == 'EARN' or history.changeType == 'REFUND'} ? 'text-green-600' : (${history.changeType == 'USE' or history.changeType == 'EXPIRE'} ? 'text-red-600' : 'text-gray-700')"
+                            th:text="${(history.changeType == 'EARN' or history.changeType == 'REFUND') ? '+' : ((history.changeType == 'USE' or history.changeType == 'EXPIRE') ? '-' : '')} + #numbers.formatInteger(history.amount, 1, 'COMMA')">
+                            +1,000
+                        </td>
+                        <td class="px-4 py-3 text-right text-gray-800"
+                            th:text="${#numbers.formatInteger(history.balanceAfter, 1, 'COMMA')}">10,000</td>
+                        <td class="px-4 py-3 text-gray-600" th:text="${history.description}">주문 적립</td>
+                    </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <nav th:if="${pointHistories.totalPages > 1}" class="flex justify-center my-6">
+                <th:block th:with="baseUrl=@{/mypage/points}, separator=${baseUrl.contains('?') ? '&amp;' : '?'}">
+                    <div class="flex items-center gap-1">
+                        <a th:if="${pointHistories.hasPrevious()}" th:href="${baseUrl + separator + 'page=' + (pointHistories.number - 1)}"
+                           class="px-3 py-2 text-sm border rounded hover:bg-gray-50">&laquo; 이전</a>
+
+                        <th:block th:with="start=${T(java.lang.Math).max(0, pointHistories.number - 2)},
+                                           end=${T(java.lang.Math).min(pointHistories.totalPages - 1, pointHistories.number + 2)}">
+                            <th:block th:each="i : ${#numbers.sequence(start, end)}">
+                                <a th:href="${baseUrl + separator + 'page=' + i}"
+                                   th:text="${i + 1}"
+                                   th:classappend="${i == pointHistories.number} ? 'bg-blue-600 text-white border-blue-600' : 'hover:bg-gray-50'"
+                                   class="px-3 py-2 text-sm border rounded"></a>
+                            </th:block>
+                        </th:block>
+
+                        <a th:if="${pointHistories.hasNext()}" th:href="${baseUrl + separator + 'page=' + (pointHistories.number + 1)}"
+                           class="px-3 py-2 text-sm border rounded hover:bg-gray-50">다음 &raquo;</a>
+                    </div>
+                </th:block>
+            </nav>
+        </div>
+    </div>
+</div>
+</body>
+</html>
