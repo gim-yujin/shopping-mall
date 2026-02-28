@@ -70,6 +70,11 @@
                         <span th:text="${order.pointsSettled ? '적립 완료' : '적립 예정'}">적립 상태</span>
                         <span th:text="'+' + ${#numbers.formatDecimal(order.earnedPointsSnapshot,0,'COMMA',0,'POINT')} + 'P'">0P</span>
                     </div>
+                    <p th:if="${order.earnedPointsSnapshot > 0}"
+                       class="text-[11px] text-gray-400 mt-1"
+                       title="적립 포인트는 배송완료 처리 시점에 정산됩니다.">
+                        ※ 적립 포인트는 배송완료 시 정산됩니다.
+                    </p>
                 </div>
             </div>
         </div>
