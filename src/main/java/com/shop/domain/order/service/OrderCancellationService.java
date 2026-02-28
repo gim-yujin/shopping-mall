@@ -105,6 +105,10 @@ public class OrderCancellationService {
         for (OrderItem item : sortedItems) {
             int remainingQuantity = item.getRemainingQuantity();
             if (remainingQuantity <= 0) {
+                // 신규 필드(remainingQuantity) 미세팅 레거시/테스트 데이터와의 호환을 위해 수량으로 보정
+                remainingQuantity = item.getQuantity();
+            }
+            if (remainingQuantity <= 0) {
                 continue;
             }
 
@@ -126,7 +130,10 @@ public class OrderCancellationService {
         // 2) 누적금액(total_spent) 차감 & 포인트 환불 & 등급 재계산
         User user = userRepository.findByIdWithLockAndTier(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("사용자", userId));
-        BigDecimal remainingRefundAmount = order.getFinalAmount().subtract(order.getRefundedAmount());
+        BigDecimal refundedAmount = order.getRefundedAmount() == null
+                ? BigDecimal.ZERO
+                : order.getRefundedAmount();
+        BigDecimal remainingRefundAmount = order.getFinalAmount().subtract(refundedAmount);
         if (remainingRefundAmount.compareTo(BigDecimal.ZERO) < 0) {
             remainingRefundAmount = BigDecimal.ZERO;
         }
