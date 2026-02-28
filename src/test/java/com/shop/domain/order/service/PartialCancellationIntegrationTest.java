@@ -653,6 +653,139 @@ class PartialCancellationIntegrationTest {
                 .hasMessageContaining("배송완료 상태에서만 가능");
     }
 
+    // ====================================================================
+    // 반품 기간 제한 (P2-9)
+    // ====================================================================
+
+    /**
+     * [P2-9 검증] 배송 완료 후 14일 이내 반품이 정상 처리되는지 확인한다.
+     *
+     * <p>DELIVERED 상태로 전이 후 delivered_at을 13일 전으로 변경하여
+     * 기한 내 반품이 정상적으로 처리되는지 검증한다.</p>
+     */
+    @Test
+    @DisplayName("[P2-9] 반품 기간 내(13일 경과) 반품 성공")
+    void requestReturn_withinPeriod_succeeds() {
+        // Given: 주문 생성 → DELIVERED 전이
+        addCartItem(testUserId, testProductIdA, 2);
+        Order order = orderService.createOrder(testUserId, defaultRequest());
+        createdOrderIds.add(order.getOrderId());
+        Long orderItemIdA = findOrderItemId(order.getOrderId(), testProductIdA);
+
+        orderService.updateOrderStatus(order.getOrderId(), "SHIPPED");
+        orderService.updateOrderStatus(order.getOrderId(), "DELIVERED");
+
+        // delivered_at을 13일 전으로 조정 (기한 1일 전)
+        jdbcTemplate.update(
+                "UPDATE orders SET delivered_at = ? WHERE order_id = ?",
+                LocalDateTime.now().minusDays(13), order.getOrderId());
+
+        int stockBefore = jdbcTemplate.queryForObject(
+                "SELECT stock_quantity FROM products WHERE product_id = ?",
+                Integer.class, testProductIdA);
+
+        // When & Then: 기간 내이므로 정상 처리
+        assertThatCode(() ->
+                orderService.requestReturn(order.getOrderId(), testUserId, orderItemIdA, 1))
+                .doesNotThrowAnyException();
+
+        // 재고 복구 확인
+        int stockAfter = jdbcTemplate.queryForObject(
+                "SELECT stock_quantity FROM products WHERE product_id = ?",
+                Integer.class, testProductIdA);
+        assertThat(stockAfter).isEqualTo(stockBefore + 1);
+
+        System.out.println("  [PASS] 반품 기간 내(13일 경과): 재고 " + stockBefore + " → " + stockAfter);
+    }
+
+    /**
+     * [P2-9 검증] 배송 완료 후 14일 초과 시 반품이 거부되는지 확인한다.
+     *
+     * <p>delivered_at을 15일 전으로 변경하여 RETURN_PERIOD_EXPIRED 예외가
+     * 발생하고, 재고/환불 등 부수 효과가 전혀 없는지 검증한다.</p>
+     */
+    @Test
+    @DisplayName("[P2-9] 반품 기간 초과(15일 경과) → RETURN_PERIOD_EXPIRED")
+    void requestReturn_afterPeriod_throwsException() {
+        // Given: 주문 생성 → DELIVERED 전이
+        addCartItem(testUserId, testProductIdA, 2);
+        Order order = orderService.createOrder(testUserId, defaultRequest());
+        createdOrderIds.add(order.getOrderId());
+        Long orderItemIdA = findOrderItemId(order.getOrderId(), testProductIdA);
+
+        orderService.updateOrderStatus(order.getOrderId(), "SHIPPED");
+        orderService.updateOrderStatus(order.getOrderId(), "DELIVERED");
+
+        // delivered_at을 15일 전으로 조정 (기한 1일 초과)
+        jdbcTemplate.update(
+                "UPDATE orders SET delivered_at = ? WHERE order_id = ?",
+                LocalDateTime.now().minusDays(15), order.getOrderId());
+
+        int stockBefore = jdbcTemplate.queryForObject(
+                "SELECT stock_quantity FROM products WHERE product_id = ?",
+                Integer.class, testProductIdA);
+        BigDecimal refundedBefore = jdbcTemplate.queryForObject(
+                "SELECT refunded_amount FROM orders WHERE order_id = ?",
+                BigDecimal.class, order.getOrderId());
+
+        // When & Then: 기간 초과 → RETURN_PERIOD_EXPIRED
+        assertThatThrownBy(() ->
+                orderService.requestReturn(order.getOrderId(), testUserId, orderItemIdA, 1))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("반품 가능 기간이 지났습니다");
+
+        // 부수 효과 없음 확인: 재고 변화 없음
+        int stockAfter = jdbcTemplate.queryForObject(
+                "SELECT stock_quantity FROM products WHERE product_id = ?",
+                Integer.class, testProductIdA);
+        assertThat(stockAfter).isEqualTo(stockBefore);
+
+        // 부수 효과 없음 확인: 환불 금액 변화 없음
+        BigDecimal refundedAfter = jdbcTemplate.queryForObject(
+                "SELECT refunded_amount FROM orders WHERE order_id = ?",
+                BigDecimal.class, order.getOrderId());
+        assertThat(refundedAfter).isEqualByComparingTo(refundedBefore);
+
+        System.out.println("  [PASS] 반품 기간 초과(15일): 거부됨, 재고/환불 변화 없음");
+    }
+
+    /**
+     * [P2-9 경계값 검증] 배송 완료 후 정확히 14일째에 반품이 허용되는지 확인한다.
+     *
+     * <p>delivered_at을 14일 전 + 1시간으로 설정하여 마감일 당일에
+     * 반품이 가능한지 경계값을 검증한다.</p>
+     */
+    @Test
+    @DisplayName("[P2-9] 반품 마감일 당일(14일째) 반품 성공 — 경계값")
+    void requestReturn_onDeadlineDay_succeeds() {
+        // Given
+        addCartItem(testUserId, testProductIdA, 2);
+        Order order = orderService.createOrder(testUserId, defaultRequest());
+        createdOrderIds.add(order.getOrderId());
+        Long orderItemIdA = findOrderItemId(order.getOrderId(), testProductIdA);
+
+        orderService.updateOrderStatus(order.getOrderId(), "SHIPPED");
+        orderService.updateOrderStatus(order.getOrderId(), "DELIVERED");
+
+        // 정확히 14일 전 + 1시간 (마감 시점 직전)
+        jdbcTemplate.update(
+                "UPDATE orders SET delivered_at = ? WHERE order_id = ?",
+                LocalDateTime.now().minusDays(14).plusHours(1), order.getOrderId());
+
+        // When & Then: 마감일 당일이므로 아직 허용
+        assertThatCode(() ->
+                orderService.requestReturn(order.getOrderId(), testUserId, orderItemIdA, 1))
+                .doesNotThrowAnyException();
+
+        // returnedQuantity 기록 확인
+        Integer returnedQty = jdbcTemplate.queryForObject(
+                "SELECT returned_quantity FROM order_items WHERE order_item_id = ?",
+                Integer.class, orderItemIdA);
+        assertThat(returnedQty).isEqualTo(1);
+
+        System.out.println("  [PASS] 반품 마감일 당일: 정상 처리됨");
+    }
+
     /**
      * DELIVERED 상태에서 전체 아이템을 반품해도 주문 상태는 DELIVERED로 유지되는지 확인한다.
      *

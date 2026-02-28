@@ -25,6 +25,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDateTime;
 import java.util.List;
 
 /**
@@ -70,6 +71,16 @@ import java.util.List;
 public class PartialCancellationService {
 
     private static final Logger log = LoggerFactory.getLogger(PartialCancellationService.class);
+
+    /**
+     * 반품 허용 기간 (배송 완료 후 일수).
+     *
+     * <p>[P2-9 반품 기간 제한] 실제 커머스에서는 배송 완료 후 7~14일 이내로
+     * 반품 기간을 제한한다. 무기한 반품 허용은 운영 리스크를 초래하므로
+     * 14일로 제한한다. 향후 정책 변경 시 이 상수만 수정하거나
+     * application.yml로 외부화할 수 있다.</p>
+     */
+    static final int RETURN_PERIOD_DAYS = 14;
 
     private final OrderRepository orderRepository;
     private final ProductRepository productRepository;
@@ -132,6 +143,10 @@ public class PartialCancellationService {
 
     /**
      * 반품 신청: DELIVERED 상태의 주문에서 특정 아이템의 일부 수량을 반품한다.
+     *
+     * <p>[P2-9 반품 기간 제한] 배송 완료일(deliveredAt)로부터 {@value RETURN_PERIOD_DAYS}일
+     * 이내에만 반품을 허용한다. 이 기간이 지나면 RETURN_PERIOD_EXPIRED 예외를 발생시킨다.
+     * deliveredAt이 null인 경우(데이터 정합성 문제)에도 안전하게 거부한다.</p>
      */
     @Transactional
     public void requestReturn(Long userId, Long orderId, Long orderItemId, int quantity) {
@@ -142,6 +157,9 @@ public class PartialCancellationService {
             throw new BusinessException("RETURN_NOT_ALLOWED",
                     "반품은 배송완료 상태에서만 가능합니다.");
         }
+
+        // [P2-9] 반품 기간 제한: 배송 완료 후 RETURN_PERIOD_DAYS일 이내만 허용
+        validateReturnPeriod(order);
 
         OrderItem item = findItemInOrder(order, orderItemId);
         validateQuantity(item, quantity);
@@ -328,6 +346,32 @@ public class PartialCancellationService {
         if (quantity <= 0 || quantity > remaining) {
             throw new BusinessException("INVALID_PARTIAL_QUANTITY",
                     "부분 취소/반품 수량이 유효하지 않습니다. (잔여: " + remaining + "개, 요청: " + quantity + "개)");
+        }
+    }
+
+    /**
+     * [P2-9] 배송 완료일로부터 반품 허용 기간이 경과했는지 검증한다.
+     *
+     * <p>배송 완료일(deliveredAt)이 null인 경우는 데이터 정합성 문제이므로
+     * 반품을 거부한다. 정상적인 주문 플로우에서는 DELIVERED 상태 전이 시
+     * deliveredAt이 반드시 설정되지만, 직접 DB 수정 등으로 누락될 수 있다.</p>
+     *
+     * @throws BusinessException RETURN_PERIOD_EXPIRED — 반품 기간 초과
+     * @throws BusinessException RETURN_NOT_ALLOWED — deliveredAt 누락 (데이터 정합성 오류)
+     */
+    private void validateReturnPeriod(Order order) {
+        LocalDateTime deliveredAt = order.getDeliveredAt();
+        if (deliveredAt == null) {
+            log.error("DELIVERED 상태이지만 deliveredAt이 null입니다. orderId={}", order.getOrderId());
+            throw new BusinessException("RETURN_NOT_ALLOWED",
+                    "배송 완료 일시 정보가 없어 반품을 처리할 수 없습니다.");
+        }
+
+        LocalDateTime returnDeadline = deliveredAt.plusDays(RETURN_PERIOD_DAYS);
+        if (LocalDateTime.now().isAfter(returnDeadline)) {
+            throw new BusinessException("RETURN_PERIOD_EXPIRED",
+                    "반품 가능 기간이 지났습니다. (배송완료: " + deliveredAt.toLocalDate()
+                            + ", 반품 마감: " + returnDeadline.toLocalDate() + ")");
         }
     }
 }

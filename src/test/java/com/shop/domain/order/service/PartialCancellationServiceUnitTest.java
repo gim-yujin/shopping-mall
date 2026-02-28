@@ -30,6 +30,7 @@ import org.springframework.context.ApplicationEventPublisher;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -109,6 +110,11 @@ class PartialCancellationServiceUnitTest {
             lenient().when(order.isCancellable()).thenReturn(true);
         } else {
             lenient().when(order.isCancellable()).thenReturn(false);
+        }
+
+        // DELIVERED 상태인 경우 반품 기간 검증을 위해 deliveredAt 설정 (기본: 방금 배송완료)
+        if (status == OrderStatus.DELIVERED) {
+            lenient().when(order.getDeliveredAt()).thenReturn(LocalDateTime.now());
         }
 
         return order;
@@ -552,6 +558,82 @@ class PartialCancellationServiceUnitTest {
 
             // DELIVERED 상태에서는 cancel()이 호출되지 않는다
             verify(order, never()).cancel();
+        }
+
+        @Test
+        @DisplayName("[P2-9] 반품 기간 내(14일 이내) 반품은 정상 처리된다")
+        void withinReturnPeriod_succeeds() {
+            // given: 배송 완료 후 13일 경과 (기한 1일 전)
+            Order order = createTestOrder(OrderStatus.DELIVERED);
+            when(order.getDeliveredAt()).thenReturn(
+                    LocalDateTime.now().minusDays(PartialCancellationService.RETURN_PERIOD_DAYS - 1));
+            Product product = createMockProduct(10L, 50);
+            User user = createMockUser(101L, 500, new BigDecimal("100000"));
+
+            when(orderRepository.findByIdAndUserIdWithLock(1L, 101L)).thenReturn(Optional.of(order));
+            when(productRepository.findByIdWithLock(10L)).thenReturn(Optional.of(product));
+            when(userRepository.findByIdWithLockAndTier(101L)).thenReturn(Optional.of(user));
+
+            // when & then: 예외 없이 정상 처리
+            assertThatCode(() -> service.requestReturn(101L, 1L, 100L, 1))
+                    .doesNotThrowAnyException();
+
+            verify(order.getItems().get(0)).applyReturn(eq(1), any(BigDecimal.class));
+        }
+
+        @Test
+        @DisplayName("[P2-9] 반품 기간 초과(15일 경과) 시 RETURN_PERIOD_EXPIRED 예외 발생")
+        void afterReturnPeriod_throwsException() {
+            // given: 배송 완료 후 15일 경과 (기한 1일 초과)
+            Order order = createTestOrder(OrderStatus.DELIVERED);
+            when(order.getDeliveredAt()).thenReturn(
+                    LocalDateTime.now().minusDays(PartialCancellationService.RETURN_PERIOD_DAYS + 1));
+
+            when(orderRepository.findByIdAndUserIdWithLock(1L, 101L)).thenReturn(Optional.of(order));
+
+            // when & then
+            assertThatThrownBy(() -> service.requestReturn(101L, 1L, 100L, 1))
+                    .isInstanceOf(BusinessException.class)
+                    .hasFieldOrPropertyWithValue("code", "RETURN_PERIOD_EXPIRED");
+
+            // 기간 초과 시 Product/User 조회 없이 즉시 거부
+            verifyNoInteractions(productRepository, userRepository);
+        }
+
+        @Test
+        @DisplayName("[P2-9] 반품 마감일 당일은 반품이 허용된다 (경계값)")
+        void exactlyOnDeadline_succeeds() {
+            // given: 정확히 14일 전 배송 완료 (당일 자정 기준, 시간에 따라 허용)
+            Order order = createTestOrder(OrderStatus.DELIVERED);
+            when(order.getDeliveredAt()).thenReturn(
+                    LocalDateTime.now().minusDays(PartialCancellationService.RETURN_PERIOD_DAYS).plusHours(1));
+            Product product = createMockProduct(10L, 50);
+            User user = createMockUser(101L, 500, new BigDecimal("100000"));
+
+            when(orderRepository.findByIdAndUserIdWithLock(1L, 101L)).thenReturn(Optional.of(order));
+            when(productRepository.findByIdWithLock(10L)).thenReturn(Optional.of(product));
+            when(userRepository.findByIdWithLockAndTier(101L)).thenReturn(Optional.of(user));
+
+            // when & then: 마감일 당일이므로 아직 기간 내
+            assertThatCode(() -> service.requestReturn(101L, 1L, 100L, 1))
+                    .doesNotThrowAnyException();
+        }
+
+        @Test
+        @DisplayName("[P2-9] deliveredAt이 null이면 반품이 거부된다 (데이터 정합성 방어)")
+        void nullDeliveredAt_throwsException() {
+            // given: DELIVERED 상태이지만 deliveredAt이 null (비정상 데이터)
+            Order order = createTestOrder(OrderStatus.DELIVERED);
+            when(order.getDeliveredAt()).thenReturn(null);
+
+            when(orderRepository.findByIdAndUserIdWithLock(1L, 101L)).thenReturn(Optional.of(order));
+
+            // when & then
+            assertThatThrownBy(() -> service.requestReturn(101L, 1L, 100L, 1))
+                    .isInstanceOf(BusinessException.class)
+                    .hasFieldOrPropertyWithValue("code", "RETURN_NOT_ALLOWED");
+
+            verifyNoInteractions(productRepository, userRepository);
         }
     }
 
