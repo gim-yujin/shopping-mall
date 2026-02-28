@@ -78,7 +78,6 @@ class MyPageControllerUnitTest {
                 new UsernamePasswordAuthenticationToken(principal, null, principal.getAuthorities())
         );
 
-        when(userService.findById(1L)).thenReturn(new User("tester", "tester@example.com", "encoded", "테스터", "010-1111-2222"));
     }
 
     @AfterEach
@@ -89,6 +88,7 @@ class MyPageControllerUnitTest {
     @Test
     @DisplayName("프로필 수정 검증 실패 - 빈 이름")
     void updateProfile_blankName_validationFail() throws Exception {
+        when(userService.findById(1L)).thenReturn(new User("tester", "tester@example.com", "encoded", "테스터", "010-1111-2222"));
         mockMvc.perform(post("/mypage/profile")
                         .with(csrf())
                         .param("name", "")
@@ -105,6 +105,7 @@ class MyPageControllerUnitTest {
     @Test
     @DisplayName("프로필 수정 검증 실패 - 잘못된 이메일")
     void updateProfile_invalidEmail_validationFail() throws Exception {
+        when(userService.findById(1L)).thenReturn(new User("tester", "tester@example.com", "encoded", "테스터", "010-1111-2222"));
         mockMvc.perform(post("/mypage/profile")
                         .with(csrf())
                         .param("name", "홍길동")
@@ -121,6 +122,7 @@ class MyPageControllerUnitTest {
     @Test
     @DisplayName("비밀번호 변경 검증 실패 - 짧은 비밀번호")
     void changePassword_shortPassword_validationFail() throws Exception {
+        when(userService.findById(1L)).thenReturn(new User("tester", "tester@example.com", "encoded", "테스터", "010-1111-2222"));
         mockMvc.perform(post("/mypage/password")
                         .with(csrf())
                         .param("currentPassword", "Current123!")
