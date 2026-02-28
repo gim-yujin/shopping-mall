@@ -7,6 +7,8 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.time.LocalDateTime;
+
 public interface PointHistoryRepository extends JpaRepository<PointHistory, Long> {
 
     /**
@@ -15,6 +17,23 @@ public interface PointHistoryRepository extends JpaRepository<PointHistory, Long
      */
     @Query("SELECT ph FROM PointHistory ph WHERE ph.userId = :userId ORDER BY ph.createdAt DESC")
     Page<PointHistory> findByUserIdOrderByCreatedAtDesc(@Param("userId") Long userId, Pageable pageable);
+
+    /**
+     * 운영용 포인트 이력 조회.
+     * 기간/유형 필터를 선택적으로 적용하고 최신순으로 반환한다.
+     */
+    @Query("""
+            SELECT ph
+            FROM PointHistory ph
+            WHERE (:fromDateTime IS NULL OR ph.createdAt >= :fromDateTime)
+              AND (:toDateTime IS NULL OR ph.createdAt < :toDateTime)
+              AND (:changeType IS NULL OR ph.changeType = :changeType)
+            ORDER BY ph.createdAt DESC
+            """)
+    Page<PointHistory> findForOps(@Param("fromDateTime") LocalDateTime fromDateTime,
+                                  @Param("toDateTime") LocalDateTime toDateTime,
+                                  @Param("changeType") String changeType,
+                                  Pageable pageable);
 
     /**
      * 특정 주문에 연관된 포인트 이력을 조회한다.

@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org"
+      xmlns:layout="http://www.ultraq.net.nz/thymeleaf/layout"
+      layout:decorate="~{layout/default}">
+<head><title>포인트 이력 관리</title></head>
+<body>
+<div layout:fragment="content">
+    <div class="max-w-6xl mx-auto">
+        <div class="flex items-center justify-between mb-6">
+            <h1 class="text-2xl font-bold">포인트 이력 관리</h1>
+            <a th:href="@{/admin}" class="text-sm text-gray-500 hover:text-gray-700">← 대시보드</a>
+        </div>
+
+        <form method="get" th:action="@{/admin/points}" class="bg-white rounded-lg shadow p-4 mb-6">
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
+                <div>
+                    <label for="fromDate" class="block text-xs font-medium text-gray-500 mb-1">시작일</label>
+                    <input id="fromDate" name="fromDate" type="date" th:value="${fromDate}"
+                           class="w-full border rounded px-3 py-2 text-sm"/>
+                </div>
+                <div>
+                    <label for="toDate" class="block text-xs font-medium text-gray-500 mb-1">종료일</label>
+                    <input id="toDate" name="toDate" type="date" th:value="${toDate}"
+                           class="w-full border rounded px-3 py-2 text-sm"/>
+                </div>
+                <div>
+                    <label for="changeType" class="block text-xs font-medium text-gray-500 mb-1">유형</label>
+                    <select id="changeType" name="changeType" class="w-full border rounded px-3 py-2 text-sm">
+                        <option value="" th:selected="${currentChangeType == null or currentChangeType == ''}">전체</option>
+                        <option value="EARN" th:selected="${currentChangeType == 'EARN'}">EARN (적립)</option>
+                        <option value="USE" th:selected="${currentChangeType == 'USE'}">USE (사용)</option>
+                        <option value="REFUND" th:selected="${currentChangeType == 'REFUND'}">REFUND (환불)</option>
+                    </select>
+                </div>
+                <div class="flex gap-2">
+                    <button type="submit" class="px-4 py-2 bg-blue-600 text-white rounded text-sm hover:bg-blue-700">검색</button>
+                    <a th:href="@{/admin/points}" class="px-4 py-2 border rounded text-sm hover:bg-gray-50">초기화</a>
+                </div>
+            </div>
+        </form>
+
+        <div class="bg-white rounded-lg shadow overflow-hidden">
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm">
+                    <thead>
+                    <tr class="bg-gray-50 border-b text-left text-gray-500">
+                        <th class="px-4 py-3">일시</th>
+                        <th>사용자 ID</th>
+                        <th>유형</th>
+                        <th class="text-right">증감 금액</th>
+                        <th class="text-right">변동 후 잔액</th>
+                        <th>설명</th>
+                    </tr>
+                    </thead>
+                    <tbody>
+                    <tr th:if="${pointHistories.isEmpty()}">
+                        <td colspan="6" class="px-4 py-8 text-center text-gray-500">조건에 맞는 포인트 이력이 없습니다.</td>
+                    </tr>
+                    <tr th:each="history : ${pointHistories.content}" class="border-b hover:bg-gray-50"
+                        th:with="normalizedType=${T(com.shop.domain.point.service.PointChangeTypeLabelMapper).normalize(history.changeType)}">
+                        <td class="px-4 py-3 text-gray-600" th:text="${#temporals.format(history.createdAt, 'yyyy.MM.dd HH:mm')}">2026.01.01 12:00</td>
+                        <td class="font-medium" th:text="${history.userId}">1</td>
+                        <td th:text="${history.changeType}">EARN</td>
+                        <td class="text-right font-semibold"
+                            th:classappend="${normalizedType == 'EARN' or normalizedType == 'REFUND'} ? 'text-green-600' : (${normalizedType == 'USE' or normalizedType == 'EXPIRE'} ? 'text-red-600' : 'text-gray-700')"
+                            th:text="${(normalizedType == 'EARN' or normalizedType == 'REFUND') ? '+' : ((normalizedType == 'USE' or normalizedType == 'EXPIRE') ? '-' : '')} + #numbers.formatInteger(history.amount, 1, 'COMMA')">+1,000</td>
+                        <td class="text-right" th:text="${#numbers.formatInteger(history.balanceAfter, 1, 'COMMA')}">10,000</td>
+                        <td class="max-w-[300px] truncate" th:text="${history.description}">주문 적립</td>
+                    </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <nav th:if="${pointHistories.totalPages > 1}" class="flex justify-center mt-6">
+            <th:block th:with="baseUrl=@{/admin/points(fromDate=${fromDate},toDate=${toDate},changeType=${currentChangeType})}, separator=${baseUrl.contains('?') ? '&amp;' : '?'}">
+                <div class="flex items-center gap-1">
+                    <a th:if="${pointHistories.hasPrevious()}" th:href="${baseUrl + separator + 'page=' + (pointHistories.number - 1)}"
+                       class="px-3 py-2 text-sm border rounded hover:bg-gray-50">&laquo; 이전</a>
+
+                    <th:block th:with="start=${T(java.lang.Math).max(0, pointHistories.number - 2)},
+                                       end=${T(java.lang.Math).min(pointHistories.totalPages - 1, pointHistories.number + 2)}">
+                        <th:block th:each="i : ${#numbers.sequence(start, end)}">
+                            <a th:href="${baseUrl + separator + 'page=' + i}"
+                               th:text="${i + 1}"
+                               th:classappend="${i == pointHistories.number} ? 'bg-blue-600 text-white border-blue-600' : 'hover:bg-gray-50'"
+                               class="px-3 py-2 text-sm border rounded"></a>
+                        </th:block>
+                    </th:block>
+
+                    <a th:if="${pointHistories.hasNext()}" th:href="${baseUrl + separator + 'page=' + (pointHistories.number + 1)}"
+                       class="px-3 py-2 text-sm border rounded hover:bg-gray-50">다음 &raquo;</a>
+                </div>
+            </th:block>
+        </nav>
+    </div>
+</div>
+</body>
+</html>
