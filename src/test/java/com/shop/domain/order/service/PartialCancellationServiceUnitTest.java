@@ -367,11 +367,8 @@ class PartialCancellationServiceUnitTest {
         void someItemsRemaining_doesNotTransition() {
             Order order = createTestOrder(OrderStatus.PAID);
             OrderItem itemA = order.getItems().get(0);
-            OrderItem itemB = order.getItems().get(1);
             // 상품A: 1개 취소 후 2개 남음
             when(itemA.getRemainingQuantity()).thenReturn(3, 2);
-            // 상품B: 전량 남음
-            when(itemB.getRemainingQuantity()).thenReturn(2);
 
             Product product = createMockProduct(10L, 50);
             User user = createMockUser(101L, 500, new BigDecimal("100000"));
