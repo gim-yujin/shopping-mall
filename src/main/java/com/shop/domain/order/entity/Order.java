@@ -67,6 +67,19 @@ public class Order {
     private BigDecimal refundedAmount;
 
     /**
+     * [P0 FIX] 부분취소/반품 시 환불된 포인트 누적.
+     *
+     * 기존 문제: PartialCancellationService가 포인트 비례 환불을 수행하지 않아
+     * 포인트를 사용한 주문의 부분 취소 시 사용 포인트가 환불되지 않았다.
+     *
+     * 수정: 부분 취소/반품 시 usedPoints를 아이템 비중에 따라 비례 환불하고,
+     * 환불된 포인트 누계를 이 필드에 기록하여 초과 환불을 방지한다.
+     * 전체 취소 시에는 usedPoints 전액이 환불되므로 이 필드를 사용하지 않는다.
+     */
+    @Column(name = "refunded_points", nullable = false)
+    private Integer refundedPoints;
+
+    /**
      * [P0 FIX] 포인트 정산 완료 플래그.
      *
      * 기존 문제: 주문 생성 즉시 포인트가 적립되어, 적립 포인트를 다른 주문에
@@ -132,6 +145,7 @@ public class Order {
         this.earnedPointsSnapshot = earnedPointsSnapshot;
         this.usedPoints = usedPoints;
         this.refundedAmount = BigDecimal.ZERO;
+        this.refundedPoints = 0;
         this.pointsSettled = false;
         this.paymentMethod = paymentMethod;
         this.shippingAddress = shippingAddress;
@@ -173,6 +187,10 @@ public class Order {
         this.refundedAmount = this.refundedAmount.add(amount);
     }
 
+    public void addRefundedPoints(int points) {
+        this.refundedPoints += points;
+    }
+
     /**
      * [P0 FIX] 포인트 정산 완료 처리.
      * 배송 완료(DELIVERED) 시 호출되어, 적립 포인트가 사용자 잔액에 반영되었음을 기록한다.
@@ -202,6 +220,7 @@ public class Order {
     public Integer getEarnedPointsSnapshot() { return earnedPointsSnapshot; }
     public Integer getUsedPoints() { return usedPoints; }
     public BigDecimal getRefundedAmount() { return refundedAmount; }
+    public Integer getRefundedPoints() { return refundedPoints; }
     public String getPaymentMethod() { return paymentMethod; }
     public String getShippingAddress() { return shippingAddress; }
     public String getRecipientName() { return recipientName; }

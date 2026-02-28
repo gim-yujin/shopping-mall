@@ -185,6 +185,7 @@ CREATE TABLE orders (
     earned_points_snapshot INT DEFAULT 0 NOT NULL,
     used_points INT DEFAULT 0 NOT NULL,
     refunded_amount DECIMAL(15, 2) DEFAULT 0 NOT NULL,
+    refunded_points INT DEFAULT 0 NOT NULL,
     points_settled BOOLEAN DEFAULT FALSE NOT NULL,
     payment_method VARCHAR(20),
     shipping_address TEXT,
@@ -211,6 +212,7 @@ COMMENT ON COLUMN orders.point_earn_rate_snapshot IS '주문 시점 사용자 �
 COMMENT ON COLUMN orders.earned_points_snapshot IS '주문 생성 시 실제 적립된 포인트 스냅샷';
 COMMENT ON COLUMN orders.used_points IS '주문 시 사용한 포인트 (1P = 1원, 취소 시 환불)';
 COMMENT ON COLUMN orders.refunded_amount IS '부분취소/반품/전체취소 누적 환불 금액';
+COMMENT ON COLUMN orders.refunded_points IS '부분취소/반품 누적 환불 포인트 (비례 배분, 초과 환불 방지용)';
 COMMENT ON COLUMN orders.points_settled IS '포인트 정산 완료 여부 (배송 완료 시 TRUE로 전환, 중복 정산 방지)';
 
 -- ============================================================================
