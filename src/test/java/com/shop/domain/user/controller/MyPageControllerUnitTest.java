@@ -2,6 +2,8 @@ package com.shop.domain.user.controller;
 
 import com.shop.domain.coupon.service.CouponService;
 import com.shop.domain.order.service.OrderService;
+import com.shop.domain.point.entity.PointHistory;
+import com.shop.domain.point.service.PointQueryService;
 import com.shop.domain.review.service.ReviewService;
 import com.shop.domain.user.entity.User;
 import com.shop.domain.user.service.UserService;
@@ -14,6 +16,9 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.PageImpl;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -28,6 +33,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -43,13 +49,15 @@ class MyPageControllerUnitTest {
     @Mock
     private CouponService couponService;
     @Mock
+    private PointQueryService pointQueryService;
+    @Mock
     private DuplicateConstraintMessageResolver duplicateConstraintMessageResolver;
 
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
-        MyPageController controller = new MyPageController(userService, orderService, reviewService, couponService, duplicateConstraintMessageResolver);
+        MyPageController controller = new MyPageController(userService, orderService, reviewService, couponService, pointQueryService, duplicateConstraintMessageResolver);
 
         LocalValidatorFactoryBean validator = new LocalValidatorFactoryBean();
         validator.afterPropertiesSet();
@@ -124,4 +132,18 @@ class MyPageControllerUnitTest {
 
         verify(userService, never()).changePassword(anyLong(), anyString(), anyString());
     }
+
+    @Test
+    @DisplayName("내 포인트 내역 페이지 조회")
+    void myPoints_success() throws Exception {
+        PointHistory pointHistory = new PointHistory(1L, PointHistory.EARN, 1000, 5000, "ORDER", 10L, "주문 적립");
+        when(pointQueryService.getPointHistoriesByUser(eq(1L), any(Pageable.class)))
+                .thenReturn(new PageImpl<>(List.of(pointHistory), PageRequest.of(0, 10), 1));
+
+        mockMvc.perform(get("/mypage/points").param("page", "0"))
+                .andExpect(status().isOk())
+                .andExpect(view().name("mypage/points"))
+                .andExpect(model().attributeExists("pointHistories"));
+    }
+
 }
