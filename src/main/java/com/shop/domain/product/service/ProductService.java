@@ -146,7 +146,7 @@ public class ProductService {
                 .toLowerCase(Locale.ROOT);
     }
 
-    String searchCacheKey(String keyword, Pageable pageable) {
+    public String searchCacheKey(String keyword, Pageable pageable) {
         return CacheKeyGenerator.pageableWithPrefix(normalizeSearchKeyword(keyword), pageable);
     }
 
