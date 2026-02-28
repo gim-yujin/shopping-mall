@@ -92,23 +92,23 @@ class PartialCancellationServiceUnitTest {
         OrderItem itemB = createMockItem(200L, 20L, "상품B", 2,
                 new BigDecimal("20000"), new BigDecimal("40000"));
 
-        when(order.getOrderId()).thenReturn(1L);
-        when(order.getUserId()).thenReturn(101L);
-        when(order.getOrderNumber()).thenReturn("ORD-TEST-001");
-        when(order.getOrderStatus()).thenReturn(status);
-        when(order.getTotalAmount()).thenReturn(new BigDecimal("70000"));
-        when(order.getDiscountAmount()).thenReturn(new BigDecimal("8500"));
-        when(order.getShippingFee()).thenReturn(new BigDecimal("3000"));
-        when(order.getFinalAmount()).thenReturn(new BigDecimal("63500"));
-        when(order.getUsedPoints()).thenReturn(1000);
-        when(order.getRefundedAmount()).thenReturn(BigDecimal.ZERO);
-        when(order.getRefundedPoints()).thenReturn(0);
-        when(order.getItems()).thenReturn(List.of(itemA, itemB));
+        lenient().when(order.getOrderId()).thenReturn(1L);
+        lenient().when(order.getUserId()).thenReturn(101L);
+        lenient().when(order.getOrderNumber()).thenReturn("ORD-TEST-001");
+        lenient().when(order.getOrderStatus()).thenReturn(status);
+        lenient().when(order.getTotalAmount()).thenReturn(new BigDecimal("70000"));
+        lenient().when(order.getDiscountAmount()).thenReturn(new BigDecimal("8500"));
+        lenient().when(order.getShippingFee()).thenReturn(new BigDecimal("3000"));
+        lenient().when(order.getFinalAmount()).thenReturn(new BigDecimal("63500"));
+        lenient().when(order.getUsedPoints()).thenReturn(1000);
+        lenient().when(order.getRefundedAmount()).thenReturn(BigDecimal.ZERO);
+        lenient().when(order.getRefundedPoints()).thenReturn(0);
+        lenient().when(order.getItems()).thenReturn(List.of(itemA, itemB));
 
         if (status == OrderStatus.PENDING || status == OrderStatus.PAID) {
-            when(order.isCancellable()).thenReturn(true);
+            lenient().when(order.isCancellable()).thenReturn(true);
         } else {
-            when(order.isCancellable()).thenReturn(false);
+            lenient().when(order.isCancellable()).thenReturn(false);
         }
 
         return order;
@@ -117,15 +117,15 @@ class PartialCancellationServiceUnitTest {
     private OrderItem createMockItem(Long itemId, Long productId, String name,
                                      int quantity, BigDecimal unitPrice, BigDecimal subtotal) {
         OrderItem item = mock(OrderItem.class);
-        when(item.getOrderItemId()).thenReturn(itemId);
-        when(item.getProductId()).thenReturn(productId);
-        when(item.getProductName()).thenReturn(name);
-        when(item.getQuantity()).thenReturn(quantity);
-        when(item.getUnitPrice()).thenReturn(unitPrice);
-        when(item.getSubtotal()).thenReturn(subtotal);
-        when(item.getCancelledQuantity()).thenReturn(0);
-        when(item.getReturnedQuantity()).thenReturn(0);
-        when(item.getRemainingQuantity()).thenReturn(quantity);
+        lenient().when(item.getOrderItemId()).thenReturn(itemId);
+        lenient().when(item.getProductId()).thenReturn(productId);
+        lenient().when(item.getProductName()).thenReturn(name);
+        lenient().when(item.getQuantity()).thenReturn(quantity);
+        lenient().when(item.getUnitPrice()).thenReturn(unitPrice);
+        lenient().when(item.getSubtotal()).thenReturn(subtotal);
+        lenient().when(item.getCancelledQuantity()).thenReturn(0);
+        lenient().when(item.getReturnedQuantity()).thenReturn(0);
+        lenient().when(item.getRemainingQuantity()).thenReturn(quantity);
         return item;
     }
 
@@ -138,9 +138,9 @@ class PartialCancellationServiceUnitTest {
 
     private User createMockUser(Long userId, int pointBalance, BigDecimal totalSpent) {
         User user = mock(User.class);
-        when(user.getUserId()).thenReturn(userId);
-        when(user.getPointBalance()).thenReturn(pointBalance);
-        when(user.getTotalSpent()).thenReturn(totalSpent);
+        lenient().when(user.getUserId()).thenReturn(userId);
+        lenient().when(user.getPointBalance()).thenReturn(pointBalance);
+        lenient().when(user.getTotalSpent()).thenReturn(totalSpent);
         return user;
     }
 
@@ -367,11 +367,8 @@ class PartialCancellationServiceUnitTest {
         void someItemsRemaining_doesNotTransition() {
             Order order = createTestOrder(OrderStatus.PAID);
             OrderItem itemA = order.getItems().get(0);
-            OrderItem itemB = order.getItems().get(1);
             // 상품A: 1개 취소 후 2개 남음
             when(itemA.getRemainingQuantity()).thenReturn(3, 2);
-            // 상품B: 전량 남음
-            when(itemB.getRemainingQuantity()).thenReturn(2);
 
             Product product = createMockProduct(10L, 50);
             User user = createMockUser(101L, 500, new BigDecimal("100000"));
