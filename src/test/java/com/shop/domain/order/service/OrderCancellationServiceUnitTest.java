@@ -82,7 +82,7 @@ class OrderCancellationServiceUnitTest {
         when(order.getOrderNumber()).thenReturn("ORD-001");
 
         when(item.getProductId()).thenReturn(7L);
-        when(item.getQuantity()).thenReturn(2);
+        when(item.getRemainingQuantity()).thenReturn(2);
 
         when(productRepository.findByIdWithLock(7L)).thenReturn(Optional.of(product));
         when(product.getProductId()).thenReturn(7L);
@@ -119,6 +119,7 @@ class OrderCancellationServiceUnitTest {
         when(order.getOrderId()).thenReturn(orderId);
         when(order.getItems()).thenReturn(List.of(item));
         when(item.getProductId()).thenReturn(missingProductId);
+        when(item.getRemainingQuantity()).thenReturn(1);
         when(productRepository.findByIdWithLock(missingProductId)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> cancellationService.cancelOrderInternal(order, userId))
