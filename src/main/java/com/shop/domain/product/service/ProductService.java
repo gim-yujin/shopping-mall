@@ -11,9 +11,12 @@ import com.shop.domain.product.repository.ProductRepository;
 import com.shop.global.cache.CacheKeyGenerator;
 import com.shop.global.common.PagingParams;
 import com.shop.global.exception.ResourceNotFoundException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.cache.annotation.Caching;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
+import org.springframework.dao.DataAccessException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -26,6 +29,8 @@ import java.util.List;
 @Service
 @Transactional(readOnly = true)
 public class ProductService {
+
+    private static final Logger log = LoggerFactory.getLogger(ProductService.class);
 
     private final ProductRepository productRepository;
     private final ProductImageRepository productImageRepository;
@@ -118,7 +123,14 @@ public class ProductService {
     public Page<Product> search(String keyword, Pageable pageable) {
         String normalizedKeyword = normalizeSearchKeyword(keyword);
 
-        Page<Product> results = productRepository.searchByKeyword(normalizedKeyword, pageable);
+        Page<Product> results;
+        try {
+            results = productRepository.searchByKeyword(normalizedKeyword, pageable);
+        } catch (DataAccessException e) {
+            log.warn("정규 검색(FTS) 실패로 LIKE 검색으로 폴백합니다. keyword={}", normalizedKeyword, e);
+            return productRepository.searchByKeywordLike(normalizedKeyword, pageable);
+        }
+
         if (results.isEmpty()) {
             results = productRepository.searchByKeywordLike(normalizedKeyword, pageable);
         }

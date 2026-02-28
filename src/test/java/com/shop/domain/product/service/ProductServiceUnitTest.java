@@ -12,6 +12,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
@@ -80,6 +81,25 @@ class ProductServiceUnitTest {
 
         verify(productRepository, times(3)).searchByKeyword(eq("nike"), any(Pageable.class));
         verify(productRepository, times(3)).searchByKeywordLike(eq("nike"), any(Pageable.class));
+    }
+
+    @Test
+    @DisplayName("search - 정규 검색 쿼리 예외 발생 시 like 검색으로 폴백")
+    void search_fallbackToLikeWhenTsQueryFails() {
+        Product found = mock(Product.class);
+        Page<Product> likeResult = new PageImpl<>(List.of(found));
+
+        when(productRepository.searchByKeyword(eq("키보드"), any(Pageable.class)))
+                .thenThrow(new DataAccessResourceFailureException("fts function error"));
+        when(productRepository.searchByKeywordLike(eq("키보드"), any(Pageable.class))).thenReturn(likeResult);
+
+        Page<Product> result = productService.search("키보드", PageRequest.of(0, 10));
+
+        assertThat(result.getContent())
+                .as("정규 검색 쿼리 실패 시에도 like 검색 결과를 반환해야 함")
+                .containsExactly(found);
+        verify(productRepository).searchByKeyword(eq("키보드"), any(Pageable.class));
+        verify(productRepository).searchByKeywordLike(eq("키보드"), any(Pageable.class));
     }
 
     @Test
