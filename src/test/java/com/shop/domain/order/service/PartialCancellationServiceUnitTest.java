@@ -822,8 +822,6 @@ class PartialCancellationServiceUnitTest {
         void rejectReturn_onlyTransitionsState() {
             Order order = createTestOrder(OrderStatus.DELIVERED);
             OrderItem itemA = order.getItems().get(0);
-            when(itemA.getStatus()).thenReturn(OrderItemStatus.RETURN_REQUESTED);
-
             when(orderRepository.findByIdWithLock(1L)).thenReturn(Optional.of(order));
 
             service.rejectReturn(1L, 100L, "상품 훼손 확인됨");
