@@ -103,6 +103,11 @@ public class OrderCancellationService {
                 .toList();
 
         for (OrderItem item : sortedItems) {
+            int remainingQuantity = item.getRemainingQuantity();
+            if (remainingQuantity <= 0) {
+                continue;
+            }
+
             Long productId = item.getProductId();
             Product product = productRepository.findByIdWithLock(productId)
                     .orElseThrow(() -> {
@@ -112,9 +117,9 @@ public class OrderCancellationService {
 
             entityManager.refresh(product);
             int before = product.getStockQuantity();
-            product.increaseStockAndRollbackSales(item.getQuantity());
+            product.increaseStockAndRollbackSales(remainingQuantity);
             inventoryHistoryRepository.save(new ProductInventoryHistory(
-                    product.getProductId(), "IN", item.getQuantity(),
+                    product.getProductId(), "IN", remainingQuantity,
                     before, product.getStockQuantity(), "RETURN", orderId, userId));
         }
 
