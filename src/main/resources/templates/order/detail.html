@@ -67,7 +67,7 @@
                     <div class="flex justify-between font-bold"><span>총 결제금액</span><span class="text-blue-600" th:text="${#numbers.formatDecimal(order.finalAmount,0,'COMMA',0,'POINT')} + '원'">0원</span></div>
                     <div th:if="${order.earnedPointsSnapshot > 0}" class="flex justify-between text-xs mt-1"
                          th:classappend="${order.pointsSettled ? 'text-green-500' : 'text-gray-400'}">
-                        <span th:text="${order.pointsSettled ? '적립 완료' : '적립 예정 (배송 완료 시)'}">적립 포인트</span>
+                        <span th:text="${order.pointsSettled ? '적립 완료' : '적립 예정'}">적립 상태</span>
                         <span th:text="'+' + ${#numbers.formatDecimal(order.earnedPointsSnapshot,0,'COMMA',0,'POINT')} + 'P'">0P</span>
                     </div>
                 </div>
