@@ -103,6 +103,11 @@ public class OrderCancellationService {
                 .toList();
 
         for (OrderItem item : sortedItems) {
+            int remainingQuantity = item.getRemainingQuantity();
+            if (remainingQuantity <= 0) {
+                continue;
+            }
+
             Long productId = item.getProductId();
             Product product = productRepository.findByIdWithLock(productId)
                     .orElseThrow(() -> {
@@ -112,19 +117,24 @@ public class OrderCancellationService {
 
             entityManager.refresh(product);
             int before = product.getStockQuantity();
-            product.increaseStockAndRollbackSales(item.getQuantity());
+            product.increaseStockAndRollbackSales(remainingQuantity);
             inventoryHistoryRepository.save(new ProductInventoryHistory(
-                    product.getProductId(), "IN", item.getQuantity(),
+                    product.getProductId(), "IN", remainingQuantity,
                     before, product.getStockQuantity(), "RETURN", orderId, userId));
         }
 
         // 2) 누적금액(total_spent) 차감 & 포인트 환불 & 등급 재계산
         User user = userRepository.findByIdWithLockAndTier(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("사용자", userId));
-        BigDecimal finalAmount = order.getFinalAmount();
+        BigDecimal remainingRefundAmount = order.getFinalAmount().subtract(order.getRefundedAmount());
+        if (remainingRefundAmount.compareTo(BigDecimal.ZERO) < 0) {
+            remainingRefundAmount = BigDecimal.ZERO;
+        }
+
         // total_spent는 주문 생성/취소 이벤트를 누적 반영한다.
-        user.addTotalSpent(finalAmount.negate());
-        order.addRefundedAmount(finalAmount);
+        // 부분 취소가 선행된 경우에는 잔여 환불액만 차감하여 과차감을 방지한다.
+        user.addTotalSpent(remainingRefundAmount.negate());
+        order.addRefundedAmount(remainingRefundAmount);
 
         // [P0 FIX] 포인트 적립 이연에 따른 취소 로직 단순화.
         //
@@ -138,11 +148,12 @@ public class OrderCancellationService {
         //   따라서 취소 시에는 사용 포인트만 환불하면 된다.
         //   (isCancellable() 조건에 의해 DELIVERED 이후 취소는 불가능하므로
         //    points_settled=true인 주문이 이 코드에 도달하는 경우는 없다)
-        int usedPoints = order.getUsedPoints();
-        if (usedPoints > 0) {
-            user.addPoints(usedPoints);
+        int remainingPointRefund = Math.max(0, order.getUsedPoints() - order.getRefundedPoints());
+        if (remainingPointRefund > 0) {
+            user.addPoints(remainingPointRefund);
+            order.addRefundedPoints(remainingPointRefund);
             pointHistoryRepository.save(new PointHistory(
-                    user.getUserId(), PointHistory.REFUND, usedPoints, user.getPointBalance(),
+                    user.getUserId(), PointHistory.REFUND, remainingPointRefund, user.getPointBalance(),
                     "CANCEL", orderId,
                     "주문 취소 환불 (주문번호: " + order.getOrderNumber() + ")"
             ));
