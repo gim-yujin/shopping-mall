@@ -3,6 +3,8 @@ package com.shop.domain.order.controller.api;
 import com.shop.domain.order.dto.OrderCreateRequest;
 import com.shop.domain.order.dto.OrderDetailResponse;
 import com.shop.domain.order.dto.OrderSummaryResponse;
+import com.shop.domain.order.dto.PartialCancelRequest;
+import com.shop.domain.order.dto.ReturnRequest;
 import com.shop.domain.order.entity.Order;
 import com.shop.domain.order.service.OrderService;
 import com.shop.global.common.PageDefaults;
@@ -80,4 +82,21 @@ public class OrderApiController {
         orderService.cancelOrder(orderId, userId);
         return ApiResponse.ok();
     }
+
+    @PostMapping("/{orderId}/partial-cancel")
+    public ApiResponse<Void> partialCancel(@PathVariable Long orderId,
+                                           @Valid @RequestBody PartialCancelRequest request) {
+        Long userId = SecurityUtil.getCurrentUserId().orElseThrow();
+        orderService.partialCancel(orderId, userId, request.orderItemId(), request.quantity());
+        return ApiResponse.ok();
+    }
+
+    @PostMapping("/{orderId}/return")
+    public ApiResponse<Void> requestReturn(@PathVariable Long orderId,
+                                           @Valid @RequestBody ReturnRequest request) {
+        Long userId = SecurityUtil.getCurrentUserId().orElseThrow();
+        orderService.requestReturn(orderId, userId, request.orderItemId(), request.quantity());
+        return ApiResponse.ok();
+    }
+
 }

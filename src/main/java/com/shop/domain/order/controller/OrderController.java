@@ -133,6 +133,38 @@ public class OrderController {
         }
         return "redirect:/orders/" + orderId;
     }
+
+
+    @PostMapping("/{orderId}/partial-cancel")
+    public String partialCancel(@PathVariable Long orderId,
+                                @RequestParam Long orderItemId,
+                                @RequestParam Integer quantity,
+                                RedirectAttributes redirectAttributes) {
+        Long userId = SecurityUtil.getCurrentUserId().orElseThrow();
+        try {
+            orderService.partialCancel(orderId, userId, orderItemId, quantity);
+            redirectAttributes.addFlashAttribute("successMessage", "부분 취소가 완료되었습니다.");
+        } catch (BusinessException e) {
+            redirectAttributes.addFlashAttribute("errorMessage", e.getMessage());
+        }
+        return "redirect:/orders/" + orderId;
+    }
+
+    @PostMapping("/{orderId}/return")
+    public String requestReturn(@PathVariable Long orderId,
+                                @RequestParam Long orderItemId,
+                                @RequestParam Integer quantity,
+                                RedirectAttributes redirectAttributes) {
+        Long userId = SecurityUtil.getCurrentUserId().orElseThrow();
+        try {
+            orderService.requestReturn(orderId, userId, orderItemId, quantity);
+            redirectAttributes.addFlashAttribute("successMessage", "반품 신청이 완료되었습니다.");
+        } catch (BusinessException e) {
+            redirectAttributes.addFlashAttribute("errorMessage", e.getMessage());
+        }
+        return "redirect:/orders/" + orderId;
+    }
+
     private Map<Long, String> buildCouponDisplayNames(List<UserCoupon> availableCoupons) {
         Map<Long, String> displayNames = new LinkedHashMap<>();
         NumberFormat numberFormat = NumberFormat.getInstance(Locale.KOREA);
