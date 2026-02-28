@@ -80,6 +80,7 @@ class PartialCancellationIntegrationTest {
 
     @BeforeEach
     void setUp() {
+        ensurePointHistoryReferenceTypeConstraint();
         // 서로 다른 활성 상품 2개 선택 (다중 아이템 주문 구성)
         List<Map<String, Object>> products = jdbcTemplate.queryForList(
                 """
@@ -153,6 +154,20 @@ class PartialCancellationIntegrationTest {
                 originalUserState.get("point_balance"),
                 originalUserState.get("tier_id"),
                 testUserId);
+    }
+
+    /**
+     * 테스트 DB가 기존 CHECK 제약을 유지하고 있을 수 있어
+     * 부분취소/반품 reference_type 값을 허용하도록 보정한다.
+     */
+    private void ensurePointHistoryReferenceTypeConstraint() {
+        jdbcTemplate.execute("ALTER TABLE point_history DROP CONSTRAINT IF EXISTS chk_point_reference_type");
+        jdbcTemplate.execute("""
+                ALTER TABLE point_history
+                ADD CONSTRAINT chk_point_reference_type CHECK (
+                    reference_type IN ('ORDER', 'CANCEL', 'PARTIAL_CANCEL', 'RETURN', 'ADMIN', 'SYSTEM')
+                )
+                """);
     }
 
     // ── 헬퍼 메서드 ───────────────────────────────────────
