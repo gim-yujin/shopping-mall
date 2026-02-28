@@ -857,7 +857,6 @@ class PartialCancellationServiceUnitTest {
         void rejectReturn_doesNotUpdateOrderRefund() {
             Order order = createTestOrder(OrderStatus.DELIVERED);
             OrderItem itemA = order.getItems().get(0);
-            when(itemA.getStatus()).thenReturn(OrderItemStatus.RETURN_REQUESTED);
 
             when(orderRepository.findByIdWithLock(1L)).thenReturn(Optional.of(order));
 
