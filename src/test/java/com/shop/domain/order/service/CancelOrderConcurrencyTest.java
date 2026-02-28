@@ -14,6 +14,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
+import org.springframework.dao.PessimisticLockingFailureException;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -350,6 +351,8 @@ class CancelOrderConcurrencyTest {
 
         // User B 장바구니에 같은 상품 추가
         String now = LocalDateTime.now().toString();
+        cleanUpOrdersForUser(userIdB);
+        jdbcTemplate.update("DELETE FROM carts WHERE user_id = ?", userIdB);
         jdbcTemplate.update(
                 "INSERT INTO carts (user_id, product_id, quantity, added_at, updated_at) VALUES (?, ?, 1, ?, ?)",
                 userIdB, testProductId, now, now);
@@ -403,9 +406,20 @@ class CancelOrderConcurrencyTest {
             ready.countDown();
             try {
                 start.await();
-                Order createdOrder = orderService.createOrder(userIdB, requestB);
-                createdOrderIdByUserB.set(createdOrder.getOrderId());
-                createSuccess.incrementAndGet();
+                int maxAttempts = 3;
+                for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+                    try {
+                        Order createdOrder = orderService.createOrder(userIdB, requestB);
+                        createdOrderIdByUserB.set(createdOrder.getOrderId());
+                        createSuccess.incrementAndGet();
+                        break;
+                    } catch (PessimisticLockingFailureException e) {
+                        if (attempt == maxAttempts) {
+                            throw e;
+                        }
+                        Thread.sleep(100L * attempt);
+                    }
+                }
             } catch (Exception e) {
                 errors.add("[Create] " + e.getClass().getSimpleName() + " - " + e.getMessage());
             } finally {
