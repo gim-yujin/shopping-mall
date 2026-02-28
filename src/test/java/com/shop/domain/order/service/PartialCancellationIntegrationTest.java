@@ -715,11 +715,22 @@ class PartialCancellationIntegrationTest {
                 orderService.requestReturn(order.getOrderId(), testUserId, orderItemIdA, 1, "DEFECT"))
                 .doesNotThrowAnyException();
 
-        // 재고 복구 확인
+        // Step 2 변경: 반품 신청 시 재고는 즉시 복구되지 않음
         int stockAfter = jdbcTemplate.queryForObject(
                 "SELECT stock_quantity FROM products WHERE product_id = ?",
                 Integer.class, testProductIdA);
-        assertThat(stockAfter).isEqualTo(stockBefore + 1);
+        assertThat(stockAfter).isEqualTo(stockBefore);
+
+        // 반품 신청 상태/대기 수량 확인
+        String itemStatus = jdbcTemplate.queryForObject(
+                "SELECT status FROM order_items WHERE order_item_id = ?",
+                String.class, orderItemIdA);
+        assertThat(itemStatus).isEqualTo("RETURN_REQUESTED");
+
+        Integer pendingQty = jdbcTemplate.queryForObject(
+                "SELECT pending_return_quantity FROM order_items WHERE order_item_id = ?",
+                Integer.class, orderItemIdA);
+        assertThat(pendingQty).isEqualTo(1);
 
         System.out.println("  [PASS] 반품 기간 내(13일 경과): 재고 " + stockBefore + " → " + stockAfter);
     }
@@ -803,11 +814,16 @@ class PartialCancellationIntegrationTest {
                 orderService.requestReturn(order.getOrderId(), testUserId, orderItemIdA, 1, "DEFECT"))
                 .doesNotThrowAnyException();
 
-        // returnedQuantity 기록 확인
-        Integer returnedQty = jdbcTemplate.queryForObject(
-                "SELECT returned_quantity FROM order_items WHERE order_item_id = ?",
+        // Step 2 변경: 신청 시 returned_quantity 대신 pending_return_quantity가 기록됨
+        Integer pendingQty = jdbcTemplate.queryForObject(
+                "SELECT pending_return_quantity FROM order_items WHERE order_item_id = ?",
                 Integer.class, orderItemIdA);
-        assertThat(returnedQty).isEqualTo(1);
+        assertThat(pendingQty).isEqualTo(1);
+
+        String itemStatus = jdbcTemplate.queryForObject(
+                "SELECT status FROM order_items WHERE order_item_id = ?",
+                String.class, orderItemIdA);
+        assertThat(itemStatus).isEqualTo("RETURN_REQUESTED");
 
         System.out.println("  [PASS] 반품 마감일 당일: 정상 처리됨");
     }
