@@ -154,11 +154,12 @@ public class OrderController {
     public String requestReturn(@PathVariable Long orderId,
                                 @RequestParam Long orderItemId,
                                 @RequestParam Integer quantity,
+                                @RequestParam(defaultValue = "OTHER") String returnReason,
                                 RedirectAttributes redirectAttributes) {
         Long userId = SecurityUtil.getCurrentUserId().orElseThrow();
         try {
-            orderService.requestReturn(orderId, userId, orderItemId, quantity);
-            redirectAttributes.addFlashAttribute("successMessage", "반품 신청이 완료되었습니다.");
+            orderService.requestReturn(orderId, userId, orderItemId, quantity, returnReason);
+            redirectAttributes.addFlashAttribute("successMessage", "반품 신청이 접수되었습니다. 관리자 승인 후 처리됩니다.");
         } catch (BusinessException e) {
             redirectAttributes.addFlashAttribute("errorMessage", e.getMessage());
         }

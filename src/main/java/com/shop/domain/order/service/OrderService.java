@@ -112,9 +112,40 @@ public class OrderService {
         partialCancellationService.partialCancel(userId, orderId, orderItemId, quantity);
     }
 
+    /**
+     * 반품 신청.
+     *
+     * <p>[Step 2] 상태 전이만 수행한다. 실제 환불은 관리자 승인
+     * ({@link #approveReturn}) 시 처리된다.</p>
+     *
+     * @param returnReason 반품 사유 (DEFECT, WRONG_ITEM, CHANGE_OF_MIND, SIZE_ISSUE, OTHER)
+     */
     @Transactional
-    public void requestReturn(Long orderId, Long userId, Long orderItemId, int quantity) {
-        partialCancellationService.requestReturn(userId, orderId, orderItemId, quantity);
+    public void requestReturn(Long orderId, Long userId, Long orderItemId,
+                               int quantity, String returnReason) {
+        partialCancellationService.requestReturn(userId, orderId, orderItemId, quantity, returnReason);
+    }
+
+    /**
+     * [관리자] 반품 승인.
+     *
+     * <p>RETURN_REQUESTED 상태의 아이템을 승인하여 재고 복구, 환불,
+     * 포인트 반환, 등급 재계산, 캐시 무효화를 실행한다.</p>
+     */
+    @Transactional
+    public void approveReturn(Long orderId, Long orderItemId) {
+        partialCancellationService.approveReturn(orderId, orderItemId);
+    }
+
+    /**
+     * [관리자] 반품 거절.
+     *
+     * <p>RETURN_REQUESTED 상태의 아이템을 거절하고 거절 사유를 기록한다.
+     * 재고/환불 변경 없이 상태만 전이한다.</p>
+     */
+    @Transactional
+    public void rejectReturn(Long orderId, Long orderItemId, String rejectReason) {
+        partialCancellationService.rejectReturn(orderId, orderItemId, rejectReason);
     }
 
     // ── 관리자 상태 변경 (조회 + 취소 조합) ──────────────────

@@ -95,7 +95,8 @@ public class OrderApiController {
     public ApiResponse<Void> requestReturn(@PathVariable Long orderId,
                                            @Valid @RequestBody ReturnRequest request) {
         Long userId = SecurityUtil.getCurrentUserId().orElseThrow();
-        orderService.requestReturn(orderId, userId, request.orderItemId(), request.quantity());
+        orderService.requestReturn(orderId, userId, request.orderItemId(),
+                                    request.quantity(), request.returnReason());
         return ApiResponse.ok();
     }
 

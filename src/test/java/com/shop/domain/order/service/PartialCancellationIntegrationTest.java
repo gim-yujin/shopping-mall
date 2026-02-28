@@ -558,13 +558,14 @@ class PartialCancellationIntegrationTest {
     // ====================================================================
 
     /**
-     * DELIVERED 상태에서 반품이 정상 처리되는지 확인한다.
+     * [Step 2] 반품 신청 → 관리자 승인 전체 플로우를 검증한다.
      *
-     * <p>반품 처리 후 재고 복구, 환불 금액 기록, 포인트 환불,
-     * 재고 이력(reason=RETURN) 기록을 검증한다.</p>
+     * <p>반품 신청(requestReturn) 시에는 상태 전이만 수행하고,
+     * 관리자 승인(approveReturn) 시에 재고 복구, 환불 금액 기록,
+     * 포인트 환불, 재고 이력(reason=RETURN) 기록을 검증한다.</p>
      */
     @Test
-    @DisplayName("반품 성공 — DELIVERED 상태에서 재고 복구 + 환불 + PointHistory")
+    @DisplayName("반품 신청 → 관리자 승인 — 재고 복구 + 환불 + PointHistory")
     void requestReturn_delivered_success() {
         // Given: 포인트 부여 후 포인트 사용 주문 생성 → DELIVERED 상태로 전이
         int grantPoints = 3000;
@@ -590,10 +591,29 @@ class PartialCancellationIntegrationTest {
                 "SELECT point_balance FROM users WHERE user_id = ?",
                 Integer.class, testUserId);
 
-        // When: 1개 반품
-        orderService.requestReturn(order.getOrderId(), testUserId, orderItemIdA, 1);
+        // When Step 1: 반품 신청 (상태 전이만)
+        orderService.requestReturn(order.getOrderId(), testUserId, orderItemIdA, 1, "DEFECT");
 
-        // Then: 재고 복구
+        // Then Step 1: 상태가 RETURN_REQUESTED이고 재고/환불은 변경 없음
+        String itemStatus = jdbcTemplate.queryForObject(
+                "SELECT status FROM order_items WHERE order_item_id = ?",
+                String.class, orderItemIdA);
+        assertThat(itemStatus).isEqualTo("RETURN_REQUESTED");
+
+        int stockAfterRequest = jdbcTemplate.queryForObject(
+                "SELECT stock_quantity FROM products WHERE product_id = ?",
+                Integer.class, testProductIdA);
+        assertThat(stockAfterRequest).isEqualTo(stockBefore);  // 재고 변경 없음
+
+        Integer pendingQty = jdbcTemplate.queryForObject(
+                "SELECT pending_return_quantity FROM order_items WHERE order_item_id = ?",
+                Integer.class, orderItemIdA);
+        assertThat(pendingQty).isEqualTo(1);
+
+        // When Step 2: 관리자 승인 (재고 복구 + 환불 실행)
+        orderService.approveReturn(order.getOrderId(), orderItemIdA);
+
+        // Then Step 2: 재고 복구
         int stockAfter = jdbcTemplate.queryForObject(
                 "SELECT stock_quantity FROM products WHERE product_id = ?",
                 Integer.class, testProductIdA);
@@ -604,6 +624,12 @@ class PartialCancellationIntegrationTest {
                 "SELECT returned_quantity FROM order_items WHERE order_item_id = ?",
                 Integer.class, orderItemIdA);
         assertThat(returnedQty).isEqualTo(1);
+
+        // 상태가 RETURNED로 전이
+        String finalStatus = jdbcTemplate.queryForObject(
+                "SELECT status FROM order_items WHERE order_item_id = ?",
+                String.class, orderItemIdA);
+        assertThat(finalStatus).isEqualTo("RETURNED");
 
         // 환불 금액 기록 확인
         BigDecimal refundedAmount = jdbcTemplate.queryForObject(
@@ -637,7 +663,7 @@ class PartialCancellationIntegrationTest {
                 Integer.class, testProductIdA, order.getOrderId());
         assertThat(returnInvHistoryCount).isEqualTo(1);
 
-        System.out.println("  [PASS] 반품: 재고 " + stockBefore + " → " + stockAfter
+        System.out.println("  [PASS] 반품 신청→승인: 재고 " + stockBefore + " → " + stockAfter
                 + ", 포인트 환불 " + pointRefunded + "P, 환불액=" + refundedAmount);
     }
 
@@ -648,7 +674,7 @@ class PartialCancellationIntegrationTest {
         Long orderItemIdA = findOrderItemId(order.getOrderId(), testProductIdA);
 
         assertThatThrownBy(() ->
-                orderService.requestReturn(order.getOrderId(), testUserId, orderItemIdA, 1))
+                orderService.requestReturn(order.getOrderId(), testUserId, orderItemIdA, 1, "DEFECT"))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("배송완료 상태에서만 가능");
     }
@@ -686,7 +712,7 @@ class PartialCancellationIntegrationTest {
 
         // When & Then: 기간 내이므로 정상 처리
         assertThatCode(() ->
-                orderService.requestReturn(order.getOrderId(), testUserId, orderItemIdA, 1))
+                orderService.requestReturn(order.getOrderId(), testUserId, orderItemIdA, 1, "DEFECT"))
                 .doesNotThrowAnyException();
 
         // 재고 복구 확인
@@ -730,7 +756,7 @@ class PartialCancellationIntegrationTest {
 
         // When & Then: 기간 초과 → RETURN_PERIOD_EXPIRED
         assertThatThrownBy(() ->
-                orderService.requestReturn(order.getOrderId(), testUserId, orderItemIdA, 1))
+                orderService.requestReturn(order.getOrderId(), testUserId, orderItemIdA, 1, "DEFECT"))
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("반품 가능 기간이 지났습니다");
 
@@ -774,7 +800,7 @@ class PartialCancellationIntegrationTest {
 
         // When & Then: 마감일 당일이므로 아직 허용
         assertThatCode(() ->
-                orderService.requestReturn(order.getOrderId(), testUserId, orderItemIdA, 1))
+                orderService.requestReturn(order.getOrderId(), testUserId, orderItemIdA, 1, "DEFECT"))
                 .doesNotThrowAnyException();
 
         // returnedQuantity 기록 확인
@@ -804,7 +830,7 @@ class PartialCancellationIntegrationTest {
         orderService.updateOrderStatus(order.getOrderId(), "DELIVERED");
 
         // When: 전체 반품
-        orderService.requestReturn(order.getOrderId(), testUserId, orderItemIdA, 2);
+        orderService.requestReturn(order.getOrderId(), testUserId, orderItemIdA, 2, "DEFECT");
 
         // Then: DELIVERED 유지
         String status = jdbcTemplate.queryForObject(
