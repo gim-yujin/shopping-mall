@@ -465,14 +465,16 @@ CREATE TABLE point_history (
         REFERENCES users(user_id),
     CONSTRAINT chk_point_change_type CHECK (change_type IN ('EARN', 'USE', 'REFUND', 'EXPIRE', 'ADJUST')),
     CONSTRAINT chk_point_amount CHECK (amount > 0),
-    CONSTRAINT chk_point_reference_type CHECK (reference_type IN ('ORDER', 'CANCEL', 'ADMIN', 'SYSTEM'))
+    CONSTRAINT chk_point_reference_type CHECK (
+        reference_type IN ('ORDER', 'CANCEL', 'PARTIAL_CANCEL', 'RETURN', 'ADMIN', 'SYSTEM')
+    )
 );
 
 COMMENT ON TABLE point_history IS '포인트 변동 이력 (예상: 5천만 건)';
 COMMENT ON COLUMN point_history.change_type IS 'EARN: 적립, USE: 사용, REFUND: 환불, EXPIRE: 만료, ADJUST: 수동조정';
 COMMENT ON COLUMN point_history.amount IS '변동 수량 (항상 양수, 증감 방향은 change_type으로 구분)';
 COMMENT ON COLUMN point_history.balance_after IS '변동 후 잔액 스냅샷';
-COMMENT ON COLUMN point_history.reference_type IS 'ORDER: 주문, CANCEL: 취소, ADMIN: 관리자, SYSTEM: 시스템';
+COMMENT ON COLUMN point_history.reference_type IS 'ORDER: 주문, CANCEL: 전체취소, PARTIAL_CANCEL: 부분취소, RETURN: 반품 환불, ADMIN: 관리자, SYSTEM: 시스템';
 
 -- ============================================================================
 -- 인덱스 생성
