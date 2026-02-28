@@ -1,6 +1,7 @@
 package com.shop.domain.product.controller;
 
 import com.shop.domain.category.service.CategoryService;
+import com.shop.domain.coupon.service.CouponService;
 import com.shop.domain.order.entity.OrderStatus;
 import com.shop.domain.order.service.OrderService;
 import com.shop.domain.product.dto.AdminProductRequest;
@@ -25,20 +26,27 @@ public class AdminController {
     private final ProductService productService;
     private final OrderService orderService;
     private final CategoryService categoryService;
+    private final CouponService couponService;
 
     public AdminController(ProductService productService, OrderService orderService,
-                           CategoryService categoryService) {
+                           CategoryService categoryService, CouponService couponService) {
         this.productService = productService;
         this.orderService = orderService;
         this.categoryService = categoryService;
+        this.couponService = couponService;
     }
 
     // ──────────── 대시보드 ────────────
 
+    /**
+     * [3.11] 관리자 대시보드에 쿠폰 통계를 포함.
+     * 전체 쿠폰 수, 활성 쿠폰 수, 발급/사용률 등을 표시한다.
+     */
     @GetMapping
     public String dashboard(Model model) {
         model.addAttribute("products", productService.findAll(PageRequest.of(0, PageDefaults.ADMIN_DASHBOARD_SIZE)));
         model.addAttribute("recentOrders", orderService.getAllOrders(PageRequest.of(0, PageDefaults.ADMIN_DASHBOARD_SIZE)));
+        model.addAttribute("couponStats", couponService.getCouponStats());
         return "admin/dashboard";
     }
 
@@ -61,11 +69,18 @@ public class AdminController {
         return "admin/orders";
     }
 
+    /**
+     * [3.6] 관리자 주문 상태 변경.
+     * SHIPPED 전환 시 택배사(carrier)와 송장번호(trackingNumber)를 함께 전달한다.
+     */
     @PostMapping("/orders/{orderId}/status")
-    public String updateOrderStatus(@PathVariable Long orderId, @RequestParam String status,
+    public String updateOrderStatus(@PathVariable Long orderId,
+                                    @RequestParam String status,
+                                    @RequestParam(required = false) String carrier,
+                                    @RequestParam(required = false) String trackingNumber,
                                     RedirectAttributes redirectAttributes) {
         try {
-            orderService.updateOrderStatus(orderId, status);
+            orderService.updateOrderStatus(orderId, status, carrier, trackingNumber);
             redirectAttributes.addFlashAttribute("successMessage", "주문 상태가 변경되었습니다.");
         } catch (BusinessException e) {
             redirectAttributes.addFlashAttribute("errorMessage", e.getMessage());

@@ -33,6 +33,22 @@ public interface CouponRepository extends JpaRepository<Coupon, Integer> {
 
     boolean existsByCouponCode(String couponCode);
 
+    // ────────────────────────────────────────────
+    // [3.11] 대시보드 쿠폰 통계 쿼리
+    // ────────────────────────────────────────────
+
+    /** 전체 쿠폰 수 */
+    long count();
+
+    /** 현재 활성 상태인 쿠폰 수 (isActive=true + 유효기간 내) */
+    @Query("SELECT COUNT(c) FROM Coupon c WHERE c.isActive = true " +
+           "AND c.validFrom <= CURRENT_TIMESTAMP AND c.validUntil >= CURRENT_TIMESTAMP")
+    long countActiveCoupons();
+
+    /** 전체 쿠폰의 총 사용량 합계 */
+    @Query("SELECT COALESCE(SUM(c.usedQuantity), 0) FROM Coupon c")
+    long sumUsedQuantity();
+
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("""
             UPDATE Coupon c

@@ -7,6 +7,7 @@ import com.shop.domain.order.entity.OrderItem;
 import com.shop.domain.order.entity.OrderStatus;
 import com.shop.domain.order.repository.OrderItemRepository;
 import com.shop.domain.review.dto.ReviewCreateRequest;
+import com.shop.domain.review.dto.ReviewUpdateRequest;
 import com.shop.domain.review.entity.Review;
 import com.shop.domain.review.repository.ReviewRepository;
 import com.shop.domain.review.repository.ReviewHelpfulRepository;
@@ -141,6 +142,46 @@ public class ReviewService {
         updateProductRating(productId);
         productService.evictProductDetailCache(productId);
         bumpProductReviewVersion(productId);
+    }
+
+    /**
+     * [3.7] 리뷰 수정 + 상품 평점 재계산.
+     *
+     * 리뷰 수정 시 rating이 변경될 수 있으므로 상품의 평균 평점을
+     * 재계산하고, 관련 캐시(상품 상세, 리뷰 목록)를 무효화한다.
+     * 본인 리뷰만 수정할 수 있도록 userId 검증을 수행한다.
+     */
+    @Transactional
+    public Review updateReview(Long reviewId, Long userId, ReviewUpdateRequest request) {
+        Review review = reviewRepository.findById(reviewId)
+                .orElseThrow(() -> new ResourceNotFoundException("리뷰", reviewId));
+        if (!review.getUserId().equals(userId)) {
+            throw new BusinessException("FORBIDDEN", "본인의 리뷰만 수정할 수 있습니다.");
+        }
+
+        // Review.update()로 rating, title, content 변경 + updatedAt 갱신
+        review.update(request.rating(), request.title(), request.content());
+
+        // 평점 변경 가능성이 있으므로 상품 평균 평점 재계산
+        Long productId = review.getProductId();
+        updateProductRating(productId);
+        productService.evictProductDetailCache(productId);
+        bumpProductReviewVersion(productId);
+
+        return review;
+    }
+
+    /**
+     * [3.7] 리뷰 수정 폼 표시를 위한 단건 조회.
+     * 본인 리뷰인지 검증한다.
+     */
+    public Review getReviewForEdit(Long reviewId, Long userId) {
+        Review review = reviewRepository.findById(reviewId)
+                .orElseThrow(() -> new ResourceNotFoundException("리뷰", reviewId));
+        if (!review.getUserId().equals(userId)) {
+            throw new BusinessException("FORBIDDEN", "본인의 리뷰만 수정할 수 있습니다.");
+        }
+        return review;
     }
 
     private void updateProductRating(Long productId) {

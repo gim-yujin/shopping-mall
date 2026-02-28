@@ -121,6 +121,16 @@ public class OrderService {
 
     @Transactional
     public void updateOrderStatus(Long orderId, String status) {
+        updateOrderStatus(orderId, status, null, null);
+    }
+
+    /**
+     * [3.6] 관리자 주문 상태 변경 + 배송 정보 입력.
+     * SHIPPED 전환 시 택배사(carrier)와 송장번호(trackingNumber)를 함께 기록한다.
+     * 다른 상태 전환에서는 배송 정보 파라미터가 무시된다.
+     */
+    @Transactional
+    public void updateOrderStatus(Long orderId, String status, String carrier, String trackingNumber) {
         Order order = orderRepository.findByIdWithLock(orderId)
                 .orElseThrow(() -> new ResourceNotFoundException("주문", orderId));
 
@@ -141,7 +151,14 @@ public class OrderService {
 
         switch (targetStatus) {
             case PAID -> order.markPaid();
-            case SHIPPED -> order.markShipped();
+            case SHIPPED -> {
+                // [3.6] 배송 정보가 있으면 함께 기록, 없으면 기본 markShipped 호출
+                if (carrier != null && !carrier.isBlank()) {
+                    order.markShipped(carrier.trim(), trackingNumber != null ? trackingNumber.trim() : null);
+                } else {
+                    order.markShipped();
+                }
+            }
             case DELIVERED -> {
                 order.markDelivered();
                 settleEarnedPoints(order);

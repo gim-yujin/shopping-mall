@@ -1,11 +1,14 @@
 package com.shop.domain.review.controller;
 
 import com.shop.domain.review.dto.ReviewCreateRequest;
+import com.shop.domain.review.dto.ReviewUpdateRequest;
+import com.shop.domain.review.entity.Review;
 import com.shop.domain.review.service.ReviewService;
 import com.shop.global.exception.BusinessException;
 import com.shop.global.security.SecurityUtil;
 import jakarta.validation.Valid;
 import org.springframework.stereotype.Controller;
+import org.springframework.ui.Model;
 import org.springframework.validation.BindingResult;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.support.RedirectAttributes;
@@ -47,6 +50,46 @@ public class ReviewController {
             redirectAttributes.addFlashAttribute("errorMessage", e.getMessage());
         }
         return "redirect:/products/" + request.productId();
+    }
+
+    /**
+     * [3.7] 리뷰 수정 폼 표시.
+     * 본인 리뷰만 수정 가능하며, 수정 후 상품 상세 페이지로 리다이렉트한다.
+     */
+    @GetMapping("/{reviewId}/edit")
+    public String editReviewForm(@PathVariable Long reviewId, Model model) {
+        Long userId = SecurityUtil.getCurrentUserId().orElseThrow();
+        Review review = reviewService.getReviewForEdit(reviewId, userId);
+        model.addAttribute("review", review);
+        return "review/edit";
+    }
+
+    /**
+     * [3.7] 리뷰 수정 처리.
+     * 평점 변경 시 상품 평균 평점을 재계산하고 관련 캐시를 무효화한다.
+     */
+    @PostMapping("/{reviewId}/edit")
+    public String updateReview(@PathVariable Long reviewId,
+                               @Valid ReviewUpdateRequest request,
+                               BindingResult bindingResult,
+                               @RequestParam Long productId,
+                               RedirectAttributes redirectAttributes,
+                               Model model) {
+        Long userId = SecurityUtil.getCurrentUserId().orElseThrow();
+
+        if (bindingResult.hasErrors()) {
+            redirectAttributes.addFlashAttribute("errorMessage",
+                    "리뷰 수정에 실패했습니다. 입력값을 확인해주세요.");
+            return "redirect:/reviews/" + reviewId + "/edit";
+        }
+
+        try {
+            reviewService.updateReview(reviewId, userId, request);
+            redirectAttributes.addFlashAttribute("successMessage", "리뷰가 수정되었습니다.");
+        } catch (BusinessException e) {
+            redirectAttributes.addFlashAttribute("errorMessage", e.getMessage());
+        }
+        return "redirect:/products/" + productId;
     }
 
     @PostMapping("/{reviewId}/helpful")

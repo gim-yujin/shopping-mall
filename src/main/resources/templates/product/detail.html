@@ -184,6 +184,21 @@
                                 </th:block>
                             </div>
                             <span class="text-sm text-gray-500" th:text="${#temporals.format(review.createdAt, 'yyyy.MM.dd')}"></span>
+                            <!-- [3.7] 수정된 리뷰 표시 -->
+                            <span th:if="${review.updatedAt != null and review.updatedAt.isAfter(review.createdAt.plusMinutes(1))}"
+                                  class="text-xs text-gray-400"
+                                  th:title="'수정일: ' + ${#temporals.format(review.updatedAt, 'yyyy.MM.dd HH:mm')}">(수정됨)</span>
+                        </div>
+                        <!-- [3.7] 본인 리뷰인 경우 수정/삭제 버튼 표시 -->
+                        <div th:if="${currentUserId != null and currentUserId == review.userId}" class="flex items-center gap-2">
+                            <a th:href="@{/reviews/{id}/edit(id=${review.reviewId})}"
+                               class="text-xs text-blue-600 hover:text-blue-800 font-medium">수정</a>
+                            <form th:action="@{/reviews/{id}/delete(id=${review.reviewId})}" method="post" class="inline">
+                                <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}"/>
+                                <input type="hidden" name="productId" th:value="${product.productId}"/>
+                                <button type="submit" onclick="return confirm('리뷰를 삭제하시겠습니까?')"
+                                        class="text-xs text-red-500 hover:text-red-700 font-medium">삭제</button>
+                            </form>
                         </div>
                     </div>
                     <h4 th:if="${review.title != null}" class="font-medium text-gray-900 mb-1" th:text="${review.title}"></h4>

@@ -111,6 +111,21 @@ public class Order {
     @Column(name = "paid_at")
     private LocalDateTime paidAt;
 
+    /**
+     * [3.6] 배송 추적번호.
+     * 관리자가 주문 상태를 SHIPPED로 변경할 때 입력한다.
+     * 배송 전 상태에서는 null이다.
+     */
+    @Column(name = "tracking_number", length = 100)
+    private String trackingNumber;
+
+    /**
+     * [3.6] 택배사명.
+     * tracking_number와 함께 SHIPPED 전환 시 기록한다.
+     */
+    @Column(name = "carrier", length = 50)
+    private String carrier;
+
     @Column(name = "shipped_at")
     private LocalDateTime shippedAt;
 
@@ -167,6 +182,17 @@ public class Order {
     public void markShipped() {
         this.orderStatus = OrderStatus.SHIPPED;
         this.shippedAt = LocalDateTime.now();
+    }
+
+    /**
+     * [3.6] 배송 정보와 함께 배송 시작 처리.
+     * 관리자가 SHIPPED 상태로 전환할 때 택배사와 송장번호를 함께 기록한다.
+     */
+    public void markShipped(String carrier, String trackingNumber) {
+        this.orderStatus = OrderStatus.SHIPPED;
+        this.shippedAt = LocalDateTime.now();
+        this.carrier = carrier;
+        this.trackingNumber = trackingNumber;
     }
 
     public void markDelivered() {
@@ -228,6 +254,8 @@ public class Order {
     public LocalDateTime getOrderDate() { return orderDate; }
     public LocalDateTime getPaidAt() { return paidAt; }
     public LocalDateTime getShippedAt() { return shippedAt; }
+    public String getTrackingNumber() { return trackingNumber; }
+    public String getCarrier() { return carrier; }
     public LocalDateTime getDeliveredAt() { return deliveredAt; }
     public LocalDateTime getCancelledAt() { return cancelledAt; }
     public List<OrderItem> getItems() { return items; }

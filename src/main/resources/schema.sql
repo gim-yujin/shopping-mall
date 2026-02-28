@@ -194,6 +194,8 @@ CREATE TABLE orders (
     order_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
     paid_at TIMESTAMP,
     shipped_at TIMESTAMP,
+    tracking_number VARCHAR(100),
+    carrier VARCHAR(50),
     delivered_at TIMESTAMP,
     cancelled_at TIMESTAMP,
     

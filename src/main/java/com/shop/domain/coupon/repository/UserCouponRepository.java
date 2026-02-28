@@ -59,4 +59,15 @@ public interface UserCouponRepository extends JpaRepository<UserCoupon, Long> {
 
     @Query("SELECT uc.coupon.couponId FROM UserCoupon uc WHERE uc.userId = :userId")
     Set<Integer> findCouponIdsByUserId(@Param("userId") Long userId);
+
+    // ────────────────────────────────────────────
+    // [3.11] 대시보드 쿠폰 통계 쿼리
+    // ────────────────────────────────────────────
+
+    /** 전체 발급된 사용자 쿠폰 수 */
+    long count();
+
+    /** 사용된 쿠폰 수 */
+    @Query("SELECT COUNT(uc) FROM UserCoupon uc WHERE uc.isUsed = true")
+    long countUsedCoupons();
 }

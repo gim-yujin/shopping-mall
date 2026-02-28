@@ -30,6 +30,9 @@
                     </div>
                     <div class="flex items-center gap-2">
                         <span class="text-xs text-gray-400" th:text="${#temporals.format(review.createdAt, 'yyyy.MM.dd')}">날짜</span>
+                        <!-- [3.7] 리뷰 수정 링크 추가 -->
+                        <a th:href="@{/reviews/{id}/edit(id=${review.reviewId})}"
+                           class="text-xs text-blue-600 hover:text-blue-800 font-medium">수정</a>
                         <form th:action="@{/reviews/{id}/delete(id=${review.reviewId})}" method="post">
                             <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}"/>
                             <input type="hidden" name="productId" th:value="${review.productId}"/>

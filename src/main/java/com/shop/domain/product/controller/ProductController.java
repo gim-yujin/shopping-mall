@@ -76,6 +76,8 @@ public class ProductController {
         model.addAttribute("helpedReviewIds", Set.of());
 
         SecurityUtil.getCurrentUserId().ifPresent(userId -> {
+            // [3.7] 현재 로그인 사용자 ID를 모델에 추가하여 본인 리뷰 수정/삭제 버튼 표시에 활용
+            model.addAttribute("currentUserId", userId);
             model.addAttribute("isWishlisted", wishlistService.isWishlisted(userId, productId));
 
             Set<Long> reviewIds = reviews.getContent().stream()

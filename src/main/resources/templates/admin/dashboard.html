@@ -33,6 +33,31 @@
             </div>
         </div>
 
+        <!-- [3.11] 쿠폰 통계 카드 -->
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+            <div class="bg-white rounded-lg shadow p-5 border-l-4 border-purple-500">
+                <p class="text-sm text-gray-500">전체 쿠폰</p>
+                <p class="text-2xl font-bold mt-1" th:text="${couponStats.totalCoupons()}">0</p>
+            </div>
+            <div class="bg-white rounded-lg shadow p-5 border-l-4 border-green-500">
+                <p class="text-sm text-gray-500">활성 쿠폰</p>
+                <p class="text-2xl font-bold mt-1 text-green-600" th:text="${couponStats.activeCoupons()}">0</p>
+            </div>
+            <div class="bg-white rounded-lg shadow p-5 border-l-4 border-blue-500">
+                <p class="text-sm text-gray-500">총 발급 / 사용</p>
+                <p class="text-2xl font-bold mt-1">
+                    <span th:text="${couponStats.totalIssued()}">0</span>
+                    <span class="text-gray-400 text-base">/</span>
+                    <span class="text-blue-600" th:text="${couponStats.totalUsed()}">0</span>
+                </p>
+            </div>
+            <div class="bg-white rounded-lg shadow p-5 border-l-4 border-amber-500">
+                <p class="text-sm text-gray-500">쿠폰 사용률</p>
+                <p class="text-2xl font-bold mt-1 text-amber-600"
+                   th:text="${#numbers.formatDecimal(couponStats.usageRate(), 1, 1)} + '%'">0%</p>
+            </div>
+        </div>
+
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <!-- Recent Orders -->
             <div class="bg-white rounded-lg shadow p-6">
@@ -79,6 +104,43 @@
                         </tr>
                         </tbody>
                     </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- [3.11] 쿠폰 현황 바 -->
+        <div class="mt-6 bg-white rounded-lg shadow p-6">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-lg font-bold">쿠폰 현황</h2>
+                <a th:href="@{/admin/coupons}" class="text-sm text-purple-600 hover:text-purple-800">쿠폰 관리 →</a>
+            </div>
+            <div class="grid grid-cols-4 gap-4 text-center text-sm">
+                <div>
+                    <p class="text-gray-500">등록</p>
+                    <p class="text-lg font-bold" th:text="${couponStats.totalCoupons()}">0</p>
+                </div>
+                <div>
+                    <p class="text-gray-500">활성</p>
+                    <p class="text-lg font-bold text-green-600" th:text="${couponStats.activeCoupons()}">0</p>
+                </div>
+                <div>
+                    <p class="text-gray-500">발급</p>
+                    <p class="text-lg font-bold text-blue-600" th:text="${couponStats.totalIssued()}">0</p>
+                </div>
+                <div>
+                    <p class="text-gray-500">사용</p>
+                    <p class="text-lg font-bold text-amber-600" th:text="${couponStats.totalUsed()}">0</p>
+                </div>
+            </div>
+            <!-- 사용률 프로그레스 바 -->
+            <div class="mt-4">
+                <div class="flex justify-between text-xs text-gray-500 mb-1">
+                    <span>쿠폰 사용률</span>
+                    <span th:text="${#numbers.formatDecimal(couponStats.usageRate(), 1, 1)} + '%'">0%</span>
+                </div>
+                <div class="w-full bg-gray-200 rounded-full h-2">
+                    <div class="bg-purple-500 h-2 rounded-full transition-all"
+                         th:style="'width:' + ${couponStats.usageRate()} + '%'"></div>
                 </div>
             </div>
         </div>

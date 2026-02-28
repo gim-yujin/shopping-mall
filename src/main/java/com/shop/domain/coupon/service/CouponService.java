@@ -1,6 +1,7 @@
 package com.shop.domain.coupon.service;
 
 import com.shop.domain.coupon.dto.AdminCouponRequest;
+import com.shop.domain.coupon.dto.CouponStats;
 import com.shop.domain.coupon.entity.Coupon;
 import com.shop.domain.coupon.entity.UserCoupon;
 import com.shop.domain.coupon.repository.CouponRepository;
@@ -86,6 +87,18 @@ public class CouponService {
     // ────────────────────────────────────────────
     // Admin CRUD
     // ────────────────────────────────────────────
+
+    /**
+     * [3.11] 대시보드용 쿠폰 통계 집계.
+     * 전체 쿠폰 수, 활성 쿠폰 수, 발급·사용 수를 한 번에 조회하여 반환한다.
+     */
+    public CouponStats getCouponStats() {
+        long totalCoupons = couponRepository.count();
+        long activeCoupons = couponRepository.countActiveCoupons();
+        long totalIssued = userCouponRepository.count();
+        long totalUsed = userCouponRepository.countUsedCoupons();
+        return new CouponStats(totalCoupons, activeCoupons, totalIssued, totalUsed);
+    }
 
     /**
      * 관리자용 전체 쿠폰 목록 (활성/비활성 포함).
