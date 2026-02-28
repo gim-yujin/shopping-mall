@@ -126,7 +126,10 @@ public class OrderCancellationService {
         // 2) 누적금액(total_spent) 차감 & 포인트 환불 & 등급 재계산
         User user = userRepository.findByIdWithLockAndTier(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("사용자", userId));
-        BigDecimal remainingRefundAmount = order.getFinalAmount().subtract(order.getRefundedAmount());
+        BigDecimal refundedAmount = order.getRefundedAmount() == null
+                ? BigDecimal.ZERO
+                : order.getRefundedAmount();
+        BigDecimal remainingRefundAmount = order.getFinalAmount().subtract(refundedAmount);
         if (remainingRefundAmount.compareTo(BigDecimal.ZERO) < 0) {
             remainingRefundAmount = BigDecimal.ZERO;
         }
