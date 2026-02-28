@@ -14,8 +14,6 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.TestPropertySource;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
-import org.springframework.dao.CannotAcquireLockException;
-import org.springframework.dao.DeadlockLoserDataAccessException;
 import org.springframework.dao.PessimisticLockingFailureException;
 
 import java.math.BigDecimal;
@@ -415,7 +413,7 @@ class CancelOrderConcurrencyTest {
                         createdOrderIdByUserB.set(createdOrder.getOrderId());
                         createSuccess.incrementAndGet();
                         break;
-                    } catch (CannotAcquireLockException | PessimisticLockingFailureException | DeadlockLoserDataAccessException e) {
+                    } catch (PessimisticLockingFailureException e) {
                         if (attempt == maxAttempts) {
                             throw e;
                         }
