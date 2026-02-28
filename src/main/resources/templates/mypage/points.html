@@ -29,12 +29,13 @@
                     </tr>
                     </thead>
                     <tbody class="divide-y">
-                    <tr th:each="history : ${pointHistories.content}">
+                    <tr th:each="history : ${pointHistories.content}"
+                        th:with="normalizedType=${T(com.shop.domain.point.service.PointChangeTypeLabelMapper).normalize(history.changeType)}">
                         <td class="px-4 py-3 text-gray-600" th:text="${#temporals.format(history.createdAt, 'yyyy.MM.dd HH:mm')}">2026.01.01 12:00</td>
-                        <td class="px-4 py-3" th:text="${history.changeType}">EARN</td>
+                        <td class="px-4 py-3" th:text="${T(com.shop.domain.point.service.PointChangeTypeLabelMapper).toKoreanLabel(history.changeType)}">적립</td>
                         <td class="px-4 py-3 text-right font-semibold"
-                            th:classappend="${history.changeType == 'EARN' or history.changeType == 'REFUND'} ? 'text-green-600' : (${history.changeType == 'USE' or history.changeType == 'EXPIRE'} ? 'text-red-600' : 'text-gray-700')"
-                            th:text="${(history.changeType == 'EARN' or history.changeType == 'REFUND') ? '+' : ((history.changeType == 'USE' or history.changeType == 'EXPIRE') ? '-' : '')} + #numbers.formatInteger(history.amount, 1, 'COMMA')">
+                            th:classappend="${normalizedType == 'EARN' or normalizedType == 'REFUND'} ? 'text-green-600' : (${normalizedType == 'USE' or normalizedType == 'EXPIRE'} ? 'text-red-600' : 'text-gray-700')"
+                            th:text="${(normalizedType == 'EARN' or normalizedType == 'REFUND') ? '+' : ((normalizedType == 'USE' or normalizedType == 'EXPIRE') ? '-' : '')} + #numbers.formatInteger(history.amount, 1, 'COMMA')">
                             +1,000
                         </td>
                         <td class="px-4 py-3 text-right text-gray-800"
