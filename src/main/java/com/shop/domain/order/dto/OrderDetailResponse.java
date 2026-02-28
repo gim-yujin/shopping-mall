@@ -9,6 +9,9 @@ import java.util.List;
 /**
  * [P1-6] 주문 상세 조회용 응답 DTO.
  * 주문 항목(items)을 포함하여 단일 API 호출로 전체 주문 정보를 제공한다.
+ *
+ * [P0 FIX] pointsSettled 필드 추가: 포인트 적립 이연(DELIVERED 시점 정산)에 따라
+ * UI에서 "적립 예정" vs "적립 완료"를 구분 표시할 수 있도록 정산 상태를 노출한다.
  */
 public record OrderDetailResponse(
         Long orderId,
@@ -22,6 +25,7 @@ public record OrderDetailResponse(
         BigDecimal finalAmount,
         int earnedPoints,
         int usedPoints,
+        boolean pointsSettled,
         String paymentMethod,
         String shippingAddress,
         String recipientName,
@@ -46,6 +50,7 @@ public record OrderDetailResponse(
                 order.getFinalAmount(),
                 order.getEarnedPointsSnapshot(),
                 order.getUsedPoints(),
+                order.isPointsSettled(),
                 order.getPaymentMethod(),
                 order.getShippingAddress(),
                 order.getRecipientName(),

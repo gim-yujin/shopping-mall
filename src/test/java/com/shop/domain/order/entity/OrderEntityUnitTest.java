@@ -178,4 +178,42 @@ class OrderEntityUnitTest {
         order.cancel();
         assertThat(order.getStatusDisplay()).isEqualTo("주문취소");
     }
+
+    // ==================== pointsSettled ====================
+
+    /**
+     * [P0 FIX 검증] 주문 생성 시 points_settled는 false로 초기화된다.
+     * 포인트 적립은 배송 완료(DELIVERED) 시점에 수행되므로,
+     * 생성 직후에는 항상 미정산 상태여야 한다.
+     */
+    @Test
+    @DisplayName("pointsSettled — 주문 생성 시 false 초기화")
+    void pointsSettled_defaultFalse() {
+        Order order = createOrder();
+        assertThat(order.isPointsSettled()).isFalse();
+    }
+
+    /**
+     * [P0 FIX 검증] settlePoints() 호출 시 정산 플래그가 true로 전환된다.
+     */
+    @Test
+    @DisplayName("settlePoints — 호출 후 isPointsSettled() == true")
+    void settlePoints_setsFlag() {
+        Order order = createOrder();
+        order.settlePoints();
+        assertThat(order.isPointsSettled()).isTrue();
+    }
+
+    /**
+     * [P0 FIX 검증] settlePoints()는 멱등하다.
+     * 이미 true인 상태에서 다시 호출해도 예외 없이 true를 유지한다.
+     */
+    @Test
+    @DisplayName("settlePoints — 중복 호출 시 멱등성 보장")
+    void settlePoints_idempotent() {
+        Order order = createOrder();
+        order.settlePoints();
+        order.settlePoints(); // 두 번째 호출
+        assertThat(order.isPointsSettled()).isTrue();
+    }
 }

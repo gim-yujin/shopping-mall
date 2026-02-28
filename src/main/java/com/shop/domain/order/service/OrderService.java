@@ -67,8 +67,8 @@ public class OrderService {
         return shippingFeeCalculator.calculateShippingFee(tier, itemTotalAmount);
     }
 
-    public BigDecimal calculateFinalAmount(BigDecimal itemTotalAmount, BigDecimal totalDiscount, BigDecimal shippingFee) {
-        return shippingFeeCalculator.calculateFinalAmount(itemTotalAmount, totalDiscount, shippingFee);
+    public BigDecimal calculateFinalAmount(BigDecimal itemTotalAmount, BigDecimal totalDeduction, BigDecimal shippingFee) {
+        return shippingFeeCalculator.calculateFinalAmount(itemTotalAmount, totalDeduction, shippingFee);
     }
 
     // ── 주문 생성 ─────────────────────────────────────────

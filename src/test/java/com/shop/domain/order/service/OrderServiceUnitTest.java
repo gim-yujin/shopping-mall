@@ -3,7 +3,9 @@ package com.shop.domain.order.service;
 import com.shop.domain.order.entity.Order;
 import com.shop.domain.order.entity.OrderStatus;
 import com.shop.domain.order.repository.OrderRepository;
+import com.shop.domain.point.entity.PointHistory;
 import com.shop.domain.point.repository.PointHistoryRepository;
+import com.shop.domain.user.entity.User;
 import com.shop.domain.user.repository.UserRepository;
 import com.shop.global.exception.BusinessException;
 import com.shop.global.exception.ResourceNotFoundException;
@@ -178,5 +180,96 @@ class OrderServiceUnitTest {
         verify(order, never()).markShipped();
         verify(order, never()).markDelivered();
         verify(order, never()).cancel();
+    }
+
+    // ── settleEarnedPoints (DELIVERED 시 포인트 정산) ─────────────
+
+    /**
+     * [P0 FIX 검증] SHIPPED → DELIVERED 전이 시 settleEarnedPoints 호출 경로 검증.
+     *
+     * updateOrderStatus에서 DELIVERED 전이 시:
+     * 1) order.markDelivered() 호출
+     * 2) settleEarnedPoints() → user.addPoints(earned) + pointHistory 저장 + order.settlePoints()
+     */
+    @Test
+    @DisplayName("updateOrderStatus DELIVERED — 포인트 적립 + 이력 저장 + settlePoints 호출")
+    void updateOrderStatus_delivered_settlesEarnedPoints() {
+        Long orderId = 1L;
+        Long userId = 101L;
+        int earned = 1500;
+
+        Order order = mock(Order.class);
+        User user = mock(User.class);
+
+        when(orderRepository.findByIdWithLock(orderId)).thenReturn(Optional.of(order));
+        when(order.getOrderStatus()).thenReturn(OrderStatus.SHIPPED);
+        when(order.isPointsSettled()).thenReturn(false);
+        when(order.getEarnedPointsSnapshot()).thenReturn(earned);
+        when(order.getUserId()).thenReturn(userId);
+        when(order.getOrderId()).thenReturn(orderId);
+        when(order.getOrderNumber()).thenReturn("ORD-TEST");
+        when(userRepository.findByIdWithLockAndTier(userId)).thenReturn(Optional.of(user));
+        when(user.getUserId()).thenReturn(userId);
+        when(user.getPointBalance()).thenReturn(earned);
+
+        orderService.updateOrderStatus(orderId, "DELIVERED");
+
+        verify(order).markDelivered();
+        verify(user).addPoints(earned);
+        verify(pointHistoryRepository).save(any(PointHistory.class));
+        verify(order).settlePoints();
+    }
+
+    /**
+     * [P0 FIX 검증] 이미 정산된 주문에 대해 중복 DELIVERED 호출 시 멱등성 보장.
+     *
+     * points_settled=true인 주문에 DELIVERED를 다시 호출하면
+     * 포인트 적립/이력 저장이 수행되지 않아야 한다.
+     */
+    @Test
+    @DisplayName("updateOrderStatus DELIVERED — 이미 정산된 주문은 포인트 미중복적립 (멱등성)")
+    void updateOrderStatus_delivered_alreadySettled_isIdempotent() {
+        Long orderId = 1L;
+        Order order = mock(Order.class);
+
+        when(orderRepository.findByIdWithLock(orderId)).thenReturn(Optional.of(order));
+        when(order.getOrderStatus()).thenReturn(OrderStatus.DELIVERED);
+        when(order.isPointsSettled()).thenReturn(true);
+
+        orderService.updateOrderStatus(orderId, "DELIVERED");
+
+        verify(order).markDelivered();
+        // 이미 정산 완료이므로 포인트 관련 로직이 실행되면 안 됨
+        verify(userRepository, never()).findByIdWithLockAndTier(any());
+        verify(pointHistoryRepository, never()).save(any());
+        verify(order, never()).settlePoints();
+    }
+
+    /**
+     * [P0 FIX 검증] earnedPointsSnapshot이 0인 경우에도 settlePoints()는 호출되어야 한다.
+     *
+     * 등급/금액에 따라 적립 포인트가 0일 수 있다.
+     * 이 경우에도 points_settled 플래그는 true로 설정되어야
+     * 이후 중복 체크에서 정상 동작한다.
+     */
+    @Test
+    @DisplayName("updateOrderStatus DELIVERED — 적립 0P일 때도 settlePoints 호출")
+    void updateOrderStatus_delivered_zeroEarned_stillSettles() {
+        Long orderId = 1L;
+        Order order = mock(Order.class);
+
+        when(orderRepository.findByIdWithLock(orderId)).thenReturn(Optional.of(order));
+        when(order.getOrderStatus()).thenReturn(OrderStatus.SHIPPED);
+        when(order.isPointsSettled()).thenReturn(false);
+        when(order.getEarnedPointsSnapshot()).thenReturn(0);
+
+        orderService.updateOrderStatus(orderId, "DELIVERED");
+
+        verify(order).markDelivered();
+        // earned=0이므로 user.addPoints는 호출되지 않지만
+        verify(userRepository, never()).findByIdWithLockAndTier(any());
+        verify(pointHistoryRepository, never()).save(any());
+        // settlePoints()는 반드시 호출되어 플래그를 true로 전환
+        verify(order).settlePoints();
     }
 }

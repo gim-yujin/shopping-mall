@@ -450,7 +450,8 @@ CREATE TABLE point_history (
     CONSTRAINT fk_point_history_user FOREIGN KEY (user_id)
         REFERENCES users(user_id),
     CONSTRAINT chk_point_change_type CHECK (change_type IN ('EARN', 'USE', 'REFUND', 'EXPIRE', 'ADJUST')),
-    CONSTRAINT chk_point_amount CHECK (amount > 0)
+    CONSTRAINT chk_point_amount CHECK (amount > 0),
+    CONSTRAINT chk_point_reference_type CHECK (reference_type IN ('ORDER', 'CANCEL', 'ADMIN', 'SYSTEM'))
 );
 
 COMMENT ON TABLE point_history IS '포인트 변동 이력 (예상: 5천만 건)';

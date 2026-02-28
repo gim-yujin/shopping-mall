@@ -102,6 +102,10 @@ class OrderServiceIntegrationTest {
     void tearDown() {
         // 생성된 주문 관련 데이터 삭제
         for (Long orderId : createdOrderIds) {
+            // point_history에서 주문 참조 삭제
+            jdbcTemplate.update(
+                    "DELETE FROM point_history WHERE reference_id = ? AND reference_type IN ('ORDER', 'CANCEL')",
+                    orderId);
             // user_coupons에서 order_id 참조 해제
             jdbcTemplate.update(
                     "UPDATE user_coupons SET is_used = false, used_at = NULL, order_id = NULL WHERE order_id = ?",
@@ -138,9 +142,9 @@ class OrderServiceIntegrationTest {
 
         // 테스트용 쿠폰 정리
         jdbcTemplate.update(
-                "DELETE FROM user_coupons WHERE coupon_id IN (SELECT coupon_id FROM coupons WHERE coupon_code IN ('TEST_ORDER_COUPON', 'TEST_ORDER_SOLDOUT_COUPON', 'TEST_CANCEL_COUPON'))");
+                "DELETE FROM user_coupons WHERE coupon_id IN (SELECT coupon_id FROM coupons WHERE coupon_code IN ('TEST_ORDER_COUPON', 'TEST_ORDER_SOLDOUT_COUPON', 'TEST_CANCEL_COUPON', 'TEST_MINORDER_COUPON'))");
         jdbcTemplate.update(
-                "DELETE FROM coupons WHERE coupon_code IN ('TEST_ORDER_COUPON', 'TEST_ORDER_SOLDOUT_COUPON', 'TEST_CANCEL_COUPON')");
+                "DELETE FROM coupons WHERE coupon_code IN ('TEST_ORDER_COUPON', 'TEST_ORDER_SOLDOUT_COUPON', 'TEST_CANCEL_COUPON', 'TEST_MINORDER_COUPON')");
     }
 
     // ==================== 장바구니에 상품 추가 (공통 헬퍼) ====================
@@ -962,5 +966,334 @@ class OrderServiceIntegrationTest {
         assertThat(pointsAfter).isEqualTo(100);
 
         System.out.println("  [PASS] 포인트 초과 사용 시 BusinessException 발생, 포인트 변화 없음");
+    }
+
+    // ==================== 포인트 적립 이연 (DELIVERED 시점 정산) ====================
+
+    /**
+     * [P0 FIX 검증] 배송 완료 시 포인트 정산 통합 테스트.
+     *
+     * 기존 문제: 주문 생성 즉시 포인트가 적립되어, 적립 포인트를 다른 주문에
+     * 사용한 뒤 첫 주문을 취소하면 포인트 부당 지급이 발생했다.
+     *
+     * 수정 후 기대 동작:
+     * 1) 주문 생성 시 — 포인트 미적립 (points_settled=false, point_balance 변화 없음)
+     * 2) PAID → SHIPPED → DELIVERED 전이 시 — 포인트 적립 (points_settled=true)
+     * 3) point_history에 EARN 레코드 생성
+     * 4) 중복 DELIVERED 호출 시 — 멱등성 보장 (포인트 중복 적립 없음)
+     */
+    @Test
+    @DisplayName("settleEarnedPoints — DELIVERED 전이 시 포인트 적립 + 이력 기록 + 멱등성 보장")
+    void updateOrderStatus_delivered_settlesEarnedPoints() {
+        // Given: 주문 생성
+        addCartItem(testUserId, testProductId, 2);
+
+        int pointsBefore = jdbcTemplate.queryForObject(
+                "SELECT point_balance FROM users WHERE user_id = ?",
+                Integer.class, testUserId);
+
+        Order order = orderService.createOrder(testUserId, defaultRequest());
+        createdOrderIds.add(order.getOrderId());
+
+        int earnedSnapshot = order.getEarnedPointsSnapshot();
+        assertThat(earnedSnapshot).as("적립 예정 포인트가 0보다 커야 한다").isGreaterThan(0);
+
+        // 주문 직후: 포인트 미적립, points_settled=false
+        int pointsAfterOrder = jdbcTemplate.queryForObject(
+                "SELECT point_balance FROM users WHERE user_id = ?",
+                Integer.class, testUserId);
+        Boolean settledAfterOrder = jdbcTemplate.queryForObject(
+                "SELECT points_settled FROM orders WHERE order_id = ?",
+                Boolean.class, order.getOrderId());
+
+        assertThat(pointsAfterOrder).isEqualTo(pointsBefore);
+        assertThat(settledAfterOrder).isFalse();
+
+        // When: PAID → SHIPPED → DELIVERED
+        orderService.updateOrderStatus(order.getOrderId(), "SHIPPED");
+        orderService.updateOrderStatus(order.getOrderId(), "DELIVERED");
+
+        // Then: 포인트 적립 완료
+        int pointsAfterDelivered = jdbcTemplate.queryForObject(
+                "SELECT point_balance FROM users WHERE user_id = ?",
+                Integer.class, testUserId);
+        Boolean settledAfterDelivered = jdbcTemplate.queryForObject(
+                "SELECT points_settled FROM orders WHERE order_id = ?",
+                Boolean.class, order.getOrderId());
+
+        assertThat(pointsAfterDelivered).isEqualTo(pointsBefore + earnedSnapshot);
+        assertThat(settledAfterDelivered).isTrue();
+
+        // point_history에 EARN 레코드 생성 확인
+        Integer earnHistoryCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM point_history WHERE user_id = ? AND change_type = 'EARN' AND reference_id = ?",
+                Integer.class, testUserId, order.getOrderId());
+        assertThat(earnHistoryCount).isEqualTo(1);
+
+        // EARN 레코드의 amount와 balance_after 정확성 검증
+        Map<String, Object> earnHistory = jdbcTemplate.queryForMap(
+                "SELECT amount, balance_after FROM point_history WHERE user_id = ? AND change_type = 'EARN' AND reference_id = ?",
+                testUserId, order.getOrderId());
+        assertThat((Integer) earnHistory.get("amount")).isEqualTo(earnedSnapshot);
+        assertThat((Integer) earnHistory.get("balance_after")).isEqualTo(pointsAfterDelivered);
+
+        // 멱등성 테스트: DELIVERED → DELIVERED 자기 전이 (canTransitionTo 허용)
+        // 두 번 호출해도 포인트가 한 번만 적립되어야 한다.
+        orderService.updateOrderStatus(order.getOrderId(), "DELIVERED");
+
+        int pointsAfterSecondDelivered = jdbcTemplate.queryForObject(
+                "SELECT point_balance FROM users WHERE user_id = ?",
+                Integer.class, testUserId);
+        Integer earnHistoryCountAfterRetry = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM point_history WHERE user_id = ? AND change_type = 'EARN' AND reference_id = ?",
+                Integer.class, testUserId, order.getOrderId());
+
+        assertThat(pointsAfterSecondDelivered)
+                .as("중복 DELIVERED 호출 시 포인트가 추가 적립되면 안 된다")
+                .isEqualTo(pointsAfterDelivered);
+        assertThat(earnHistoryCountAfterRetry)
+                .as("중복 DELIVERED 호출 시 EARN 이력이 추가 생성되면 안 된다")
+                .isEqualTo(1);
+
+        System.out.println("  [PASS] 포인트 적립 이연: " + pointsBefore + "P → 주문 후 " + pointsAfterOrder
+                + "P(미적립) → DELIVERED 후 " + pointsAfterDelivered + "P(+" + earnedSnapshot
+                + "P) → 재호출 후 " + pointsAfterSecondDelivered + "P(멱등)");
+    }
+
+    /**
+     * [P0 FIX 검증] 포인트 사용 + 적립 이연의 전체 라이프사이클 검증.
+     *
+     * 시나리오: 포인트를 사용하여 주문 → DELIVERED → 적립 정산
+     * 전체 플로우에서 point_history의 USE + EARN 레코드가 정확히 생성되는지 확인.
+     */
+    @Test
+    @DisplayName("settleEarnedPoints — 포인트 사용 + DELIVERED 적립 전체 라이프사이클")
+    void updateOrderStatus_delivered_withUsedPoints_fullLifecycle() {
+        // Given: 포인트 부여 후 포인트 사용 주문 생성
+        int grantPoints = 3000;
+        jdbcTemplate.update(
+                "UPDATE users SET point_balance = point_balance + ? WHERE user_id = ?",
+                grantPoints, testUserId);
+
+        int pointsBefore = jdbcTemplate.queryForObject(
+                "SELECT point_balance FROM users WHERE user_id = ?",
+                Integer.class, testUserId);
+
+        addCartItem(testUserId, testProductId, 1);
+
+        int usePoints = 1000;
+        OrderCreateRequest request = new OrderCreateRequest(
+                "서울시 강남구 테스트로 123", "테스트수령인", "010-0000-0000",
+                "CARD", BigDecimal.ZERO, null, usePoints, null);
+
+        Order order = orderService.createOrder(testUserId, request);
+        createdOrderIds.add(order.getOrderId());
+
+        int earnedSnapshot = order.getEarnedPointsSnapshot();
+
+        // 주문 직후: 사용 포인트만 차감됨, 적립은 아직 없음
+        int pointsAfterOrder = jdbcTemplate.queryForObject(
+                "SELECT point_balance FROM users WHERE user_id = ?",
+                Integer.class, testUserId);
+        assertThat(pointsAfterOrder).isEqualTo(pointsBefore - usePoints);
+
+        // USE 이력 생성 확인
+        Integer useHistoryCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM point_history WHERE user_id = ? AND change_type = 'USE' AND reference_id = ?",
+                Integer.class, testUserId, order.getOrderId());
+        assertThat(useHistoryCount).isEqualTo(1);
+
+        // When: DELIVERED로 전이
+        orderService.updateOrderStatus(order.getOrderId(), "SHIPPED");
+        orderService.updateOrderStatus(order.getOrderId(), "DELIVERED");
+
+        // Then: 사용 포인트 차감 + 적립 포인트 추가
+        int pointsAfterDelivered = jdbcTemplate.queryForObject(
+                "SELECT point_balance FROM users WHERE user_id = ?",
+                Integer.class, testUserId);
+        assertThat(pointsAfterDelivered).isEqualTo(pointsBefore - usePoints + earnedSnapshot);
+
+        // EARN 이력 생성 확인
+        Integer earnHistoryCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM point_history WHERE user_id = ? AND change_type = 'EARN' AND reference_id = ?",
+                Integer.class, testUserId, order.getOrderId());
+        assertThat(earnHistoryCount).isEqualTo(1);
+
+        // 전체 이력 순서 검증: USE → EARN (시간순)
+        List<Map<String, Object>> histories = jdbcTemplate.queryForList(
+                "SELECT change_type, amount, balance_after FROM point_history WHERE reference_id = ? AND reference_type = 'ORDER' ORDER BY created_at ASC",
+                order.getOrderId());
+        assertThat(histories).hasSize(2);
+        assertThat(histories.get(0).get("change_type")).isEqualTo("USE");
+        assertThat(histories.get(1).get("change_type")).isEqualTo("EARN");
+
+        System.out.println("  [PASS] 포인트 사용+적립 라이프사이클: " + pointsBefore + "P → 사용 " + usePoints
+                + "P → " + pointsAfterOrder + "P → DELIVERED 적립 +" + earnedSnapshot
+                + "P → " + pointsAfterDelivered + "P");
+    }
+
+    // ==================== 쿠폰 최소 주문금액 가드 ====================
+
+    /**
+     * [P0 BUG FIX 검증] 쿠폰 최소 주문금액 미달 시 에러 반환 통합 테스트.
+     *
+     * 기존 문제: Coupon.calculateDiscount()가 minOrderAmount 미달 시 0원을 반환했지만,
+     * 이후 로직에서 이를 체크하지 않아 할인 0원인데 쿠폰이 소진되었다.
+     *
+     * 수정 후 기대 동작:
+     * 1) 쿠폰 최소 주문금액 미달 → COUPON_MIN_ORDER_NOT_MET 예외
+     * 2) 쿠폰은 미사용 상태 유지
+     * 3) 재고/포인트 변화 없음 (트랜잭션 롤백)
+     */
+    @Test
+    @DisplayName("createOrder + 쿠폰 최소주문금액 미달 — COUPON_MIN_ORDER_NOT_MET 에러 + 쿠폰 미소진")
+    void createOrder_withCouponBelowMinOrder_throwsErrorAndPreservesCoupon() {
+        // Given: 최소 주문금액이 매우 높은 쿠폰 생성 (상품 가격보다 높게)
+        BigDecimal productPrice = jdbcTemplate.queryForObject(
+                "SELECT price FROM products WHERE product_id = ?",
+                BigDecimal.class, testProductId);
+
+        // 최소 주문금액을 상품 가격의 100배로 설정 (반드시 미달하도록)
+        BigDecimal highMinOrder = productPrice.multiply(BigDecimal.valueOf(100));
+
+        jdbcTemplate.update(
+                """
+                INSERT INTO coupons (coupon_code, coupon_name, discount_type, discount_value,
+                    min_order_amount, max_discount, total_quantity, used_quantity,
+                    valid_from, valid_until, is_active, created_at)
+                VALUES ('TEST_MINORDER_COUPON', '최소주문금액테스트쿠폰', 'FIXED', 5000,
+                    ?, NULL, 100, 0,
+                    '2024-01-01'::timestamp, '2027-12-31'::timestamp, true, NOW())
+                ON CONFLICT (coupon_code) DO NOTHING
+                """,
+                highMinOrder);
+
+        Integer testCouponId = jdbcTemplate.queryForObject(
+                "SELECT coupon_id FROM coupons WHERE coupon_code = 'TEST_MINORDER_COUPON'",
+                Integer.class);
+
+        jdbcTemplate.update(
+                """
+                INSERT INTO user_coupons (user_id, coupon_id, is_used, issued_at, expires_at)
+                VALUES (?, ?, false, NOW(), '2027-12-31'::timestamp)
+                ON CONFLICT DO NOTHING
+                """,
+                testUserId, testCouponId);
+
+        Long userCouponId = jdbcTemplate.queryForObject(
+                "SELECT user_coupon_id FROM user_coupons WHERE user_id = ? AND coupon_id = ? AND is_used = false",
+                Long.class, testUserId, testCouponId);
+
+        // 장바구니에 상품 1개 (최소 주문금액 미달)
+        addCartItem(testUserId, testProductId, 1);
+
+        int stockBefore = jdbcTemplate.queryForObject(
+                "SELECT stock_quantity FROM products WHERE product_id = ?",
+                Integer.class, testProductId);
+        int pointsBefore = jdbcTemplate.queryForObject(
+                "SELECT point_balance FROM users WHERE user_id = ?",
+                Integer.class, testUserId);
+
+        OrderCreateRequest request = new OrderCreateRequest(
+                "서울시 강남구 테스트로 123", "테스트수령인", "010-0000-0000",
+                "CARD", BigDecimal.ZERO, userCouponId, null, null);
+
+        // When & Then: COUPON_MIN_ORDER_NOT_MET 에러 발생
+        assertThatThrownBy(() -> orderService.createOrder(testUserId, request))
+                .isInstanceOf(BusinessException.class)
+                .satisfies(ex -> {
+                    BusinessException bex = (BusinessException) ex;
+                    assertThat(bex.getCode()).isEqualTo("COUPON_MIN_ORDER_NOT_MET");
+                    assertThat(bex.getMessage()).contains("최소 주문 금액");
+                });
+
+        // 쿠폰 미사용 상태 유지 확인
+        Boolean isUsed = jdbcTemplate.queryForObject(
+                "SELECT is_used FROM user_coupons WHERE user_coupon_id = ?",
+                Boolean.class, userCouponId);
+        assertThat(isUsed).as("쿠폰이 소진되면 안 된다").isFalse();
+
+        Long orderIdOnCoupon = jdbcTemplate.queryForObject(
+                "SELECT order_id FROM user_coupons WHERE user_coupon_id = ?",
+                Long.class, userCouponId);
+        assertThat(orderIdOnCoupon).as("쿠폰에 주문 ID가 연결되면 안 된다").isNull();
+
+        // 재고 변화 없음 확인 (트랜잭션 롤백)
+        int stockAfter = jdbcTemplate.queryForObject(
+                "SELECT stock_quantity FROM products WHERE product_id = ?",
+                Integer.class, testProductId);
+        assertThat(stockAfter).as("재고가 변경되면 안 된다").isEqualTo(stockBefore);
+
+        // 포인트 변화 없음 확인
+        int pointsAfter = jdbcTemplate.queryForObject(
+                "SELECT point_balance FROM users WHERE user_id = ?",
+                Integer.class, testUserId);
+        assertThat(pointsAfter).as("포인트가 변경되면 안 된다").isEqualTo(pointsBefore);
+
+        System.out.println("  [PASS] 쿠폰 최소주문금액 미달: 상품가격=" + productPrice
+                + ", 최소주문=" + highMinOrder + " → COUPON_MIN_ORDER_NOT_MET, 쿠폰/재고/포인트 변화 없음");
+    }
+
+    // ==================== 포인트 이력 기록 검증 ====================
+
+    /**
+     * [P1-3.4 검증] 포인트 사용 + 취소 환불 시 이력 레코드 정확성 검증.
+     *
+     * 주문 생성(USE) → 취소(REFUND) 전체 플로우에서
+     * point_history의 레코드 수, amount, balance_after가 정확한지 확인한다.
+     */
+    @Test
+    @DisplayName("pointHistory — 포인트 사용 + 취소 환불 이력 레코드 검증")
+    void pointHistory_useAndRefund_recordsAccurately() {
+        // Given: 포인트 부여
+        int grantPoints = 5000;
+        jdbcTemplate.update(
+                "UPDATE users SET point_balance = point_balance + ? WHERE user_id = ?",
+                grantPoints, testUserId);
+
+        int pointsBefore = jdbcTemplate.queryForObject(
+                "SELECT point_balance FROM users WHERE user_id = ?",
+                Integer.class, testUserId);
+
+        addCartItem(testUserId, testProductId, 1);
+
+        int usePoints = 2000;
+        OrderCreateRequest request = new OrderCreateRequest(
+                "서울시 강남구 테스트로 123", "테스트수령인", "010-0000-0000",
+                "CARD", BigDecimal.ZERO, null, usePoints, null);
+
+        // When: 주문 생성 → 취소
+        Order order = orderService.createOrder(testUserId, request);
+        createdOrderIds.add(order.getOrderId());
+        orderService.cancelOrder(order.getOrderId(), testUserId);
+
+        // Then: point_history에 USE + REFUND 레코드 2개
+        List<Map<String, Object>> histories = jdbcTemplate.queryForList(
+                """
+                SELECT change_type, amount, balance_after, reference_type
+                FROM point_history
+                WHERE user_id = ? AND reference_id = ?
+                ORDER BY created_at ASC
+                """,
+                testUserId, order.getOrderId());
+
+        assertThat(histories).hasSize(2);
+
+        // USE 레코드 검증
+        Map<String, Object> useRecord = histories.get(0);
+        assertThat(useRecord.get("change_type")).isEqualTo("USE");
+        assertThat((Integer) useRecord.get("amount")).isEqualTo(usePoints);
+        assertThat((Integer) useRecord.get("balance_after")).isEqualTo(pointsBefore - usePoints);
+        assertThat(useRecord.get("reference_type")).isEqualTo("ORDER");
+
+        // REFUND 레코드 검증
+        Map<String, Object> refundRecord = histories.get(1);
+        assertThat(refundRecord.get("change_type")).isEqualTo("REFUND");
+        assertThat((Integer) refundRecord.get("amount")).isEqualTo(usePoints);
+        assertThat((Integer) refundRecord.get("balance_after")).isEqualTo(pointsBefore);
+        assertThat(refundRecord.get("reference_type")).isEqualTo("CANCEL");
+
+        System.out.println("  [PASS] 포인트 이력: USE " + usePoints + "P(잔액 " + useRecord.get("balance_after")
+                + ") → REFUND " + usePoints + "P(잔액 " + refundRecord.get("balance_after") + ")");
     }
 }

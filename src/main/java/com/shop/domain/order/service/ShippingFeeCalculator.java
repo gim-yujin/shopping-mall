@@ -32,11 +32,25 @@ public class ShippingFeeCalculator {
     }
 
     /**
-     * 상품금액 - 총할인 + 배송비로 최종 결제 금액을 계산한다.
+     * 상품금액 - 총차감액 + 배송비로 최종 결제 금액을 계산한다.
      * 음수가 되면 0으로 클램핑한다.
+     *
+     * [P0-3.3 FIX] 파라미터명 totalDiscount → totalDeduction 변경.
+     *
+     * 기존 문제: 파라미터명이 "totalDiscount"였지만 실제로는
+     * 등급할인 + 쿠폰할인 + 포인트사용을 합산한 "총 차감액"이 전달되었다.
+     * 수학적으로는 올바르지만, 메서드 시그니처가 오해를 유발했다.
+     *
+     * 수정: "totalDeduction"으로 이름을 변경하여
+     * 할인뿐만 아니라 포인트 사용 등 모든 차감 요소를 포함함을 명확히 한다.
+     *
+     * @param itemTotalAmount 상품 합계 금액
+     * @param totalDeduction  총 차감액 (등급할인 + 쿠폰할인 + 포인트사용)
+     * @param shippingFee     배송비
+     * @return 최종 결제 금액 (최소 0)
      */
-    public BigDecimal calculateFinalAmount(BigDecimal itemTotalAmount, BigDecimal totalDiscount, BigDecimal shippingFee) {
-        BigDecimal finalAmount = itemTotalAmount.subtract(totalDiscount).add(shippingFee);
+    public BigDecimal calculateFinalAmount(BigDecimal itemTotalAmount, BigDecimal totalDeduction, BigDecimal shippingFee) {
+        BigDecimal finalAmount = itemTotalAmount.subtract(totalDeduction).add(shippingFee);
         if (finalAmount.compareTo(BigDecimal.ZERO) < 0) {
             return BigDecimal.ZERO;
         }
