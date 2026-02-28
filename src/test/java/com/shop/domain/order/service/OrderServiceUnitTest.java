@@ -35,6 +35,7 @@ class OrderServiceUnitTest {
     @Mock private OrderQueryService queryService;
     @Mock private ShippingFeeCalculator shippingFeeCalculator;
     @Mock private OrderRepository orderRepository;
+    @Mock private PartialCancellationService partialCancellationService;
     @Mock private UserRepository userRepository;
     @Mock private PointHistoryRepository pointHistoryRepository;
 
@@ -43,7 +44,7 @@ class OrderServiceUnitTest {
     @BeforeEach
     void setUp() {
         orderService = new OrderService(creationService, cancellationService,
-                queryService, shippingFeeCalculator, orderRepository,
+                queryService, shippingFeeCalculator, orderRepository, partialCancellationService,
                 userRepository, pointHistoryRepository);
     }
 

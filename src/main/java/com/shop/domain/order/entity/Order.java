@@ -63,6 +63,9 @@ public class Order {
     @Column(name = "used_points", nullable = false)
     private Integer usedPoints;
 
+    @Column(name = "refunded_amount", nullable = false, precision = 15, scale = 2)
+    private BigDecimal refundedAmount;
+
     /**
      * [P0 FIX] 포인트 정산 완료 플래그.
      *
@@ -128,6 +131,7 @@ public class Order {
         this.pointEarnRateSnapshot = pointEarnRateSnapshot;
         this.earnedPointsSnapshot = earnedPointsSnapshot;
         this.usedPoints = usedPoints;
+        this.refundedAmount = BigDecimal.ZERO;
         this.pointsSettled = false;
         this.paymentMethod = paymentMethod;
         this.shippingAddress = shippingAddress;
@@ -165,6 +169,10 @@ public class Order {
         return orderStatus == OrderStatus.PENDING || orderStatus == OrderStatus.PAID;
     }
 
+    public void addRefundedAmount(BigDecimal amount) {
+        this.refundedAmount = this.refundedAmount.add(amount);
+    }
+
     /**
      * [P0 FIX] 포인트 정산 완료 처리.
      * 배송 완료(DELIVERED) 시 호출되어, 적립 포인트가 사용자 잔액에 반영되었음을 기록한다.
@@ -193,6 +201,7 @@ public class Order {
     public BigDecimal getPointEarnRateSnapshot() { return pointEarnRateSnapshot; }
     public Integer getEarnedPointsSnapshot() { return earnedPointsSnapshot; }
     public Integer getUsedPoints() { return usedPoints; }
+    public BigDecimal getRefundedAmount() { return refundedAmount; }
     public String getPaymentMethod() { return paymentMethod; }
     public String getShippingAddress() { return shippingAddress; }
     public String getRecipientName() { return recipientName; }

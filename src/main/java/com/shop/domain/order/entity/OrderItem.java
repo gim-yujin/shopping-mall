@@ -35,6 +35,18 @@ public class OrderItem {
     @Column(name = "subtotal", nullable = false, precision = 15, scale = 2)
     private BigDecimal subtotal;
 
+    @Column(name = "cancelled_quantity", nullable = false)
+    private Integer cancelledQuantity;
+
+    @Column(name = "returned_quantity", nullable = false)
+    private Integer returnedQuantity;
+
+    @Column(name = "cancelled_amount", nullable = false, precision = 15, scale = 2)
+    private BigDecimal cancelledAmount;
+
+    @Column(name = "returned_amount", nullable = false, precision = 15, scale = 2)
+    private BigDecimal returnedAmount;
+
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
 
@@ -48,6 +60,10 @@ public class OrderItem {
         this.unitPrice = unitPrice;
         this.discountRate = discountRate;
         this.subtotal = subtotal;
+        this.cancelledQuantity = 0;
+        this.returnedQuantity = 0;
+        this.cancelledAmount = BigDecimal.ZERO;
+        this.returnedAmount = BigDecimal.ZERO;
         this.createdAt = LocalDateTime.now();
     }
 
@@ -61,5 +77,20 @@ public class OrderItem {
     public BigDecimal getUnitPrice() { return unitPrice; }
     public BigDecimal getDiscountRate() { return discountRate; }
     public BigDecimal getSubtotal() { return subtotal; }
+    public Integer getCancelledQuantity() { return cancelledQuantity; }
+    public Integer getReturnedQuantity() { return returnedQuantity; }
+    public BigDecimal getCancelledAmount() { return cancelledAmount; }
+    public BigDecimal getReturnedAmount() { return returnedAmount; }
+    public int getRemainingQuantity() { return quantity - cancelledQuantity - returnedQuantity; }
     public LocalDateTime getCreatedAt() { return createdAt; }
+
+    public void applyPartialCancel(int quantity, BigDecimal refundAmount) {
+        this.cancelledQuantity += quantity;
+        this.cancelledAmount = this.cancelledAmount.add(refundAmount);
+    }
+
+    public void applyReturn(int quantity, BigDecimal refundAmount) {
+        this.returnedQuantity += quantity;
+        this.returnedAmount = this.returnedAmount.add(refundAmount);
+    }
 }

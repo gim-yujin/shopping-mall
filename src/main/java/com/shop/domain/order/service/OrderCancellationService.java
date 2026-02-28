@@ -124,6 +124,7 @@ public class OrderCancellationService {
         BigDecimal finalAmount = order.getFinalAmount();
         // total_spent는 주문 생성/취소 이벤트를 누적 반영한다.
         user.addTotalSpent(finalAmount.negate());
+        order.addRefundedAmount(finalAmount);
 
         // [P0 FIX] 포인트 적립 이연에 따른 취소 로직 단순화.
         //

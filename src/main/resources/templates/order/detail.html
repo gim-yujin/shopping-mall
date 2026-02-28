@@ -65,6 +65,7 @@
                     <div class="flex justify-between"><span class="text-gray-500">배송비</span><span th:text="${#numbers.formatDecimal(order.shippingFee,0,'COMMA',0,'POINT')} + '원'">0원</span></div>
                     <hr/>
                     <div class="flex justify-between font-bold"><span>총 결제금액</span><span class="text-blue-600" th:text="${#numbers.formatDecimal(order.finalAmount,0,'COMMA',0,'POINT')} + '원'">0원</span></div>
+                    <div th:if="${order.refundedAmount > 0}" class="flex justify-between text-sm"><span class="text-gray-500">누적 환불금액</span><span class="text-red-500" th:text="${#numbers.formatDecimal(order.refundedAmount,0,'COMMA',0,'POINT')} + '원'">0원</span></div>
                     <div th:if="${order.earnedPointsSnapshot > 0}" class="flex justify-between text-xs mt-1"
                          th:classappend="${order.pointsSettled ? 'text-green-500' : 'text-gray-400'}">
                         <span th:text="${order.pointsSettled ? '적립 완료' : '적립 예정'}">적립 상태</span>
@@ -83,15 +84,40 @@
         <div class="bg-white rounded-lg shadow p-6 mb-6">
             <h2 class="text-lg font-bold mb-4">주문 상품</h2>
             <div class="divide-y">
-                <div th:each="item : ${order.items}" class="flex items-center gap-4 py-4">
-                    <div class="w-16 h-16 bg-gray-100 rounded flex-shrink-0 flex items-center justify-center">
-                        <span class="text-gray-400 text-xs">IMG</span>
+                <div th:each="item : ${order.items}" class="py-4 border-b last:border-b-0">
+                    <div class="flex items-center gap-4">
+                        <div class="w-16 h-16 bg-gray-100 rounded flex-shrink-0 flex items-center justify-center">
+                            <span class="text-gray-400 text-xs">IMG</span>
+                        </div>
+                        <div class="flex-1">
+                            <p class="font-medium" th:text="${item.productName}">상품명</p>
+                            <p class="text-sm text-gray-500"><span th:text="${#numbers.formatDecimal(item.unitPrice,0,'COMMA',0,'POINT')}">0</span>원 × <span th:text="${item.quantity}">1</span></p>
+                            <p class="text-xs text-gray-400" th:if="${item.cancelledQuantity > 0 or item.returnedQuantity > 0}">
+                                취소 <span th:text="${item.cancelledQuantity}">0</span>개 / 반품 <span th:text="${item.returnedQuantity}">0</span>개
+                            </p>
+                        </div>
+                        <span class="font-bold" th:text="${#numbers.formatDecimal(item.subtotal,0,'COMMA',0,'POINT')} + '원'">0원</span>
                     </div>
-                    <div class="flex-1">
-                        <p class="font-medium" th:text="${item.productName}">상품명</p>
-                        <p class="text-sm text-gray-500"><span th:text="${#numbers.formatDecimal(item.unitPrice,0,'COMMA',0,'POINT')}">0</span>원 × <span th:text="${item.quantity}">1</span></p>
+                    <div class="mt-3 flex flex-wrap gap-2" th:if="${item.remainingQuantity > 0}">
+                        <form th:if="${order.orderStatusCode == 'PENDING' or order.orderStatusCode == 'PAID'}"
+                              th:action="@{/orders/{id}/partial-cancel(id=${order.orderId})}" method="post"
+                              class="flex items-center gap-2"
+                              onsubmit="return confirm('해당 상품을 부분 취소하시겠습니까?')">
+                            <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}"/>
+                            <input type="hidden" name="orderItemId" th:value="${item.orderItemId}"/>
+                            <input type="number" name="quantity" min="1" th:max="${item.remainingQuantity}" value="1" class="w-20 border rounded px-2 py-1 text-sm"/>
+                            <button type="submit" class="text-xs bg-red-500 text-white px-3 py-1 rounded">부분 취소</button>
+                        </form>
+                        <form th:if="${order.orderStatusCode == 'DELIVERED'}"
+                              th:action="@{/orders/{id}/return(id=${order.orderId})}" method="post"
+                              class="flex items-center gap-2"
+                              onsubmit="return confirm('해당 상품을 반품 신청하시겠습니까?')">
+                            <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}"/>
+                            <input type="hidden" name="orderItemId" th:value="${item.orderItemId}"/>
+                            <input type="number" name="quantity" min="1" th:max="${item.remainingQuantity}" value="1" class="w-20 border rounded px-2 py-1 text-sm"/>
+                            <button type="submit" class="text-xs bg-gray-700 text-white px-3 py-1 rounded">반품 신청</button>
+                        </form>
                     </div>
-                    <span class="font-bold" th:text="${#numbers.formatDecimal(item.subtotal,0,'COMMA',0,'POINT')} + '원'">0원</span>
                 </div>
             </div>
         </div>
