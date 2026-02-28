@@ -217,7 +217,13 @@ class ProductServiceIntegrationTestSupplementary {
 
         AdminProductRequest request = new AdminProductRequest();
         request.setCategoryId(((Number) row.get("category_id")).intValue());
-        request.setProductName(row.get("product_name") + " (캐시무효화)");
+        String originalName = (String) row.get("product_name");
+        String suffix = " (캐시무효화)";
+        int maxLen = 200;
+        if (originalName.length() + suffix.length() > maxLen) {
+            originalName = originalName.substring(0, maxLen - suffix.length());
+        }
+        request.setProductName(originalName + suffix);
         request.setDescription((String) row.get("description"));
         request.setPrice((java.math.BigDecimal) row.get("price"));
         request.setOriginalPrice((java.math.BigDecimal) row.get("original_price"));

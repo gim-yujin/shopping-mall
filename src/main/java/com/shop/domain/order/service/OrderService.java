@@ -42,6 +42,7 @@ public class OrderService {
     private final OrderQueryService queryService;
     private final ShippingFeeCalculator shippingFeeCalculator;
     private final OrderRepository orderRepository;
+    private final PartialCancellationService partialCancellationService;
     private final UserRepository userRepository;
     private final PointHistoryRepository pointHistoryRepository;
 
@@ -50,6 +51,7 @@ public class OrderService {
                         OrderQueryService queryService,
                         ShippingFeeCalculator shippingFeeCalculator,
                         OrderRepository orderRepository,
+                        PartialCancellationService partialCancellationService,
                         UserRepository userRepository,
                         PointHistoryRepository pointHistoryRepository) {
         this.creationService = creationService;
@@ -57,6 +59,7 @@ public class OrderService {
         this.queryService = queryService;
         this.shippingFeeCalculator = shippingFeeCalculator;
         this.orderRepository = orderRepository;
+        this.partialCancellationService = partialCancellationService;
         this.userRepository = userRepository;
         this.pointHistoryRepository = pointHistoryRepository;
     }
@@ -101,6 +104,17 @@ public class OrderService {
     @Transactional
     public void cancelOrder(Long orderId, Long userId) {
         cancellationService.cancelOrder(orderId, userId);
+    }
+
+
+    @Transactional
+    public void partialCancel(Long orderId, Long userId, Long orderItemId, int quantity) {
+        partialCancellationService.partialCancel(userId, orderId, orderItemId, quantity);
+    }
+
+    @Transactional
+    public void requestReturn(Long orderId, Long userId, Long orderItemId, int quantity) {
+        partialCancellationService.requestReturn(userId, orderId, orderItemId, quantity);
     }
 
     // ── 관리자 상태 변경 (조회 + 취소 조합) ──────────────────

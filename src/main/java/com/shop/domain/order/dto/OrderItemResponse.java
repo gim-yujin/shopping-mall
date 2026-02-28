@@ -12,8 +12,13 @@ public record OrderItemResponse(
         Long productId,
         String productName,
         int quantity,
+        int cancelledQuantity,
+        int returnedQuantity,
+        int remainingQuantity,
         BigDecimal unitPrice,
-        BigDecimal subtotal
+        BigDecimal subtotal,
+        BigDecimal cancelledAmount,
+        BigDecimal returnedAmount
 ) {
     public static OrderItemResponse from(OrderItem item) {
         return new OrderItemResponse(
@@ -21,8 +26,13 @@ public record OrderItemResponse(
                 item.getProductId(),
                 item.getProductName(),
                 item.getQuantity(),
+                item.getCancelledQuantity(),
+                item.getReturnedQuantity(),
+                item.getRemainingQuantity(),
                 item.getUnitPrice(),
-                item.getSubtotal()
+                item.getSubtotal(),
+                item.getCancelledAmount(),
+                item.getReturnedAmount()
         );
     }
 }
