@@ -9,7 +9,7 @@
         <h1 class="text-2xl font-bold mb-6">관리자 대시보드</h1>
 
         <!-- Quick Stats -->
-        <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+        <div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
             <div class="bg-white rounded-lg shadow p-5">
                 <p class="text-sm text-gray-500">전체 상품</p>
                 <p class="text-2xl font-bold mt-1" th:text="${products.totalElements}">0</p>
@@ -21,6 +21,23 @@
             <div class="bg-white rounded-lg shadow p-5">
                 <p class="text-sm text-gray-500">신규 주문</p>
                 <p class="text-2xl font-bold mt-1 text-blue-600" th:text="${recentOrders.content.size()}">0</p>
+            </div>
+            <!--
+                [Step 5] 반품 대기 건수 카드.
+
+                문제: 관리자 대시보드에 반품 대기 건수가 표시되지 않아
+                미처리 반품이 쌓여도 관리자가 인지하기 어려웠다.
+
+                해결: pendingReturnCount를 카드로 표시하고, '관리하기' 링크로
+                반품 관리 페이지(/admin/returns)에 바로 접근할 수 있도록 한다.
+                건수가 0보다 크면 주황색 강조로 긴급도를 시각적으로 표현한다.
+            -->
+            <div class="bg-white rounded-lg shadow p-5 border-l-4 border-orange-400">
+                <p class="text-sm text-orange-600">반품 대기</p>
+                <p class="text-2xl font-bold mt-1"
+                   th:classappend="${pendingReturnCount > 0 ? 'text-orange-600' : ''}"
+                   th:text="${pendingReturnCount}">0</p>
+                <a th:href="@{/admin/returns}" class="text-xs text-orange-500 hover:text-orange-700">관리하기 →</a>
             </div>
             <div class="bg-white rounded-lg shadow p-5">
                 <p class="text-sm text-gray-500">관리</p>
