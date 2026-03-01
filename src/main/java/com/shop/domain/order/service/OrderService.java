@@ -1,5 +1,6 @@
 package com.shop.domain.order.service;
 
+import com.shop.domain.order.dto.AdminReturnResponse;
 import com.shop.domain.order.dto.OrderCreateRequest;
 import com.shop.domain.order.entity.Order;
 import com.shop.domain.order.entity.OrderStatus;
@@ -9,9 +10,11 @@ import com.shop.domain.point.repository.PointHistoryRepository;
 import com.shop.domain.user.entity.User;
 import com.shop.domain.user.entity.UserTier;
 import com.shop.domain.user.repository.UserRepository;
+import com.shop.global.common.PageDefaults;
 import com.shop.global.exception.BusinessException;
 import com.shop.global.exception.ResourceNotFoundException;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -32,6 +35,11 @@ import java.math.BigDecimal;
  *
  * updateOrderStatus는 조회 + 취소를 조합하는 조정(coordination) 로직이므로
  * 파사드에 유지한다.
+ *
+ * <h3>[Step 3] 반품 관리 조회 위임 메서드 추가</h3>
+ *
+ * <p>{@link #getReturnRequests(int)} — 관리자 반품 대기 목록 조회 위임<br>
+ * {@link #getPendingReturnCount()} — 관리자 대시보드 반품 대기 건수 위임</p>
  */
 @Service
 @Transactional(readOnly = true)
@@ -146,6 +154,31 @@ public class OrderService {
     @Transactional
     public void rejectReturn(Long orderId, Long orderItemId, String rejectReason) {
         partialCancellationService.rejectReturn(orderId, orderItemId, rejectReason);
+    }
+
+    // ── 반품 관리 조회 (Step 3 신규) ───────────────────────
+
+    /**
+     * [관리자] 반품 대기 목록을 페이지 번호로 조회한다.
+     *
+     * <p>관리자 반품 관리 페이지({@code /admin/returns})에서 사용한다.
+     * 페이지 번호를 받아 Pageable로 변환 후 OrderQueryService에 위임한다.</p>
+     *
+     * @param page 페이지 번호 (0-based)
+     * @return 반품 대기 목록 (AdminReturnResponse DTO)
+     */
+    public Page<AdminReturnResponse> getReturnRequests(int page) {
+        return queryService.getReturnRequests(
+                PageRequest.of(page, PageDefaults.ADMIN_LIST_SIZE));
+    }
+
+    /**
+     * [관리자] 반품 대기 건수를 반환한다 (대시보드 카드용).
+     *
+     * @return RETURN_REQUESTED 상태의 아이템 수
+     */
+    public long getPendingReturnCount() {
+        return queryService.getPendingReturnCount();
     }
 
     // ── 관리자 상태 변경 (조회 + 취소 조합) ──────────────────

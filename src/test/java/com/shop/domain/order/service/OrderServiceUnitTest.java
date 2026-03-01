@@ -273,4 +273,31 @@ class OrderServiceUnitTest {
         // settlePoints()는 반드시 호출되어 플래그를 true로 전환
         verify(order).settlePoints();
     }
+
+    // ── Step 3: 반품 관리 조회 위임 테스트 ────────────────────
+
+    @Test
+    @DisplayName("getReturnRequests — queryService.getReturnRequests에 위임한다")
+    void getReturnRequests_delegatesToQueryService() {
+        @SuppressWarnings("unchecked")
+        org.springframework.data.domain.Page<com.shop.domain.order.dto.AdminReturnResponse> mockPage =
+                mock(org.springframework.data.domain.Page.class);
+        when(queryService.getReturnRequests(any())).thenReturn(mockPage);
+
+        var result = orderService.getReturnRequests(0);
+
+        assertThat(result).isSameAs(mockPage);
+        verify(queryService).getReturnRequests(any(org.springframework.data.domain.Pageable.class));
+    }
+
+    @Test
+    @DisplayName("getPendingReturnCount — queryService.getPendingReturnCount에 위임한다")
+    void getPendingReturnCount_delegatesToQueryService() {
+        when(queryService.getPendingReturnCount()).thenReturn(7L);
+
+        long count = orderService.getPendingReturnCount();
+
+        assertThat(count).isEqualTo(7L);
+        verify(queryService).getPendingReturnCount();
+    }
 }

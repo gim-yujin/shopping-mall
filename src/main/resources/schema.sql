@@ -233,6 +233,13 @@ CREATE TABLE order_items (
     returned_quantity INT DEFAULT 0 NOT NULL,
     cancelled_amount DECIMAL(15, 2) DEFAULT 0 NOT NULL,
     returned_amount DECIMAL(15, 2) DEFAULT 0 NOT NULL,
+    -- V8: OrderItem 상태 머신 + 관리자 반품 워크플로우 컬럼
+    status VARCHAR(20) DEFAULT 'NORMAL' NOT NULL,
+    return_reason VARCHAR(500),
+    reject_reason VARCHAR(500),
+    pending_return_quantity INT DEFAULT 0 NOT NULL,
+    return_requested_at TIMESTAMP,
+    returned_at TIMESTAMP,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
     
     CONSTRAINT fk_order_item_order FOREIGN KEY (order_id) 
@@ -241,7 +248,12 @@ CREATE TABLE order_items (
         REFERENCES products(product_id),
     CONSTRAINT chk_quantity CHECK (quantity > 0),
     CONSTRAINT chk_unit_price CHECK (unit_price >= 0),
-    CONSTRAINT chk_subtotal CHECK (subtotal >= 0)
+    CONSTRAINT chk_subtotal CHECK (subtotal >= 0),
+    CONSTRAINT chk_order_item_status CHECK (
+        status IN ('NORMAL', 'RETURN_REQUESTED', 'RETURN_APPROVED',
+                   'RETURNED', 'RETURN_REJECTED', 'CANCELLED')
+    ),
+    CONSTRAINT chk_pending_return_quantity CHECK (pending_return_quantity >= 0)
 );
 
 COMMENT ON TABLE order_items IS '⭐️ 주문 상세 - 1억 건 주인공 테이블';
@@ -251,6 +263,12 @@ COMMENT ON COLUMN order_items.cancelled_quantity IS '부분 취소된 수량';
 COMMENT ON COLUMN order_items.returned_quantity IS '반품된 수량';
 COMMENT ON COLUMN order_items.cancelled_amount IS '부분 취소 누적 금액';
 COMMENT ON COLUMN order_items.returned_amount IS '반품 누적 금액';
+COMMENT ON COLUMN order_items.status IS '아이템 상태: NORMAL, RETURN_REQUESTED, RETURN_APPROVED, RETURNED, RETURN_REJECTED, CANCELLED';
+COMMENT ON COLUMN order_items.return_reason IS '사용자 반품 사유 (DEFECT, WRONG_ITEM, CHANGE_OF_MIND, SIZE_ISSUE, OTHER)';
+COMMENT ON COLUMN order_items.reject_reason IS '관리자 반품 거절 사유';
+COMMENT ON COLUMN order_items.pending_return_quantity IS '반품 대기 수량 — 신청 시 증가, 승인/거절 시 차감';
+COMMENT ON COLUMN order_items.return_requested_at IS '반품 신청 일시';
+COMMENT ON COLUMN order_items.returned_at IS '반품 완료(승인) 일시';
 
 -- ============================================================================
 -- 9. CARTS (장바구니)
@@ -533,6 +551,13 @@ CREATE INDEX idx_order_items_created ON order_items(created_at DESC);
 CREATE INDEX idx_order_items_covering 
     ON order_items(product_id, created_at) 
     INCLUDE (quantity, subtotal);
+
+-- V8: 관리자 반품 대기 목록 조회용 partial index
+-- RETURN_REQUESTED 상태의 아이템만 인덱싱하여 관리자 페이지 성능을 보장한다.
+-- 전체 order_items 대비 반품 신청 건은 극소수이므로 partial index가 효율적이다.
+CREATE INDEX idx_order_items_status_return_requested
+    ON order_items (status)
+    WHERE status = 'RETURN_REQUESTED';
 
 -- Carts 인덱스
 CREATE INDEX idx_cart_user ON carts(user_id, updated_at DESC);
