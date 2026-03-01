@@ -87,6 +87,21 @@
         </div>
 
         <!-- Order Items -->
+        <!--
+            [Step 4] 아이템별 상태 배지, 반품 사유 선택, 진행 상태 메시지 추가.
+
+            문제: 기존 UI는 OrderItemStatus를 표시하지 않아 반품 신청 후
+            사용자가 현재 처리 상태(대기/거절/완료)를 확인할 수 없었다.
+            또한 반품 사유를 입력받지 않아 관리자의 승인/거절 판단 근거가 부족했다.
+
+            해결:
+            1. 상태 배지: NORMAL이 아닌 경우 Tailwind 배지로 현재 상태를 표시한다.
+            2. 반품 사유 선택: <select>로 사유를 필수 입력받아 관리자에게 전달한다.
+            3. 진행 상태 메시지: RETURN_REQUESTED(대기 안내), RETURN_REJECTED(거절 사유 표시)를
+               아이템별로 인라인 메시지로 표시한다.
+            4. 폼 조건 강화: 반품 신청 폼은 DELIVERED 상태 + NORMAL 아이템에서만 표시하고,
+               거절(RETURN_REJECTED)된 아이템은 재신청 폼을 별도 표시한다.
+        -->
         <div class="bg-white rounded-lg shadow p-6 mb-6">
             <h2 class="text-lg font-bold mb-4">주문 상품</h2>
             <div class="divide-y">
@@ -96,16 +111,53 @@
                             <span class="text-gray-400 text-xs">IMG</span>
                         </div>
                         <div class="flex-1">
-                            <p class="font-medium" th:text="${item.productName}">상품명</p>
+                            <div class="flex items-center gap-2">
+                                <p class="font-medium" th:text="${item.productName}">상품명</p>
+                                <!-- [Step 4] 아이템 상태 배지: NORMAL이 아닌 경우만 표시.
+                                     OrderItemStatus.badgeClass를 Tailwind 클래스로 적용하여
+                                     상태별 색상을 일관되게 표현한다. -->
+                                <span th:if="${item.status.name() != 'NORMAL'}"
+                                      class="px-2 py-0.5 text-xs rounded-full"
+                                      th:classappend="${item.status.badgeClass}"
+                                      th:text="${item.status.label}">상태</span>
+                            </div>
                             <p class="text-sm text-gray-500"><span th:text="${#numbers.formatDecimal(item.unitPrice,0,'COMMA',0,'POINT')}">0</span>원 × <span th:text="${item.quantity}">1</span></p>
                             <p class="text-xs text-gray-400" th:if="${item.cancelledQuantity > 0 or item.returnedQuantity > 0}">
                                 취소 <span th:text="${item.cancelledQuantity}">0</span>개 / 반품 <span th:text="${item.returnedQuantity}">0</span>개
                             </p>
+                            <!-- [Step 4] 반품 대기 수량 표시: 반품 진행 중인 수량을 별도 표시하여
+                                 사용자가 어떤 수량이 처리 대기 중인지 명확히 알 수 있도록 한다. -->
+                            <p class="text-xs text-orange-500" th:if="${item.pendingReturnQuantity > 0}">
+                                반품 대기 <span th:text="${item.pendingReturnQuantity}">0</span>개
+                            </p>
                         </div>
                         <span class="font-bold" th:text="${#numbers.formatDecimal(item.subtotal,0,'COMMA',0,'POINT')} + '원'">0원</span>
                     </div>
-                    <div class="mt-3 flex flex-wrap gap-2" th:if="${item.remainingQuantity > 0}">
-                        <form th:if="${order.orderStatusCode == 'PENDING' or order.orderStatusCode == 'PAID'}"
+
+                    <!-- [Step 4] 반품 진행 상태 메시지.
+                         관리자 승인 전까지의 처리 상태를 사용자에게 안내하여
+                         불필요한 문의를 줄이고 투명한 운영을 보장한다. -->
+                    <p th:if="${item.status.name() == 'RETURN_REQUESTED'}" class="text-xs text-orange-600 mt-2">
+                        반품 신청이 접수되었습니다. 관리자 승인을 기다리고 있습니다.
+                    </p>
+                    <!-- 거절 시 거절 사유를 표시하여 사용자가 재신청 여부를 판단할 수 있도록 한다. -->
+                    <p th:if="${item.status.name() == 'RETURN_REJECTED'}" class="text-xs text-red-600 mt-2">
+                        반품이 거절되었습니다: <span th:text="${item.rejectReason}" class="font-medium">사유</span>
+                    </p>
+                    <p th:if="${item.status.name() == 'RETURNED'}" class="text-xs text-gray-500 mt-2">
+                        반품 처리가 완료되었습니다.
+                        <span th:if="${item.returnedAt != null}">
+                            (<span th:text="${#temporals.format(item.returnedAt, 'yyyy.MM.dd HH:mm')}">날짜</span>)
+                        </span>
+                    </p>
+
+                    <div class="mt-3 flex flex-wrap gap-2">
+                        <!-- 부분 취소 폼: PENDING/PAID + 잔여 수량 > 0 + NORMAL 상태에서만 표시.
+                             Step 4에서 NORMAL 상태 조건을 추가하여 반품 진행 중인 아이템에
+                             부분 취소가 중복 노출되지 않도록 한다. -->
+                        <form th:if="${item.remainingQuantity > 0
+                                       and (order.orderStatusCode == 'PENDING' or order.orderStatusCode == 'PAID')
+                                       and item.status.name() == 'NORMAL'}"
                               th:action="@{/orders/{id}/partial-cancel(id=${order.orderId})}" method="post"
                               class="flex items-center gap-2"
                               onsubmit="return confirm('해당 상품을 부분 취소하시겠습니까?')">
@@ -114,14 +166,56 @@
                             <input type="number" name="quantity" min="1" th:max="${item.remainingQuantity}" value="1" class="w-20 border rounded px-2 py-1 text-sm"/>
                             <button type="submit" class="text-xs bg-red-500 text-white px-3 py-1 rounded">부분 취소</button>
                         </form>
-                        <form th:if="${order.orderStatusCode == 'DELIVERED'}"
+
+                        <!-- [Step 4] 반품 신청 폼: DELIVERED + NORMAL 상태 + 잔여 수량 > 0에서만 표시.
+                             기존에는 item.status 조건 없이 DELIVERED 상태만 확인했으나,
+                             반품 진행 중(RETURN_REQUESTED/RETURN_APPROVED) 아이템에도
+                             폼이 노출되는 문제가 있었다. NORMAL 상태 검증을 추가한다.
+
+                             반품 사유(returnReason) <select>를 필수 입력으로 추가하여
+                             관리자가 승인/거절 판단에 활용할 수 있도록 한다. -->
+                        <form th:if="${item.remainingQuantity > 0
+                                       and order.orderStatusCode == 'DELIVERED'
+                                       and item.status.name() == 'NORMAL'}"
                               th:action="@{/orders/{id}/return(id=${order.orderId})}" method="post"
                               class="flex items-center gap-2"
                               onsubmit="return confirm('해당 상품을 반품 신청하시겠습니까?')">
                             <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}"/>
                             <input type="hidden" name="orderItemId" th:value="${item.orderItemId}"/>
+                            <select name="returnReason" required class="border rounded px-2 py-1 text-xs">
+                                <option value="">반품 사유 선택</option>
+                                <option value="DEFECT">상품 불량/파손</option>
+                                <option value="WRONG_ITEM">오배송</option>
+                                <option value="CHANGE_OF_MIND">단순 변심</option>
+                                <option value="SIZE_ISSUE">사이즈 불일치</option>
+                                <option value="OTHER">기타</option>
+                            </select>
                             <input type="number" name="quantity" min="1" th:max="${item.remainingQuantity}" value="1" class="w-20 border rounded px-2 py-1 text-sm"/>
                             <button type="submit" class="text-xs bg-gray-700 text-white px-3 py-1 rounded">반품 신청</button>
+                        </form>
+
+                        <!-- [Step 4] 거절 후 재신청 폼: RETURN_REJECTED 상태 + 잔여 수량 > 0에서 표시.
+                             상태 전이 규칙에서 RETURN_REJECTED → RETURN_REQUESTED 재신청을
+                             허용하므로, 사용자가 추가 증빙이나 다른 사유로 재시도할 수 있도록 한다.
+                             실제 반품 기간 검증은 서버에서 수행한다. -->
+                        <form th:if="${item.remainingQuantity > 0
+                                       and order.orderStatusCode == 'DELIVERED'
+                                       and item.status.name() == 'RETURN_REJECTED'}"
+                              th:action="@{/orders/{id}/return(id=${order.orderId})}" method="post"
+                              class="flex items-center gap-2"
+                              onsubmit="return confirm('반품을 재신청하시겠습니까?')">
+                            <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}"/>
+                            <input type="hidden" name="orderItemId" th:value="${item.orderItemId}"/>
+                            <select name="returnReason" required class="border rounded px-2 py-1 text-xs">
+                                <option value="">반품 사유 선택</option>
+                                <option value="DEFECT">상품 불량/파손</option>
+                                <option value="WRONG_ITEM">오배송</option>
+                                <option value="CHANGE_OF_MIND">단순 변심</option>
+                                <option value="SIZE_ISSUE">사이즈 불일치</option>
+                                <option value="OTHER">기타</option>
+                            </select>
+                            <input type="number" name="quantity" min="1" th:max="${item.remainingQuantity}" value="1" class="w-20 border rounded px-2 py-1 text-sm"/>
+                            <button type="submit" class="text-xs bg-orange-500 text-white px-3 py-1 rounded">재신청</button>
                         </form>
                     </div>
                 </div>
