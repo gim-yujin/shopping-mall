@@ -242,7 +242,7 @@ class AdminReturnManagementIntegrationTest {
         assertThat(ret.productName()).isNotBlank();
         assertThat(ret.quantity()).isEqualTo(1);
         assertThat(ret.returnReason()).isEqualTo("WRONG_ITEM");
-        assertThat(ret.returnReasonLabel()).isEqualTo("오배송");
+        assertThat(ret.getReturnReasonLabel()).isEqualTo("오배송");
         assertThat(ret.returnRequestedAt()).isNotNull();
         assertThat(ret.userName()).isNotBlank();
     }
