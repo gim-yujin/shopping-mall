@@ -247,7 +247,7 @@ class ReturnConcurrencyTest {
     private Order createDeliveredOrder(Long userId, Long productIdA, int qtyA,
                                        Long productIdB, int qtyB) {
         Order order = createTestOrder(userId, productIdA, qtyA, productIdB, qtyB);
-        orderService.updateOrderStatus(order.getOrderId(), "SHIPPED");
+        orderService.updateOrderStatus(order.getOrderId(), "SHIPPED", "TEST_CARRIER", "TEST-TRACK-123");
         orderService.updateOrderStatus(order.getOrderId(), "DELIVERED");
         return order;
     }

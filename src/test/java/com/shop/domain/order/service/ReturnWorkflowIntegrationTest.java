@@ -163,7 +163,7 @@ class ReturnWorkflowIntegrationTest {
         Order order = orderService.createOrder(testUserId, defaultRequest());
         createdOrderIds.add(order.getOrderId());
 
-        orderService.updateOrderStatus(order.getOrderId(), "SHIPPED");
+        orderService.updateOrderStatus(order.getOrderId(), "SHIPPED", "TEST_CARRIER", "TEST-TRACK-123");
         orderService.updateOrderStatus(order.getOrderId(), "DELIVERED");
 
         return order;
@@ -452,7 +452,7 @@ class ReturnWorkflowIntegrationTest {
         Order order = orderService.createOrder(testUserId, request);
         createdOrderIds.add(order.getOrderId());
 
-        orderService.updateOrderStatus(order.getOrderId(), "SHIPPED");
+        orderService.updateOrderStatus(order.getOrderId(), "SHIPPED", "TEST_CARRIER", "TEST-TRACK-123");
         orderService.updateOrderStatus(order.getOrderId(), "DELIVERED");
 
         Long itemId = findOrderItemId(order.getOrderId());

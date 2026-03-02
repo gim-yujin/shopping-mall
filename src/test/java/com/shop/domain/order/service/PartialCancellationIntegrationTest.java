@@ -581,7 +581,7 @@ class PartialCancellationIntegrationTest {
         Long orderItemIdA = findOrderItemId(order.getOrderId(), testProductIdA);
 
         // DELIVERED 상태로 전이
-        orderService.updateOrderStatus(order.getOrderId(), "SHIPPED");
+        orderService.updateOrderStatus(order.getOrderId(), "SHIPPED", "TEST_CARRIER", "TEST-TRACK-123");
         orderService.updateOrderStatus(order.getOrderId(), "DELIVERED");
 
         int stockBefore = jdbcTemplate.queryForObject(
@@ -698,7 +698,7 @@ class PartialCancellationIntegrationTest {
         createdOrderIds.add(order.getOrderId());
         Long orderItemIdA = findOrderItemId(order.getOrderId(), testProductIdA);
 
-        orderService.updateOrderStatus(order.getOrderId(), "SHIPPED");
+        orderService.updateOrderStatus(order.getOrderId(), "SHIPPED", "TEST_CARRIER", "TEST-TRACK-123");
         orderService.updateOrderStatus(order.getOrderId(), "DELIVERED");
 
         // delivered_at을 13일 전으로 조정 (기한 1일 전)
@@ -750,7 +750,7 @@ class PartialCancellationIntegrationTest {
         createdOrderIds.add(order.getOrderId());
         Long orderItemIdA = findOrderItemId(order.getOrderId(), testProductIdA);
 
-        orderService.updateOrderStatus(order.getOrderId(), "SHIPPED");
+        orderService.updateOrderStatus(order.getOrderId(), "SHIPPED", "TEST_CARRIER", "TEST-TRACK-123");
         orderService.updateOrderStatus(order.getOrderId(), "DELIVERED");
 
         // delivered_at을 15일 전으로 조정 (기한 1일 초과)
@@ -801,7 +801,7 @@ class PartialCancellationIntegrationTest {
         createdOrderIds.add(order.getOrderId());
         Long orderItemIdA = findOrderItemId(order.getOrderId(), testProductIdA);
 
-        orderService.updateOrderStatus(order.getOrderId(), "SHIPPED");
+        orderService.updateOrderStatus(order.getOrderId(), "SHIPPED", "TEST_CARRIER", "TEST-TRACK-123");
         orderService.updateOrderStatus(order.getOrderId(), "DELIVERED");
 
         // 정확히 14일 전 + 1시간 (마감 시점 직전)
@@ -842,7 +842,7 @@ class PartialCancellationIntegrationTest {
         createdOrderIds.add(order.getOrderId());
         Long orderItemIdA = findOrderItemId(order.getOrderId(), testProductIdA);
 
-        orderService.updateOrderStatus(order.getOrderId(), "SHIPPED");
+        orderService.updateOrderStatus(order.getOrderId(), "SHIPPED", "TEST_CARRIER", "TEST-TRACK-123");
         orderService.updateOrderStatus(order.getOrderId(), "DELIVERED");
 
         // When: 전체 반품
