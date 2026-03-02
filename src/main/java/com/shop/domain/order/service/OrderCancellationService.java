@@ -8,6 +8,7 @@ import com.shop.global.event.ProductStockChangedEvent;
 import com.shop.domain.order.entity.Order;
 import com.shop.domain.order.entity.OrderItem;
 import com.shop.domain.order.repository.OrderRepository;
+import com.shop.domain.order.validation.OrderInvariantValidator;
 import com.shop.domain.point.entity.PointHistory;
 import com.shop.domain.point.repository.PointHistoryRepository;
 import com.shop.domain.product.entity.Product;
@@ -47,6 +48,7 @@ public class OrderCancellationService {
     private final PointHistoryRepository pointHistoryRepository;
     private final EntityManager entityManager;
     private final ApplicationEventPublisher eventPublisher;
+    private final OrderInvariantValidator orderInvariantValidator;
 
     public OrderCancellationService(OrderRepository orderRepository,
                                      ProductRepository productRepository,
@@ -56,7 +58,8 @@ public class OrderCancellationService {
                                      UserTierRepository userTierRepository,
                                      PointHistoryRepository pointHistoryRepository,
                                      EntityManager entityManager,
-                                     ApplicationEventPublisher eventPublisher) {
+                                     ApplicationEventPublisher eventPublisher,
+                                     OrderInvariantValidator orderInvariantValidator) {
         this.orderRepository = orderRepository;
         this.productRepository = productRepository;
         this.userRepository = userRepository;
@@ -66,6 +69,7 @@ public class OrderCancellationService {
         this.pointHistoryRepository = pointHistoryRepository;
         this.entityManager = entityManager;
         this.eventPublisher = eventPublisher;
+        this.orderInvariantValidator = orderInvariantValidator;
     }
 
     /**
@@ -174,6 +178,7 @@ public class OrderCancellationService {
         userCouponRepository.findByOrderId(orderId).ifPresent(UserCoupon::cancelUse);
 
         order.cancel();
+        orderInvariantValidator.validateBeforePersist(order);
 
         // 4) 재고 변경 이벤트 발행 (캐시 무효화는 AFTER_COMMIT 리스너에서 처리)
         eventPublisher.publishEvent(new ProductStockChangedEvent(
