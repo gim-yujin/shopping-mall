@@ -6,7 +6,7 @@ import com.shop.domain.order.entity.Order;
 import com.shop.domain.order.entity.OrderItem;
 import com.shop.domain.order.entity.OrderItemStatus;
 import com.shop.domain.order.entity.OrderStatus;
-import com.shop.domain.order.event.ProductStockChangedEvent;
+import com.shop.global.event.ProductStockChangedEvent;
 import com.shop.domain.order.repository.OrderRepository;
 import com.shop.domain.point.entity.PointHistory;
 import com.shop.domain.point.repository.PointHistoryRepository;

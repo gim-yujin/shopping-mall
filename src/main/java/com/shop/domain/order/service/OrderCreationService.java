@@ -7,7 +7,7 @@ import com.shop.domain.coupon.repository.UserCouponRepository;
 import com.shop.domain.inventory.entity.ProductInventoryHistory;
 import com.shop.domain.inventory.repository.ProductInventoryHistoryRepository;
 import com.shop.domain.order.dto.OrderCreateRequest;
-import com.shop.domain.order.event.ProductStockChangedEvent;
+import com.shop.global.event.ProductStockChangedEvent;
 import com.shop.domain.order.entity.Order;
 import com.shop.domain.order.entity.PaymentMethod;
 import com.shop.domain.order.entity.OrderItem;

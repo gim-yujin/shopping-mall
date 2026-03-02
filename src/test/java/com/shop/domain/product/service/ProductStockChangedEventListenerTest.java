@@ -1,6 +1,6 @@
 package com.shop.domain.product.service;
 
-import com.shop.domain.order.event.ProductStockChangedEvent;
+import com.shop.global.event.ProductStockChangedEvent;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
