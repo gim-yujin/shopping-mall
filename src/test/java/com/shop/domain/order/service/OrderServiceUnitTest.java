@@ -119,17 +119,35 @@ class OrderServiceUnitTest {
     }
 
     @Test
-    @DisplayName("관리자 상태 변경 시 PAID -> SHIPPED 전이는 허용")
-    void updateOrderStatus_allowPaidToShipped() {
+    @DisplayName("관리자 상태 변경 시 PAID -> SHIPPED 전이는 배송정보 정규화 후 허용")
+    void updateOrderStatus_allowPaidToShipped_withNormalizedShippingInfo() {
         Long orderId = 1L;
         Order order = mock(Order.class);
 
         when(orderRepository.findByIdWithLock(orderId)).thenReturn(Optional.of(order));
         when(order.getOrderStatus()).thenReturn(OrderStatus.PAID);
 
-        orderService.updateOrderStatus(orderId, "SHIPPED");
+        orderService.updateOrderStatus(orderId, "SHIPPED", "  CJ대한통운 ", "  1234-5678  ");
 
-        verify(order).markShipped();
+        verify(order).markShipped("CJ대한통운", "1234-5678");
+        verify(order, never()).markShipped();
+    }
+
+    @Test
+    @DisplayName("관리자 상태 변경 시 SHIPPED 전환에서 배송정보 누락은 차단")
+    void updateOrderStatus_blockShippedWhenShippingInfoMissing() {
+        Long orderId = 1L;
+        Order order = mock(Order.class);
+
+        when(orderRepository.findByIdWithLock(orderId)).thenReturn(Optional.of(order));
+        when(order.getOrderStatus()).thenReturn(OrderStatus.PAID);
+
+        assertThatThrownBy(() -> orderService.updateOrderStatus(orderId, "SHIPPED", "  ", "1234"))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("택배사와 송장번호를 모두 입력");
+
+        verify(order, never()).markShipped(anyString(), anyString());
+        verify(order, never()).markShipped();
     }
 
     @Test
