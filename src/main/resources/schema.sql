@@ -205,7 +205,12 @@ CREATE TABLE orders (
         ('PENDING', 'PAID', 'SHIPPED', 'DELIVERED', 'CANCELLED')),
     CONSTRAINT chk_payment_method CHECK (payment_method IN 
         ('CARD', 'BANK', 'KAKAO', 'NAVER', 'PAYCO')),
-    CONSTRAINT chk_amounts CHECK (final_amount >= 0)
+    CONSTRAINT chk_amounts CHECK (final_amount >= 0),
+    CONSTRAINT chk_discount_breakdown CHECK (
+        discount_amount = tier_discount_amount + coupon_discount_amount
+    ),
+    CONSTRAINT chk_refunded_amount_limit CHECK (refunded_amount <= final_amount),
+    CONSTRAINT chk_refunded_points_limit CHECK (refunded_points <= used_points)
 );
 
 COMMENT ON TABLE orders IS '주문 헤더 (예상: 2천만 건)';

@@ -8,6 +8,7 @@ import com.shop.domain.order.entity.OrderItemStatus;
 import com.shop.domain.order.entity.OrderStatus;
 import com.shop.global.event.ProductStockChangedEvent;
 import com.shop.domain.order.repository.OrderRepository;
+import com.shop.domain.order.validation.OrderInvariantValidator;
 import com.shop.domain.point.entity.PointHistory;
 import com.shop.domain.point.repository.PointHistoryRepository;
 import com.shop.domain.product.entity.Product;
@@ -94,6 +95,7 @@ public class PartialCancellationService {
     private final PointHistoryRepository pointHistoryRepository;
     private final EntityManager entityManager;
     private final ApplicationEventPublisher eventPublisher;
+    private final OrderInvariantValidator orderInvariantValidator;
 
     public PartialCancellationService(OrderRepository orderRepository,
                                       ProductRepository productRepository,
@@ -102,7 +104,8 @@ public class PartialCancellationService {
                                       UserTierRepository userTierRepository,
                                       PointHistoryRepository pointHistoryRepository,
                                       EntityManager entityManager,
-                                      ApplicationEventPublisher eventPublisher) {
+                                      ApplicationEventPublisher eventPublisher,
+                                      OrderInvariantValidator orderInvariantValidator) {
         this.orderRepository = orderRepository;
         this.productRepository = productRepository;
         this.inventoryHistoryRepository = inventoryHistoryRepository;
@@ -111,6 +114,7 @@ public class PartialCancellationService {
         this.pointHistoryRepository = pointHistoryRepository;
         this.entityManager = entityManager;
         this.eventPublisher = eventPublisher;
+        this.orderInvariantValidator = orderInvariantValidator;
     }
 
     /**
@@ -143,6 +147,7 @@ public class PartialCancellationService {
         int pointRefund = calculateProportionalPointRefund(order, item, quantity);
 
         applyRefund(userId, order, item, quantity, refundAmount, pointRefund, "PARTIAL_CANCEL");
+        orderInvariantValidator.validateBeforePersist(order);
     }
 
     /**
@@ -243,6 +248,7 @@ public class PartialCancellationService {
 
         // Order 환불 금액 갱신
         order.addRefundedAmount(refundAmount);
+        orderInvariantValidator.validateBeforePersist(order);
     }
 
     /**
