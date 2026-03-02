@@ -12,6 +12,7 @@ import com.shop.domain.order.entity.Order;
 import com.shop.domain.order.entity.PaymentMethod;
 import com.shop.domain.order.entity.OrderItem;
 import com.shop.domain.order.repository.OrderRepository;
+import com.shop.domain.order.validation.OrderInvariantValidator;
 import com.shop.domain.point.entity.PointHistory;
 import com.shop.domain.point.repository.PointHistoryRepository;
 import com.shop.domain.product.entity.Product;
@@ -58,6 +59,7 @@ public class OrderCreationService {
     private final EntityManager entityManager;
     private final ApplicationEventPublisher eventPublisher;
     private final ShippingFeeCalculator shippingFeeCalculator;
+    private final OrderInvariantValidator orderInvariantValidator;
 
     public OrderCreationService(OrderRepository orderRepository, CartRepository cartRepository,
                                 ProductRepository productRepository, UserRepository userRepository,
@@ -67,7 +69,8 @@ public class OrderCreationService {
                                 PointHistoryRepository pointHistoryRepository,
                                 EntityManager entityManager,
                                 ApplicationEventPublisher eventPublisher,
-                                ShippingFeeCalculator shippingFeeCalculator) {
+                                ShippingFeeCalculator shippingFeeCalculator,
+                                OrderInvariantValidator orderInvariantValidator) {
         this.orderRepository = orderRepository;
         this.cartRepository = cartRepository;
         this.productRepository = productRepository;
@@ -79,6 +82,7 @@ public class OrderCreationService {
         this.entityManager = entityManager;
         this.eventPublisher = eventPublisher;
         this.shippingFeeCalculator = shippingFeeCalculator;
+        this.orderInvariantValidator = orderInvariantValidator;
     }
 
     @Transactional
@@ -255,6 +259,7 @@ public class OrderCreationService {
         }
 
         order.markPaid();
+        orderInvariantValidator.validateBeforePersist(order);
         Order savedOrder = orderRepository.save(order);
 
         // [BUG FIX] 재고 이력에 orderId를 포함하여 저장.

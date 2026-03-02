@@ -7,6 +7,7 @@ import com.shop.domain.order.entity.Order;
 import com.shop.domain.order.entity.OrderItem;
 import com.shop.global.event.ProductStockChangedEvent;
 import com.shop.domain.order.repository.OrderRepository;
+import com.shop.domain.order.validation.OrderInvariantValidator;
 import com.shop.domain.point.entity.PointHistory;
 import com.shop.domain.point.repository.PointHistoryRepository;
 import com.shop.domain.product.entity.Product;
@@ -51,6 +52,7 @@ class OrderCancellationServiceUnitTest {
     @Mock private PointHistoryRepository pointHistoryRepository;
     @Mock private EntityManager entityManager;
     @Mock private ApplicationEventPublisher eventPublisher;
+    @Mock private OrderInvariantValidator orderInvariantValidator;
 
     private OrderCancellationService cancellationService;
 
@@ -59,7 +61,7 @@ class OrderCancellationServiceUnitTest {
         cancellationService = new OrderCancellationService(
                 orderRepository, productRepository, userRepository,
                 inventoryHistoryRepository, userCouponRepository,
-                userTierRepository, pointHistoryRepository, entityManager, eventPublisher);
+                userTierRepository, pointHistoryRepository, entityManager, eventPublisher, orderInvariantValidator);
     }
 
     @Test
@@ -129,6 +131,6 @@ class OrderCancellationServiceUnitTest {
         verify(userRepository, never()).findByIdWithLockAndTier(any());
         verify(userCouponRepository, never()).findByOrderId(any());
         verify(order, never()).cancel();
-        verifyNoInteractions(inventoryHistoryRepository, userTierRepository, pointHistoryRepository, entityManager, eventPublisher);
+        verifyNoInteractions(inventoryHistoryRepository, userTierRepository, pointHistoryRepository, entityManager, eventPublisher, orderInvariantValidator);
     }
 }

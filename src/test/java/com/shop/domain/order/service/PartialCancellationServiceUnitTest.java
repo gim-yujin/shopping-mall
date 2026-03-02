@@ -8,6 +8,7 @@ import com.shop.domain.order.entity.OrderItemStatus;
 import com.shop.domain.order.entity.OrderStatus;
 import com.shop.global.event.ProductStockChangedEvent;
 import com.shop.domain.order.repository.OrderRepository;
+import com.shop.domain.order.validation.OrderInvariantValidator;
 import com.shop.domain.point.entity.PointHistory;
 import com.shop.domain.point.repository.PointHistoryRepository;
 import com.shop.domain.product.entity.Product;
@@ -70,6 +71,7 @@ class PartialCancellationServiceUnitTest {
     @Mock private PointHistoryRepository pointHistoryRepository;
     @Mock private EntityManager entityManager;
     @Mock private ApplicationEventPublisher eventPublisher;
+    @Mock private OrderInvariantValidator orderInvariantValidator;
 
     private PartialCancellationService service;
 
@@ -78,7 +80,7 @@ class PartialCancellationServiceUnitTest {
         service = new PartialCancellationService(
                 orderRepository, productRepository, inventoryHistoryRepository,
                 userRepository, userTierRepository, pointHistoryRepository,
-                entityManager, eventPublisher);
+                entityManager, eventPublisher, orderInvariantValidator);
     }
 
     // ── 테스트 픽스처 빌더 ──────────────────────────────────
