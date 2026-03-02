@@ -89,6 +89,12 @@ public class AdminController {
                                     @RequestParam(required = false) String carrier,
                                     @RequestParam(required = false) String trackingNumber,
                                     RedirectAttributes redirectAttributes) {
+        if (OrderStatus.SHIPPED.name().equalsIgnoreCase(status)
+                && (carrier == null || carrier.isBlank() || trackingNumber == null || trackingNumber.isBlank())) {
+            redirectAttributes.addFlashAttribute("errorMessage", "배송중 상태로 변경하려면 택배사와 송장번호를 모두 입력해주세요.");
+            return "redirect:/admin/orders";
+        }
+
         try {
             orderService.updateOrderStatus(orderId, status, carrier, trackingNumber);
             redirectAttributes.addFlashAttribute("successMessage", "주문 상태가 변경되었습니다.");

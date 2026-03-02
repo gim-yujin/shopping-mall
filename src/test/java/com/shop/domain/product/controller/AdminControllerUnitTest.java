@@ -2,6 +2,7 @@ package com.shop.domain.product.controller;
 
 import com.shop.domain.category.entity.Category;
 import com.shop.domain.category.service.CategoryService;
+import com.shop.domain.coupon.service.CouponService;
 import com.shop.domain.order.service.OrderService;
 import com.shop.domain.product.dto.AdminProductRequest;
 import com.shop.domain.product.entity.Product;
@@ -32,9 +33,36 @@ class AdminControllerUnitTest {
     @Mock private ProductService productService;
     @Mock private OrderService orderService;
     @Mock private CategoryService categoryService;
+    @Mock private CouponService couponService;
 
     @InjectMocks
     private AdminController adminController;
+
+
+    @Test
+    @DisplayName("POST /admin/orders/{orderId}/status — 배송정보 누락 시 사용자 친화 메시지")
+    void updateOrderStatus_shippedMissingShippingInfo_showsFriendlyMessage() {
+        RedirectAttributesModelMap redirect = new RedirectAttributesModelMap();
+
+        String view = adminController.updateOrderStatus(1L, "SHIPPED", " ", null, redirect);
+
+        assertThat(view).isEqualTo("redirect:/admin/orders");
+        assertThat(redirect.getFlashAttributes())
+                .containsEntry("errorMessage", "배송중 상태로 변경하려면 택배사와 송장번호를 모두 입력해주세요.");
+        verify(orderService, never()).updateOrderStatus(anyLong(), anyString(), any(), any());
+    }
+
+    @Test
+    @DisplayName("POST /admin/orders/{orderId}/status — 배송정보 포함 시 서비스 호출")
+    void updateOrderStatus_shippedWithShippingInfo_delegatesService() {
+        RedirectAttributesModelMap redirect = new RedirectAttributesModelMap();
+
+        String view = adminController.updateOrderStatus(1L, "SHIPPED", "CJ", "1234", redirect);
+
+        assertThat(view).isEqualTo("redirect:/admin/orders");
+        assertThat(redirect.getFlashAttributes()).containsKey("successMessage");
+        verify(orderService).updateOrderStatus(1L, "SHIPPED", "CJ", "1234");
+    }
 
     // ──────────── 상품 목록 ────────────
 
