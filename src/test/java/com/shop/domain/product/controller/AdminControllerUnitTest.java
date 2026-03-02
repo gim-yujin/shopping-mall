@@ -47,8 +47,9 @@ class AdminControllerUnitTest {
         String view = adminController.updateOrderStatus(1L, "SHIPPED", " ", null, redirect);
 
         assertThat(view).isEqualTo("redirect:/admin/orders");
-        assertThat(redirect.getFlashAttributes())
-                .containsEntry("errorMessage", "배송중 상태로 변경하려면 택배사와 송장번호를 모두 입력해주세요.");
+        assertThat(redirect.getFlashAttributes()).containsKey("errorMessage");
+        assertThat(redirect.getFlashAttributes().get("errorMessage"))
+                .isEqualTo("배송중 상태로 변경하려면 택배사와 송장번호를 모두 입력해주세요.");
         verify(orderService, never()).updateOrderStatus(anyLong(), anyString(), any(), any());
     }
 
