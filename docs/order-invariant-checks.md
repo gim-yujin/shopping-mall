@@ -36,3 +36,17 @@ ORDER BY o.order_id DESC;
 - 결과가 1건 이상이면 운영 알림(슬랙/메일)과 함께 즉시 조사한다.
 - 애플리케이션 사전 검증 + DB CHECK 제약으로 신규 위반은 차단되므로,
   조회 결과는 주로 레거시 데이터/수동 DB 변경 여부 점검 용도로 활용한다.
+
+
+## 기존 위반 데이터 정리 후 VALIDATE 절차
+
+`V9__add_order_invariant_checks.sql`은 운영 DB의 기존 위반 데이터 때문에 배포가 막히지 않도록
+`NOT VALID`로 제약을 추가한다. 이 상태에서도 **신규/변경 데이터는 즉시 제약 검사를 받는다**.
+
+기존 데이터 정리 후에는 아래를 실행해 제약을 fully-validated 상태로 전환한다.
+
+```sql
+ALTER TABLE orders VALIDATE CONSTRAINT chk_discount_breakdown;
+ALTER TABLE orders VALIDATE CONSTRAINT chk_refunded_amount_limit;
+ALTER TABLE orders VALIDATE CONSTRAINT chk_refunded_points_limit;
+```
