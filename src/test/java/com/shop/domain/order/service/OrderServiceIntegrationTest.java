@@ -775,7 +775,7 @@ class OrderServiceIntegrationTest {
         createdOrderIds.add(order.getOrderId());
 
         // When & Then: SHIPPED
-        orderService.updateOrderStatus(order.getOrderId(), "SHIPPED");
+        orderService.updateOrderStatus(order.getOrderId(), "SHIPPED", "TEST_CARRIER", "TEST-TRACK-123");
         String status1 = jdbcTemplate.queryForObject(
                 "SELECT order_status FROM orders WHERE order_id = ?",
                 String.class, order.getOrderId());
@@ -1010,7 +1010,7 @@ class OrderServiceIntegrationTest {
         assertThat(settledAfterOrder).isFalse();
 
         // When: PAID → SHIPPED → DELIVERED
-        orderService.updateOrderStatus(order.getOrderId(), "SHIPPED");
+        orderService.updateOrderStatus(order.getOrderId(), "SHIPPED", "TEST_CARRIER", "TEST-TRACK-123");
         orderService.updateOrderStatus(order.getOrderId(), "DELIVERED");
 
         // Then: 포인트 적립 완료
@@ -1104,7 +1104,7 @@ class OrderServiceIntegrationTest {
         assertThat(useHistoryCount).isEqualTo(1);
 
         // When: DELIVERED로 전이
-        orderService.updateOrderStatus(order.getOrderId(), "SHIPPED");
+        orderService.updateOrderStatus(order.getOrderId(), "SHIPPED", "TEST_CARRIER", "TEST-TRACK-123");
         orderService.updateOrderStatus(order.getOrderId(), "DELIVERED");
 
         // Then: 사용 포인트 차감 + 적립 포인트 추가
