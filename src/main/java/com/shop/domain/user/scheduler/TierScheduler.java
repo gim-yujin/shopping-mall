@@ -1,6 +1,6 @@
 package com.shop.domain.user.scheduler;
 
-import com.shop.domain.order.repository.OrderRepository;
+import com.shop.domain.user.port.UserTierOrderPort;
 import com.shop.domain.user.entity.User;
 import com.shop.domain.user.entity.UserTier;
 import com.shop.domain.user.entity.UserTierHistory;
@@ -23,7 +23,6 @@ import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.Year;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -36,7 +35,7 @@ public class TierScheduler {
     private final UserRepository userRepository;
     private final UserTierRepository userTierRepository;
     private final UserTierHistoryRepository tierHistoryRepository;
-    private final OrderRepository orderRepository;
+    private final UserTierOrderPort userTierOrderPort;
     private final EntityManager entityManager;
     private final TransactionTemplate txTemplate;
     private final TransactionTemplate txReadOnlyTemplate;
@@ -46,24 +45,24 @@ public class TierScheduler {
     public TierScheduler(UserRepository userRepository,
                          UserTierRepository userTierRepository,
                          UserTierHistoryRepository tierHistoryRepository,
-                         OrderRepository orderRepository,
+                         UserTierOrderPort userTierOrderPort,
                          EntityManager entityManager,
                          PlatformTransactionManager txManager) {
-        this(userRepository, userTierRepository, tierHistoryRepository, orderRepository,
+        this(userRepository, userTierRepository, tierHistoryRepository, userTierOrderPort,
                 entityManager, txManager, DEFAULT_USER_CHUNK_SIZE);
     }
 
     public TierScheduler(UserRepository userRepository,
                          UserTierRepository userTierRepository,
                          UserTierHistoryRepository tierHistoryRepository,
-                         OrderRepository orderRepository,
+                         UserTierOrderPort userTierOrderPort,
                          EntityManager entityManager,
                          PlatformTransactionManager txManager,
                          int userChunkSize) {
         this.userRepository = userRepository;
         this.userTierRepository = userTierRepository;
         this.tierHistoryRepository = tierHistoryRepository;
-        this.orderRepository = orderRepository;
+        this.userTierOrderPort = userTierOrderPort;
         this.entityManager = entityManager;
         this.userChunkSize = userChunkSize;
 
@@ -92,12 +91,7 @@ public class TierScheduler {
 
         // 1) 전년도 사용자별 주문금액 집계 (취소 주문 제외) — 읽기 전용 트랜잭션
         Map<Long, BigDecimal> yearlySpentMap = txReadOnlyTemplate.execute(status -> {
-            List<Object[]> yearlySpentList = orderRepository.findYearlySpentByUser(startDate, endDate);
-            Map<Long, BigDecimal> map = new HashMap<>();
-            for (Object[] row : yearlySpentList) {
-                map.put((Long) row[0], (BigDecimal) row[1]);
-            }
-            return map;
+            return userTierOrderPort.findYearlySpentByUser(startDate, endDate);
         });
 
         // 2) 기본 등급 (웰컴) 조회 — 읽기 전용 트랜잭션

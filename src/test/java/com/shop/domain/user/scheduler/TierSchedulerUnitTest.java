@@ -1,6 +1,6 @@
 package com.shop.domain.user.scheduler;
 
-import com.shop.domain.order.repository.OrderRepository;
+import com.shop.domain.user.port.UserTierOrderPort;
 import com.shop.domain.user.entity.User;
 import com.shop.domain.user.entity.UserTier;
 import com.shop.domain.user.repository.UserRepository;
@@ -37,7 +37,7 @@ class TierSchedulerUnitTest {
     @Mock
     private UserTierHistoryRepository tierHistoryRepository;
     @Mock
-    private OrderRepository orderRepository;
+    private UserTierOrderPort userTierOrderPort;
     @Mock
     private EntityManager entityManager;
     @Mock
@@ -53,7 +53,7 @@ class TierSchedulerUnitTest {
 
         tierScheduler = new TierScheduler(
                 userRepository, userTierRepository, tierHistoryRepository,
-                orderRepository, entityManager, txManager, 1);
+                userTierOrderPort, entityManager, txManager, 1);
     }
 
     @Test
@@ -70,7 +70,7 @@ class TierSchedulerUnitTest {
         when(secondUser.getUserId()).thenReturn(2L);
         when(secondUser.getTier()).thenReturn(tier);
 
-        when(orderRepository.findYearlySpentByUser(any(), any())).thenReturn(Collections.emptyList());
+        when(userTierOrderPort.findYearlySpentByUser(any(), any())).thenReturn(Collections.emptyMap());
         when(userTierRepository.findByTierLevel(1)).thenReturn(Optional.of(tier));
         when(userTierRepository.findFirstByMinSpentLessThanEqualOrderByTierLevelDesc(any())).thenReturn(Optional.of(tier));
 

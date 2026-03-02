@@ -1,6 +1,6 @@
 package com.shop.domain.product.service;
 
-import com.shop.domain.order.event.ProductStockChangedEvent;
+import com.shop.global.event.ProductStockChangedEvent;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;

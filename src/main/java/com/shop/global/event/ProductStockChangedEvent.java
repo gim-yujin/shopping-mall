@@ -1,4 +1,4 @@
-package com.shop.domain.order.event;
+package com.shop.global.event;
 
 import java.util.List;
 

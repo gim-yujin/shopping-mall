@@ -5,7 +5,7 @@ import com.shop.domain.coupon.repository.UserCouponRepository;
 import com.shop.domain.inventory.repository.ProductInventoryHistoryRepository;
 import com.shop.domain.order.entity.Order;
 import com.shop.domain.order.entity.OrderItem;
-import com.shop.domain.order.event.ProductStockChangedEvent;
+import com.shop.global.event.ProductStockChangedEvent;
 import com.shop.domain.order.repository.OrderRepository;
 import com.shop.domain.point.entity.PointHistory;
 import com.shop.domain.point.repository.PointHistoryRepository;
