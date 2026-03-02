@@ -213,16 +213,15 @@ public class OrderService {
                     "취소할 수 없는 주문 상태입니다. [" + currentStatus + " -> " + targetStatus + "]");
         }
 
+        ShippingInfo shippingInfo = normalizeShippingInfo(carrier, trackingNumber);
+        if (targetStatus == OrderStatus.SHIPPED && !shippingInfo.isComplete()) {
+            throw new BusinessException("INVALID_SHIPPING_INFO",
+                    "배송중 상태로 변경하려면 택배사와 송장번호를 모두 입력해주세요.");
+        }
+
         switch (targetStatus) {
             case PAID -> order.markPaid();
-            case SHIPPED -> {
-                // [3.6] 배송 정보가 있으면 함께 기록, 없으면 기본 markShipped 호출
-                if (carrier != null && !carrier.isBlank()) {
-                    order.markShipped(carrier.trim(), trackingNumber != null ? trackingNumber.trim() : null);
-                } else {
-                    order.markShipped();
-                }
-            }
+            case SHIPPED -> order.markShipped(shippingInfo.carrier(), shippingInfo.trackingNumber());
             case DELIVERED -> {
                 order.markDelivered();
                 settleEarnedPoints(order);
@@ -231,6 +230,26 @@ public class OrderService {
             case PENDING -> {
                 // no-op
             }
+        }
+    }
+
+    private ShippingInfo normalizeShippingInfo(String carrier, String trackingNumber) {
+        String normalizedCarrier = normalizeBlankToNull(carrier);
+        String normalizedTrackingNumber = normalizeBlankToNull(trackingNumber);
+        return new ShippingInfo(normalizedCarrier, normalizedTrackingNumber);
+    }
+
+    private String normalizeBlankToNull(String value) {
+        if (value == null) {
+            return null;
+        }
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    private record ShippingInfo(String carrier, String trackingNumber) {
+        private boolean isComplete() {
+            return carrier != null && trackingNumber != null;
         }
     }
 
