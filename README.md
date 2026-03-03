@@ -52,7 +52,7 @@ com.shop
 - **순환 의존성 방지**: 도메인 간 단방향 의존을 유지해 결합도를 낮췄습니다.
 - **동시성 제어**: 주문/재고 처리 구간에서 비관적 락과 상태 검증으로 오버셀을 방지합니다.
 - **성능 최적화**: JPA batch 설정, fetch size, 캐시 적용, 인덱스 중심 쿼리 설계를 반영했습니다.
-- **운영 관측성**: Actuator(`health`, `info`, `metrics`, `caches`) 노출 및 메트릭 로깅 지원.
+- **운영 관측성**: Actuator(`health`, `info`, `metrics`, `caches`, `prometheus`) 노출 및 메트릭 로깅 지원.
 - **보안 강화**: CSRF 적용, 인증/권한 분리, 로그인 실패 지연/차단 정책 반영.
 
 ## 실행 방법
@@ -101,6 +101,29 @@ spring:
 ```
 
 접속 주소: http://localhost:8080
+
+## Prometheus/Grafana 연동
+
+기본 Actuator 메트릭은 `/actuator/prometheus`로 노출되며, 로컬에서 Prometheus/Grafana를 바로 붙일 수 있습니다.
+
+### 1) 앱 실행
+
+```bash
+./gradlew bootRun
+```
+
+### 2) 모니터링 스택 실행
+
+```bash
+docker compose -f monitoring/docker-compose.monitoring.yml up -d
+```
+
+### 3) 접속
+
+- Prometheus: http://localhost:9090
+- Grafana: http://localhost:3000 (기본 계정 `admin` / `admin`)
+
+Grafana에서 데이터소스에 Prometheus(`http://prometheus:9090`)를 추가하면 대시보드를 구성할 수 있습니다.
 
 ## 테스트
 
