@@ -4,7 +4,7 @@
 
 ## 기술 스택
 
-- **Backend**: Spring Boot 3.4.1, Spring Security 6, Spring Data JPA, Spring Validation, Spring Cache, Actuator
+- **Backend**: Spring Boot 3.4.1, Spring Security 6, Spring Data JPA, Spring Validation, Spring Cache, Actuator, Micrometer Prometheus
 - **Language/Build**: Java Toolchain 25 (컴파일 타깃 17), Gradle 8.12
 - **Database**: PostgreSQL
 - **View**: Thymeleaf, Thymeleaf Layout Dialect, Tailwind CSS(CDN)
@@ -52,7 +52,7 @@ com.shop
 - **순환 의존성 방지**: 도메인 간 단방향 의존을 유지해 결합도를 낮췄습니다.
 - **동시성 제어**: 주문/재고 처리 구간에서 비관적 락과 상태 검증으로 오버셀을 방지합니다.
 - **성능 최적화**: JPA batch 설정, fetch size, 캐시 적용, 인덱스 중심 쿼리 설계를 반영했습니다.
-- **운영 관측성**: Actuator(`health`, `info`, `metrics`, `caches`) 노출 및 메트릭 로깅 지원.
+- **운영 관측성**: Actuator(`health`, `info`, `metrics`, `caches`, `prometheus`) 노출 및 메트릭 로깅 지원.
 - **보안 강화**: CSRF 적용, 인증/권한 분리, 로그인 실패 지연/차단 정책 반영.
 
 ## 실행 방법
@@ -136,3 +136,53 @@ spring:
 - `NEW_HIRE_GUIDE.md`: 온보딩 가이드
 - `프로젝트_상세_설명서.md`: 전체 설계 설명
 - `docs/`: 주문 불변식, 검색 로그 정책, 성능 분석 등 운영 문서
+
+
+## Prometheus / Grafana 연동
+
+### `/actuator/prometheus` 문자열을 그대로 써야 하나요?
+
+아니요. `/actuator/prometheus`의 출력은 **Prometheus Exposition Format(수집용 원시 지표)** 입니다.
+애플리케이션 코드나 화면에서 이 문자열을 직접 해석해 쓰기보다,
+**Prometheus가 수집 → Recording Rule로 KPI 가공 → Grafana 대시보드 시각화** 흐름으로 사용해야 합니다.
+
+이 프로젝트에는 위 흐름을 바로 사용할 수 있도록 아래 파일을 포함했습니다.
+
+- `monitoring/prometheus/prometheus.yml`
+- `monitoring/prometheus/rules/shopping-mall-recording-rules.yml`
+- `monitoring/grafana/dashboards/shopping-mall-overview.json`
+- `monitoring/docker-compose.yml`
+
+### Actuator 메트릭 엔드포인트
+
+- 공개 헬스체크: `/actuator/health`
+- Prometheus 스크래핑: `/actuator/prometheus`
+- 나머지 `/actuator/**`: `ADMIN` 권한 필요
+
+또한 p95 latency 집계를 위해 HTTP 서버 메트릭 히스토그램을 활성화했습니다.
+
+### 실행 방법 (로컬)
+
+1. 애플리케이션 실행 (`localhost:8080`)
+2. 모니터링 스택 실행
+
+```bash
+cd monitoring
+docker compose up -d
+```
+
+3. 접속
+   - Prometheus: `http://localhost:9090`
+   - Grafana: `http://localhost:3000` (`admin` / `admin`)
+
+Grafana는 시작 시 `Shopping Mall Overview` 대시보드를 자동 로드합니다.
+
+### 제공 KPI(Recording Rule)
+
+- `shopping_mall:http_rps:rate1m`
+- `shopping_mall:http_error_rate:ratio1m`
+- `shopping_mall:http_p95_seconds:route`
+- `shopping_mall:jvm_heap_used_bytes`
+- `shopping_mall:hikaricp_active_connections`
+
+운영 환경에서는 `/actuator/prometheus`에 대해 보안 그룹/방화벽 등 네트워크 접근 제어를 함께 적용하세요.

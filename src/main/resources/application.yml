@@ -61,14 +61,21 @@ spring.lifecycle:
 # info: 빌드 정보, 환경 확인
 # metrics: 응답 시간, JVM, HikariCP 풀 모니터링
 # caches: Caffeine 캐시 적중률/크기 확인
+# prometheus: Prometheus 스크래핑용 메트릭 엔드포인트
 management:
   endpoints:
     web:
       exposure:
-        include: health,info,metrics,caches
+        include: health,info,metrics,caches,prometheus
   endpoint:
     health:
       show-details: when-authorized  # 인증된 사용자만 상세 정보 표시
+  metrics:
+    tags:
+      application: ${spring.application.name}
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
 
 logging:
   level:
