@@ -105,9 +105,9 @@ public class SecurityConfig {
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/", "/products/**", "/categories/**", "/search/**",
                     "/auth/**", "/static/**", "/css/**", "/images/**", "/error/**").permitAll()
-                .requestMatchers("/actuator/health").permitAll()  // 로드밸런서 헬스체크용
-                .requestMatchers("/actuator/prometheus").permitAll() // 내부 Prometheus 스크레이핑용
-                .requestMatchers("/actuator/**").hasRole("ADMIN") // 나머지 Actuator는 관리자만
+                .requestMatchers("/actuator/health").permitAll()      // 로드밸런서 헬스체크용
+                .requestMatchers("/actuator/prometheus").permitAll()  // Prometheus 스크래핑 허용
+                .requestMatchers("/actuator/**").hasRole("ADMIN")     // 나머지 Actuator는 관리자만
                 .requestMatchers("/admin/**").hasRole("ADMIN")
                 .anyRequest().authenticated()
             )

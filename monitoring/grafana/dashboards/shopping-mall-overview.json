@@ -1,0 +1,59 @@
+{
+  "annotations": {"list": []},
+  "editable": true,
+  "graphTooltip": 0,
+  "panels": [
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {"defaults": {"unit": "reqps"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 8, "x": 0, "y": 0},
+      "id": 1,
+      "title": "HTTP RPS (1m)",
+      "type": "stat",
+      "targets": [{"expr": "shopping_mall:http_rps:rate1m", "refId": "A"}]
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {"defaults": {"unit": "percentunit", "decimals": 2}, "overrides": []},
+      "gridPos": {"h": 8, "w": 8, "x": 8, "y": 0},
+      "id": 2,
+      "title": "HTTP 5xx Error Rate (1m)",
+      "type": "stat",
+      "targets": [{"expr": "shopping_mall:http_error_rate:ratio1m", "refId": "A"}]
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {"defaults": {"unit": "bytes"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 8, "x": 16, "y": 0},
+      "id": 3,
+      "title": "JVM Heap Used",
+      "type": "stat",
+      "targets": [{"expr": "shopping_mall:jvm_heap_used_bytes", "refId": "A"}]
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {"defaults": {"unit": "short"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+      "id": 4,
+      "title": "HikariCP Active Connections",
+      "type": "timeseries",
+      "targets": [{"expr": "shopping_mall:hikaricp_active_connections", "refId": "A"}]
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {"defaults": {"unit": "s"}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 8},
+      "id": 5,
+      "title": "HTTP p95 Latency by Route",
+      "type": "timeseries",
+      "targets": [{"expr": "topk(10, shopping_mall:http_p95_seconds:route)", "refId": "A"}]
+    }
+  ],
+  "schemaVersion": 39,
+  "style": "dark",
+  "tags": ["shopping-mall"],
+  "templating": {"list": []},
+  "time": {"from": "now-15m", "to": "now"},
+  "title": "Shopping Mall Overview",
+  "version": 1
+}

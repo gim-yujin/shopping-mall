@@ -1,0 +1,27 @@
+groups:
+  - name: shopping-mall-kpi
+    interval: 15s
+    rules:
+      - record: shopping_mall:http_rps:rate1m
+        expr: sum(rate(http_server_requests_seconds_count{application="shopping-mall"}[1m]))
+
+      - record: shopping_mall:http_error_rate:ratio1m
+        expr: |
+          sum(rate(http_server_requests_seconds_count{application="shopping-mall",status=~"5.."}[1m]))
+          /
+          clamp_min(sum(rate(http_server_requests_seconds_count{application="shopping-mall"}[1m])), 1)
+
+      - record: shopping_mall:http_p95_seconds:route
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum by (le, uri, method) (
+              rate(http_server_requests_seconds_bucket{application="shopping-mall"}[5m])
+            )
+          )
+
+      - record: shopping_mall:jvm_heap_used_bytes
+        expr: sum(jvm_memory_used_bytes{application="shopping-mall",area="heap"})
+
+      - record: shopping_mall:hikaricp_active_connections
+        expr: sum(hikaricp_connections_active{application="shopping-mall"})
