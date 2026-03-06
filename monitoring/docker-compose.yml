@@ -2,6 +2,8 @@ services:
   prometheus:
     image: prom/prometheus:v2.54.1
     container_name: shopping-mall-prometheus
+    extra_hosts:                                    # ← 추가
+      - "host.docker.internal:host-gateway"         # ← 추가
     volumes:
       - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ./prometheus/rules:/etc/prometheus/rules:ro

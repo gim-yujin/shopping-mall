@@ -25,3 +25,28 @@ groups:
 
       - record: shopping_mall:hikaricp_active_connections
         expr: sum(hikaricp_connections_active{application="shopping-mall"})
+
+      # ── GC 모니터링 ──
+      - record: shopping_mall:jvm_gc_pause_seconds:rate1m
+        expr: sum(rate(jvm_gc_pause_seconds_sum{application="shopping-mall"}[1m]))
+
+      - record: shopping_mall:jvm_gc_pause_count:rate1m
+        expr: sum(rate(jvm_gc_pause_seconds_count{application="shopping-mall"}[1m]))
+
+      # ── HikariCP 대기 커넥션 ──
+      - record: shopping_mall:hikaricp_pending_connections
+        expr: sum(hikaricp_connections_pending{application="shopping-mall"})
+
+      # ── HTTP 상태코드별 RPS ──
+      - record: shopping_mall:http_rps_by_status:rate1m
+        expr: sum by (status) (rate(http_server_requests_seconds_count{application="shopping-mall"}[1m]))
+
+      # ── Caffeine 캐시 적중률 ──
+      - record: shopping_mall:cache_hit_ratio:rate1m
+        expr: |
+          sum by (cache) (rate(cache_gets_total{application="shopping-mall",result="hit"}[1m]))
+          /
+          clamp_min(
+            sum by (cache) (rate(cache_gets_total{application="shopping-mall"}[1m])),
+            1
+          )

@@ -47,6 +47,75 @@
       "title": "HTTP p95 Latency by Route",
       "type": "timeseries",
       "targets": [{"expr": "topk(10, shopping_mall:http_p95_seconds:route)", "refId": "A"}]
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": {"unit": "s", "custom": {"fillOpacity": 10}},
+        "overrides": [
+          {
+            "matcher": {"id": "byName", "options": "GC Count/s"},
+            "properties": [
+              {"id": "custom.axisPlacement", "value": "right"},
+              {"id": "unit", "value": "ops"},
+              {"id": "custom.drawStyle", "value": "bars"},
+              {"id": "custom.fillOpacity", "value": 30}
+            ]
+          }
+        ]
+      },
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 16},
+      "id": 6,
+      "title": "GC Pause Time & Frequency",
+      "type": "timeseries",
+      "targets": [
+        {"expr": "shopping_mall:jvm_gc_pause_seconds:rate1m", "refId": "A", "legendFormat": "GC Pause Time/s"},
+        {"expr": "shopping_mall:jvm_gc_pause_count:rate1m", "refId": "B", "legendFormat": "GC Count/s"}
+      ]
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": {"unit": "short", "custom": {"fillOpacity": 10}},
+        "overrides": []
+      },
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 16},
+      "id": 7,
+      "title": "HikariCP Connections (Active vs Pending)",
+      "type": "timeseries",
+      "targets": [
+        {"expr": "shopping_mall:hikaricp_active_connections", "refId": "A", "legendFormat": "Active"},
+        {"expr": "shopping_mall:hikaricp_pending_connections", "refId": "B", "legendFormat": "Pending"}
+      ]
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": {"unit": "reqps", "custom": {"fillOpacity": 15, "stacking": {"mode": "normal"}}},
+        "overrides": [
+          {"matcher": {"id": "byRegexp", "options": ".*5.*"}, "properties": [{"id": "color", "value": {"mode": "fixed", "fixedColor": "red"}}]},
+          {"matcher": {"id": "byRegexp", "options": ".*4.*"}, "properties": [{"id": "color", "value": {"mode": "fixed", "fixedColor": "orange"}}]},
+          {"matcher": {"id": "byRegexp", "options": ".*3.*"}, "properties": [{"id": "color", "value": {"mode": "fixed", "fixedColor": "blue"}}]},
+          {"matcher": {"id": "byRegexp", "options": ".*2.*"}, "properties": [{"id": "color", "value": {"mode": "fixed", "fixedColor": "green"}}]}
+        ]
+      },
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 24},
+      "id": 8,
+      "title": "HTTP Status Code Distribution",
+      "type": "timeseries",
+      "targets": [{"expr": "shopping_mall:http_rps_by_status:rate1m", "refId": "A", "legendFormat": "{{status}}"}]
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": {"unit": "percentunit", "decimals": 1, "min": 0, "max": 1, "custom": {"fillOpacity": 10}},
+        "overrides": []
+      },
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 24},
+      "id": 9,
+      "title": "Caffeine Cache Hit Rate",
+      "type": "timeseries",
+      "targets": [{"expr": "shopping_mall:cache_hit_ratio:rate1m", "refId": "A", "legendFormat": "{{cache}}"}]
     }
   ],
   "schemaVersion": 39,
