@@ -82,6 +82,9 @@ CREATE DATABASE shopping_mall_db;
 - 기본 DDL: `src/main/resources/schema.sql`
 - 추가 마이그레이션: `src/main/resources/migration/*.sql`, `src/main/resources/sql/*.sql`
 
+`schema.sql`을 **기본 스키마의 단일 기준(source of truth)** 으로 사용하고,
+테이블 선언 순서는 `orders → order_items → carts` 흐름을 유지합니다.
+
 ### 4) 애플리케이션 설정
 
 `src/main/resources/application.yml`에서 DB 정보를 환경에 맞게 수정합니다.
