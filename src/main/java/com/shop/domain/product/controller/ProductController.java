@@ -1,9 +1,7 @@
 package com.shop.domain.product.controller;
 
-import com.shop.domain.category.entity.Category;
 import com.shop.domain.category.service.CategoryService;
 import com.shop.domain.product.dto.CachedProductDetail;
-import com.shop.domain.product.entity.Product;
 import com.shop.domain.product.service.ProductService;
 import com.shop.domain.product.service.ViewCountService;
 import com.shop.domain.review.service.ReviewService;

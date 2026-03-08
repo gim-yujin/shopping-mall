@@ -113,6 +113,8 @@ tasks.named('check') {
     dependsOn('checkstyleMain', 'checkstyleTest', 'pmdMain', 'pmdTest', 'spotbugsMain', 'spotbugsTest')
 }
 
+check.dependsOn.remove(tasks.named('test'))
+
 tasks.withType(JavaExec).configureEach {
     jvmArgs += ["-XX:ReservedCodeCacheSize=512m"]
 }

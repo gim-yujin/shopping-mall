@@ -131,7 +131,9 @@ public class Coupon {
     }
 
     public BigDecimal calculateDiscount(BigDecimal orderAmount) {
-        if (orderAmount.compareTo(minOrderAmount) < 0) return BigDecimal.ZERO;
+        if (orderAmount.compareTo(minOrderAmount) < 0) {
+            return BigDecimal.ZERO;
+        }
         BigDecimal discount;
         if (discountType == DiscountType.PERCENT) {
             discount = orderAmount.multiply(discountValue).divide(BigDecimal.valueOf(100), 0, java.math.RoundingMode.FLOOR);

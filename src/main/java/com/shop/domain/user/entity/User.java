@@ -91,7 +91,9 @@ public class User {
     }
 
     public void usePoints(int points) {
-        if (this.pointBalance < points) throw new IllegalArgumentException("포인트가 부족합니다.");
+        if (this.pointBalance < points) {
+            throw new IllegalArgumentException("포인트가 부족합니다.");
+        }
         this.pointBalance -= points;
         this.updatedAt = LocalDateTime.now();
     }

@@ -288,7 +288,9 @@ public class ProductService {
         }
         for (int i = 0; i < imageUrls.size(); i++) {
             String url = imageUrls.get(i);
-            if (url == null || url.isBlank()) continue;
+            if (url == null || url.isBlank()) {
+                continue;
+            }
             boolean isThumbnail = (i == 0);
             productImageRepository.save(new ProductImage(product, url.trim(), i, isThumbnail));
         }

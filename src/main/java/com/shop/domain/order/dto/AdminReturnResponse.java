@@ -51,7 +51,9 @@ public record AdminReturnResponse(
      * 편의 메서드이다. 알 수 없는 코드는 원문 그대로 반환한다.</p>
      */
     public String getReturnReasonLabel() {
-        if (returnReason == null) return "";
+        if (returnReason == null) {
+            return "";
+        }
         return switch (returnReason) {
             case "DEFECT" -> "상품 불량/파손";
             case "WRONG_ITEM" -> "오배송";

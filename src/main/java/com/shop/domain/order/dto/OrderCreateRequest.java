@@ -51,6 +51,8 @@ public record OrderCreateRequest(
             paymentMethod = paymentMethod.trim().toUpperCase(Locale.ROOT);
         }
         shippingFee = BigDecimal.ZERO;
-        if (usePoints == null) usePoints = 0;
+        if (usePoints == null) {
+            usePoints = 0;
+        }
     }
 }

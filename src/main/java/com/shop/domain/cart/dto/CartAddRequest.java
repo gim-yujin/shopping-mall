@@ -14,6 +14,8 @@ public record CartAddRequest(
         int quantity
 ) {
     public CartAddRequest {
-        if (quantity <= 0) quantity = 1;
+        if (quantity <= 0) {
+            quantity = 1;
+        }
     }
 }
