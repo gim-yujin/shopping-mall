@@ -29,8 +29,12 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x ./gradlew
 
-      - name: Run quality checks
+      - name: Run quality checks (blocking)
         run: ./gradlew check
+
+      - name: Run SpotBugs (non-blocking, Java 25 compatibility fallback)
+        continue-on-error: true
+        run: ./gradlew spotbugsMain spotbugsTest -PenableSpotbugs=true
 
       - name: Run tests
         run: ./gradlew test
