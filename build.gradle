@@ -14,16 +14,19 @@ springBoot {
     mainClass = 'com.shop.ShopApplication'
 }
 
+def targetJavaVersion = providers.gradleProperty('javaVersion')
+    .map { it as int }
+    .orElse(25)
 
 java {
     toolchain {
-        languageVersion = JavaLanguageVersion.of(25)
+        languageVersion = JavaLanguageVersion.of(targetJavaVersion.get())
     }
 }
 
 tasks.withType(JavaCompile).configureEach {
-    // 컴파일/테스트/패키징 산출물의 class file 타깃을 Java 25로 단일화한다.
-    options.release = 25
+    // 컴파일/테스트/패키징 산출물의 class file 타깃을 toolchain과 단일화한다.
+    options.release = targetJavaVersion.get()
 }
 
 repositories {
@@ -78,7 +81,7 @@ tasks.withType(Checkstyle).configureEach {
 }
 
 pmd {
-    toolVersion = '7.3.0'
+    toolVersion = '7.17.0'
     ruleSets = []
     ruleSetFiles = files('config/pmd/ruleset.xml')
     consoleOutput = true
@@ -95,7 +98,7 @@ tasks.withType(Pmd).configureEach {
 tasks.named('pmdTest', Pmd).configure {
     // 테스트 소스는 type resolution 이슈를 유발한 규칙을 분리한 테스트 전용 ruleset을 사용한다.
     ruleSetFiles = files('config/pmd/ruleset-test.xml')
-    // PMD 7.3.0 + Java 25 환경에서 발생하는 class file major 69 파싱 이슈를 피한다.
+    // 테스트 소스는 별도 ruleset/빈 classpath로 type resolution 잡음을 줄인다.
     classpath = files()
 }
 
@@ -115,9 +118,9 @@ def enableSpotbugs = providers.gradleProperty('enableSpotbugs')
     .orElse(false)
 
 tasks.withType(com.github.spotbugs.snom.SpotBugsTask).configureEach {
-    // SpotBugs 실행 JDK를 컴파일 toolchain과 동일한 Java 25로 고정한다.
+    // SpotBugs 실행 JDK를 컴파일 toolchain과 동일한 버전으로 고정한다.
     def spotbugsLauncher = javaToolchains.launcherFor {
-        languageVersion = JavaLanguageVersion.of(25)
+        languageVersion = JavaLanguageVersion.of(targetJavaVersion.get())
     }
     if (metaClass.hasProperty(delegate, 'javaLauncher')) {
         javaLauncher = spotbugsLauncher
