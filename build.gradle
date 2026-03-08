@@ -102,6 +102,12 @@ tasks.named('pmdTest', Pmd).configure {
     classpath = files()
 }
 
+tasks.named('pmdMain', Pmd).configure {
+    // 임시 우회: PMD의 classpath 기반 type resolution 의존을 낮춰 Java 25 class 파싱 실패를 회피한다.
+    // PMD 버전 상향 후에는 정상 classpath 분석을 다시 활성화할 계획이다.
+    classpath = files()
+}
+
 spotbugs {
     // Java 25(class file major 69) 지원 검증을 위해 최신 호환 후보로 상향
     toolVersion = '4.9.8'
