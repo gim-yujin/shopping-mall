@@ -183,6 +183,26 @@ SpotBugs는 빌드 시간을 고려해 조건부로 실행합니다.
 ./gradlew test --tests com.shop.global.cache.CacheKeyGeneratorTest
 ```
 
+### CI/로컬 동일 변수 규약
+
+테스트 DB 연결값은 CI와 로컬에서 아래 **동일한 환경변수 이름**을 사용합니다.
+
+- `TEST_DB_URL`
+- `TEST_DB_USERNAME`
+- `TEST_DB_PASSWORD`
+
+환경변수를 지정하지 않으면 `src/test/resources/application.yml`의 기본값(`localhost:5432`, `postgres/4321`)을 사용합니다.
+
+예시:
+
+```bash
+TEST_DB_URL='jdbc:postgresql://localhost:5432/shopping_mall_db?stringtype=unspecified' \
+TEST_DB_USERNAME='postgres' \
+TEST_DB_PASSWORD='4321' \
+./gradlew test
+```
+
+
 ## 캐시 정책 (요약)
 
 실제 운영 캐시 TTL/사이즈는 `CacheConfig` 기준입니다.

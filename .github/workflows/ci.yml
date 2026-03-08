@@ -58,6 +58,10 @@ jobs:
           done
 
       - name: Run quality checks (blocking)
+        env:
+          TEST_DB_URL: jdbc:postgresql://localhost:5432/shopping_mall_db?stringtype=unspecified
+          TEST_DB_USERNAME: postgres
+          TEST_DB_PASSWORD: 4321
         run: ./gradlew check
 
       - name: Run SpotBugs (non-blocking, Java 21 compatibility fallback)
@@ -65,6 +69,10 @@ jobs:
         run: ./gradlew spotbugsMain spotbugsTest -PenableSpotbugs=true
 
       - name: Run tests
+        env:
+          TEST_DB_URL: jdbc:postgresql://localhost:5432/shopping_mall_db?stringtype=unspecified
+          TEST_DB_USERNAME: postgres
+          TEST_DB_PASSWORD: 4321
         run: ./gradlew test
 
       - name: Upload static analysis reports
