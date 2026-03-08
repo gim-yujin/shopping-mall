@@ -275,10 +275,13 @@ class PartialCancellationConcurrencyTest {
             });
         }
 
-        ready.await(10, TimeUnit.SECONDS);
-        start.countDown();
-        done.await(60, TimeUnit.SECONDS);
-        executor.shutdown();
+        try {
+            ready.await(10, TimeUnit.SECONDS);
+            start.countDown();
+            done.await(60, TimeUnit.SECONDS);
+        } finally {
+            shutdownExecutor(executor);
+        }
 
         // Then: DB 직접 조회
         int finalStock = jdbcTemplate.queryForObject(
@@ -407,10 +410,13 @@ class PartialCancellationConcurrencyTest {
             }
         });
 
-        ready.await(10, TimeUnit.SECONDS);
-        start.countDown();
-        done.await(60, TimeUnit.SECONDS);
-        executor.shutdown();
+        try {
+            ready.await(10, TimeUnit.SECONDS);
+            start.countDown();
+            done.await(60, TimeUnit.SECONDS);
+        } finally {
+            shutdownExecutor(executor);
+        }
 
         // Then
         BigDecimal refundedAmount = jdbcTemplate.queryForObject(
@@ -532,12 +538,17 @@ class PartialCancellationConcurrencyTest {
             }
         });
 
-        ready.await(10, TimeUnit.SECONDS);
-        long startTime = System.currentTimeMillis();
-        start.countDown();
-        boolean completedInTime = done.await(30, TimeUnit.SECONDS);
-        long elapsed = System.currentTimeMillis() - startTime;
-        executor.shutdown();
+        boolean completedInTime;
+        long elapsed;
+        try {
+            ready.await(10, TimeUnit.SECONDS);
+            long startTime = System.currentTimeMillis();
+            start.countDown();
+            completedInTime = done.await(30, TimeUnit.SECONDS);
+            elapsed = System.currentTimeMillis() - startTime;
+        } finally {
+            shutdownExecutor(executor);
+        }
 
         // Then
         String finalStatus = jdbcTemplate.queryForObject(
@@ -646,10 +657,13 @@ class PartialCancellationConcurrencyTest {
             }
         });
 
-        ready.await(10, TimeUnit.SECONDS);
-        start.countDown();
-        done.await(60, TimeUnit.SECONDS);
-        executor.shutdown();
+        try {
+            ready.await(10, TimeUnit.SECONDS);
+            start.countDown();
+            done.await(60, TimeUnit.SECONDS);
+        } finally {
+            shutdownExecutor(executor);
+        }
 
         // Then
         int finalStock = jdbcTemplate.queryForObject(
@@ -677,4 +691,16 @@ class PartialCancellationConcurrencyTest {
         // ③ 에러 없음
         assertThat(errors).isEmpty();
     }
+    private void shutdownExecutor(ExecutorService executor) {
+        executor.shutdown();
+        try {
+            if (!executor.awaitTermination(5, TimeUnit.SECONDS)) {
+                executor.shutdownNow();
+            }
+        } catch (InterruptedException e) {
+            executor.shutdownNow();
+            Thread.currentThread().interrupt();
+        }
+    }
+
 }

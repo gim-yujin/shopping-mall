@@ -104,10 +104,13 @@ class WishlistToggleConcurrencyTest {
             });
         }
 
-        ready.await(10, TimeUnit.SECONDS);
-        start.countDown();
-        done.await(30, TimeUnit.SECONDS);
-        executor.shutdown();
+        try {
+            ready.await(10, TimeUnit.SECONDS);
+            start.countDown();
+            done.await(30, TimeUnit.SECONDS);
+        } finally {
+            shutdownExecutor(executor);
+        }
 
         // DB 상태 확인
         Integer wishlistCount = jdbcTemplate.queryForObject(
@@ -135,4 +138,16 @@ class WishlistToggleConcurrencyTest {
                 .as("동시 토글 시 에러가 발생하면 안 됩니다: %s", errors)
                 .isEqualTo(0);
     }
+    private void shutdownExecutor(ExecutorService executor) {
+        executor.shutdown();
+        try {
+            if (!executor.awaitTermination(5, TimeUnit.SECONDS)) {
+                executor.shutdownNow();
+            }
+        } catch (InterruptedException e) {
+            executor.shutdownNow();
+            Thread.currentThread().interrupt();
+        }
+    }
+
 }

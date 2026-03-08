@@ -115,10 +115,13 @@ class UserConcurrencyTest {
             });
         }
 
-        ready.await(10, TimeUnit.SECONDS);
-        start.countDown();
-        done.await(30, TimeUnit.SECONDS);
-        executor.shutdown();
+        try {
+            ready.await(10, TimeUnit.SECONDS);
+            start.countDown();
+            done.await(30, TimeUnit.SECONDS);
+        } finally {
+            shutdownExecutor(executor);
+        }
 
         Integer userCount = jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM users WHERE username = ?",
@@ -214,10 +217,13 @@ class UserConcurrencyTest {
             });
         }
 
-        ready.await(10, TimeUnit.SECONDS);
-        start.countDown();
-        done.await(30, TimeUnit.SECONDS);
-        executor.shutdown();
+        try {
+            ready.await(10, TimeUnit.SECONDS);
+            start.countDown();
+            done.await(30, TimeUnit.SECONDS);
+        } finally {
+            shutdownExecutor(executor);
+        }
 
         Integer userCount = jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM users WHERE email = ?",
@@ -339,10 +345,13 @@ class UserConcurrencyTest {
             }
         });
 
-        ready.await(10, TimeUnit.SECONDS);
-        start.countDown();
-        done.await(30, TimeUnit.SECONDS);
-        executor.shutdown();
+        try {
+            ready.await(10, TimeUnit.SECONDS);
+            start.countDown();
+            done.await(30, TimeUnit.SECONDS);
+        } finally {
+            shutdownExecutor(executor);
+        }
 
         Integer emailCount = jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM users WHERE email = ?",
@@ -378,4 +387,16 @@ class UserConcurrencyTest {
                 .as("성공 + 중복 = 총 시도 수(2)")
                 .isEqualTo(2);
     }
+    private void shutdownExecutor(ExecutorService executor) {
+        executor.shutdown();
+        try {
+            if (!executor.awaitTermination(5, TimeUnit.SECONDS)) {
+                executor.shutdownNow();
+            }
+        } catch (InterruptedException e) {
+            executor.shutdownNow();
+            Thread.currentThread().interrupt();
+        }
+    }
+
 }

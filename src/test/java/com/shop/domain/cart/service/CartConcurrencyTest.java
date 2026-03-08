@@ -108,10 +108,13 @@ class CartConcurrencyTest {
             });
         }
 
-        ready.await(10, TimeUnit.SECONDS);
-        start.countDown();
-        done.await(30, TimeUnit.SECONDS);
-        executor.shutdown();
+        try {
+            ready.await(10, TimeUnit.SECONDS);
+            start.countDown();
+            done.await(30, TimeUnit.SECONDS);
+        } finally {
+            shutdownExecutor(executor);
+        }
 
         // Then
         Integer cartCount = jdbcTemplate.queryForObject(
@@ -215,10 +218,13 @@ class CartConcurrencyTest {
             });
         }
 
-        ready.await(10, TimeUnit.SECONDS);
-        start.countDown();
-        done.await(30, TimeUnit.SECONDS);
-        executor.shutdown();
+        try {
+            ready.await(10, TimeUnit.SECONDS);
+            start.countDown();
+            done.await(30, TimeUnit.SECONDS);
+        } finally {
+            shutdownExecutor(executor);
+        }
 
         // Then
         Integer finalQuantity = jdbcTemplate.queryForObject(
@@ -333,10 +339,13 @@ class CartConcurrencyTest {
             });
         }
 
-        ready.await(10, TimeUnit.SECONDS);
-        start.countDown();
-        done.await(30, TimeUnit.SECONDS);
-        executor.shutdown();
+        try {
+            ready.await(10, TimeUnit.SECONDS);
+            start.countDown();
+            done.await(30, TimeUnit.SECONDS);
+        } finally {
+            shutdownExecutor(executor);
+        }
 
         // Then
         Integer finalCount = jdbcTemplate.queryForObject(
@@ -425,10 +434,13 @@ class CartConcurrencyTest {
             }
         });
 
-        ready.await(10, TimeUnit.SECONDS);
-        start.countDown();
-        done.await(30, TimeUnit.SECONDS);
-        executor.shutdown();
+        try {
+            ready.await(10, TimeUnit.SECONDS);
+            start.countDown();
+            done.await(30, TimeUnit.SECONDS);
+        } finally {
+            shutdownExecutor(executor);
+        }
 
         Integer finalQuantity = jdbcTemplate.queryForObject(
                 "SELECT quantity FROM carts WHERE user_id = ? AND product_id = ?",
@@ -499,10 +511,13 @@ class CartConcurrencyTest {
             }
         });
 
-        ready.await(10, TimeUnit.SECONDS);
-        start.countDown();
-        done.await(30, TimeUnit.SECONDS);
-        executor.shutdown();
+        try {
+            ready.await(10, TimeUnit.SECONDS);
+            start.countDown();
+            done.await(30, TimeUnit.SECONDS);
+        } finally {
+            shutdownExecutor(executor);
+        }
 
         Integer rowCount = jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM carts WHERE user_id = ? AND product_id = ?",
@@ -528,6 +543,18 @@ class CartConcurrencyTest {
             assertThat(finalQuantity)
                     .as("남아 있다면 update 결과 수량(10)이어야 합니다")
                     .isEqualTo(10);
+        }
+    }
+
+    private void shutdownExecutor(ExecutorService executor) {
+        executor.shutdown();
+        try {
+            if (!executor.awaitTermination(5, TimeUnit.SECONDS)) {
+                executor.shutdownNow();
+            }
+        } catch (InterruptedException e) {
+            executor.shutdownNow();
+            Thread.currentThread().interrupt();
         }
     }
 

@@ -247,10 +247,13 @@ class OrderDeadlockTest {
             });
         }
 
-        ready.await(10, TimeUnit.SECONDS);
-        start.countDown();
-        done.await(30, TimeUnit.SECONDS);
-        executor.shutdown();
+        try {
+            ready.await(10, TimeUnit.SECONDS);
+            start.countDown();
+            done.await(30, TimeUnit.SECONDS);
+        } finally {
+            shutdownExecutor(executor);
+        }
 
         // 결과 수집
         int round = repetitionInfo.getCurrentRepetition();
@@ -317,4 +320,16 @@ class OrderDeadlockTest {
                 .as("[Round %d] 2명 모두 주문에 성공해야 합니다", round)
                 .isEqualTo(2);
     }
+    private void shutdownExecutor(ExecutorService executor) {
+        executor.shutdown();
+        try {
+            if (!executor.awaitTermination(5, TimeUnit.SECONDS)) {
+                executor.shutdownNow();
+            }
+        } catch (InterruptedException e) {
+            executor.shutdownNow();
+            Thread.currentThread().interrupt();
+        }
+    }
+
 }

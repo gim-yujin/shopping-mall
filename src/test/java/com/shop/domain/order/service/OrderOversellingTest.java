@@ -208,10 +208,13 @@ class OrderOversellingTest {
             });
         }
 
-        ready.await(10, TimeUnit.SECONDS);
-        start.countDown();                      // 동시 출발!
-        done.await(60, TimeUnit.SECONDS);
-        executor.shutdown();
+        try {
+            ready.await(10, TimeUnit.SECONDS);
+            start.countDown();                      // 동시 출발!
+            done.await(60, TimeUnit.SECONDS);
+        } finally {
+            shutdownExecutor(executor);
+        }
 
         // Then: DB에서 직접 검증
         Integer finalStock = jdbcTemplate.queryForObject(
@@ -280,4 +283,16 @@ class OrderOversellingTest {
                 .as("재고 부족 외의 예외가 발생하면 안 됩니다: %s", errors)
                 .isEqualTo(0);
     }
+    private void shutdownExecutor(ExecutorService executor) {
+        executor.shutdown();
+        try {
+            if (!executor.awaitTermination(5, TimeUnit.SECONDS)) {
+                executor.shutdownNow();
+            }
+        } catch (InterruptedException e) {
+            executor.shutdownNow();
+            Thread.currentThread().interrupt();
+        }
+    }
+
 }

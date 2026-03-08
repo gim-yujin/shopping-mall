@@ -241,10 +241,13 @@ class CancelOrderConcurrencyTest {
             });
         }
 
-        ready.await(10, TimeUnit.SECONDS);
-        start.countDown();
-        done.await(60, TimeUnit.SECONDS);
-        executor.shutdown();
+        try {
+            ready.await(10, TimeUnit.SECONDS);
+            start.countDown();
+            done.await(60, TimeUnit.SECONDS);
+        } finally {
+            shutdownExecutor(executor);
+        }
 
         // Then: DB 직접 조회
         Integer finalStock = jdbcTemplate.queryForObject(
@@ -441,10 +444,13 @@ class CancelOrderConcurrencyTest {
             }
         });
 
-        ready.await(10, TimeUnit.SECONDS);
-        start.countDown();
-        done.await(60, TimeUnit.SECONDS);
-        executor.shutdown();
+        try {
+            ready.await(10, TimeUnit.SECONDS);
+            start.countDown();
+            done.await(60, TimeUnit.SECONDS);
+        } finally {
+            shutdownExecutor(executor);
+        }
 
         // Then
         Integer finalStock = jdbcTemplate.queryForObject(
@@ -561,6 +567,18 @@ class CancelOrderConcurrencyTest {
             });
         } catch (Exception e) {
             throw new RuntimeException("테스트용 등급 갱신 실행 실패", e);
+        }
+    }
+
+    private void shutdownExecutor(ExecutorService executor) {
+        executor.shutdown();
+        try {
+            if (!executor.awaitTermination(5, TimeUnit.SECONDS)) {
+                executor.shutdownNow();
+            }
+        } catch (InterruptedException e) {
+            executor.shutdownNow();
+            Thread.currentThread().interrupt();
         }
     }
 
