@@ -17,6 +17,9 @@ import org.springframework.test.context.TestPropertySource;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
 
+import java.lang.reflect.Constructor;
+import java.lang.reflect.Field;
+import java.math.BigDecimal;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -57,8 +60,7 @@ class SecurityIntegrationTest {
     private CustomUserPrincipal ensureAuthenticatedPrincipal(String username) {
         User userEntity = userRepository.findByUsernameIgnoreCase(username)
                 .orElseGet(() -> {
-                    UserTier basicTier = userTierRepository.findByTierLevel(1)
-                            .orElseThrow(() -> new IllegalStateException("기본 사용자 등급이 존재하지 않습니다."));
+                    UserTier basicTier = getOrCreateDefaultTier();
                     User newUser = new User(username, username + "@test.local", "noop-password", "테스트사용자", "010-0000-0000");
                     newUser.setTier(basicTier);
                     return userRepository.save(newUser);
@@ -72,6 +74,33 @@ class SecurityIntegrationTest {
                 userEntity.getRole(),
                 List.of(new SimpleGrantedAuthority(userEntity.getRole()))
         );
+    }
+
+    private UserTier getOrCreateDefaultTier() {
+        return userTierRepository.findByTierLevel(1)
+                .orElseGet(() -> userTierRepository.save(createDefaultTierEntity()));
+    }
+
+    private UserTier createDefaultTierEntity() {
+        try {
+            Constructor<UserTier> constructor = UserTier.class.getDeclaredConstructor();
+            constructor.setAccessible(true);
+
+            UserTier tier = constructor.newInstance();
+            setField(tier, "tierName", "BASIC");
+            setField(tier, "tierLevel", 1);
+            setField(tier, "minSpent", BigDecimal.ZERO);
+
+            return tier;
+        } catch (ReflectiveOperationException e) {
+            throw new IllegalStateException("기본 등급 엔티티 생성에 실패했습니다.", e);
+        }
+    }
+
+    private void setField(UserTier tier, String fieldName, Object value) throws ReflectiveOperationException {
+        Field field = UserTier.class.getDeclaredField(fieldName);
+        field.setAccessible(true);
+        field.set(tier, value);
     }
 
     // ==================== 공개 경로 접근 ====================
