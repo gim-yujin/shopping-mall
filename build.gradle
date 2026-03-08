@@ -98,7 +98,12 @@ spotbugs {
     }
 }
 
+def spotbugsLauncher = javaToolchains.launcherFor {
+    languageVersion = JavaLanguageVersion.of(21)
+}
+
 tasks.withType(com.github.spotbugs.snom.SpotBugsTask).configureEach {
+    launcher = spotbugsLauncher
     reports {
         xml.required = true
         html.required = true
