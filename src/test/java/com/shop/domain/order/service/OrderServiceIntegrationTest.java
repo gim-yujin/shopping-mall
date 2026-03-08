@@ -924,7 +924,9 @@ class OrderServiceIntegrationTest {
                 .subtract(order.getDiscountAmount())
                 .subtract(BigDecimal.valueOf(usePoints))
                 .add(order.getShippingFee());
-        if (expectedFinal.compareTo(BigDecimal.ZERO) < 0) expectedFinal = BigDecimal.ZERO;
+        if (expectedFinal.compareTo(BigDecimal.ZERO) < 0) {
+            expectedFinal = BigDecimal.ZERO;
+        }
         assertThat(order.getFinalAmount()).isEqualByComparingTo(expectedFinal);
 
         // When: 취소
