@@ -10,6 +10,11 @@ plugins {
 group = 'com.shop'
 version = '1.0.0'
 
+springBoot {
+    mainClass = 'com.shop.ShopApplication'
+}
+
+
 java {
     toolchain {
         languageVersion = JavaLanguageVersion.of(25)
@@ -17,9 +22,8 @@ java {
 }
 
 tasks.withType(JavaCompile).configureEach {
-    // Spring/테스트 라이브러리 호환성을 위해 class file은 LTS(17) 타깃으로 유지하고,
-    // 런타임 JDK는 25를 사용한다.
-    options.release = 17
+    // 컴파일/테스트/패키징 산출물의 class file 타깃을 Java 25로 단일화한다.
+    options.release = 25
 }
 
 repositories {
