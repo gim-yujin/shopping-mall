@@ -2,6 +2,7 @@ package com.shop.domain.wishlist.service;
 
 import com.shop.domain.wishlist.entity.Wishlist;
 import com.shop.global.exception.ResourceNotFoundException;
+import com.shop.testsupport.TestDataFactory;
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -37,26 +38,20 @@ class WishlistServiceIntegrationTest {
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
+    @Autowired
+    private TestDataFactory testDataFactory;
+
+    private TestDataFactory.FixtureContext fixtureContext;
+
     private Long testUserId;
     private Long productId1;
     private Long productId2;
 
     @BeforeEach
     void setUp() {
-        // 위시리스트가 비어있는 사용자
-        testUserId = jdbcTemplate.queryForObject(
-                """
-                SELECT u.user_id FROM users u
-                WHERE u.is_active = true AND u.role = 'ROLE_USER'
-                  AND NOT EXISTS (SELECT 1 FROM wishlists w WHERE w.user_id = u.user_id)
-                ORDER BY u.user_id LIMIT 1
-                """,
-                Long.class);
-
-        // 활성 상품 2개
-        List<Long> products = jdbcTemplate.queryForList(
-                "SELECT product_id FROM products WHERE is_active = true ORDER BY product_id LIMIT 2",
-                Long.class);
+        fixtureContext = testDataFactory.newContext();
+        testUserId = fixtureContext.createActiveUser();
+        List<Long> products = fixtureContext.createActiveProducts(2, 100);
         productId1 = products.get(0);
         productId2 = products.get(1);
 
@@ -66,7 +61,7 @@ class WishlistServiceIntegrationTest {
 
     @AfterEach
     void tearDown() {
-        jdbcTemplate.update("DELETE FROM wishlists WHERE user_id = ?", testUserId);
+        fixtureContext.cleanup();
     }
 
     // ==================== toggleWishlist ====================
