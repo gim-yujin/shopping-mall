@@ -61,6 +61,26 @@ class UserCouponEntityUnitTest {
         assertThat(uc.getOrderId()).isEqualTo(100L);
     }
 
+
+
+    @Test
+    @DisplayName("use — orderId가 null이면 예외")
+    void use_withNullOrderId_throwsException() throws Exception {
+        UserCoupon uc = new UserCoupon(1L, createValidCoupon(), LocalDateTime.now().plusDays(30));
+
+        assertThatThrownBy(() -> uc.use(null))
+                .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    @DisplayName("use — 사용 불가 상태에서 호출하면 예외")
+    void use_whenNotAvailable_throwsException() throws Exception {
+        UserCoupon uc = new UserCoupon(1L, createValidCoupon(), LocalDateTime.now().minusDays(1));
+
+        assertThatThrownBy(() -> uc.use(100L))
+                .isInstanceOf(IllegalStateException.class);
+    }
+
     // ==================== cancelUse ====================
 
     @Test
@@ -68,6 +88,20 @@ class UserCouponEntityUnitTest {
     void cancelUse_resetsUsedState() throws Exception {
         UserCoupon uc = new UserCoupon(1L, createValidCoupon(), LocalDateTime.now().plusDays(30));
         uc.use(100L);
+
+        uc.cancelUse();
+
+        assertThat(uc.getIsUsed()).isFalse();
+        assertThat(uc.getUsedAt()).isNull();
+        assertThat(uc.getOrderId()).isNull();
+    }
+
+
+
+    @Test
+    @DisplayName("cancelUse — 미사용 상태에서 호출해도 상태 유지")
+    void cancelUse_whenUnused_keepsState() throws Exception {
+        UserCoupon uc = new UserCoupon(1L, createValidCoupon(), LocalDateTime.now().plusDays(30));
 
         uc.cancelUse();
 
