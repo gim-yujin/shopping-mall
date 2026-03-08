@@ -92,6 +92,13 @@ tasks.withType(Pmd).configureEach {
     }
 }
 
+tasks.named('pmdTest', Pmd).configure {
+    // 테스트 소스는 type resolution 이슈를 유발한 규칙을 분리한 테스트 전용 ruleset을 사용한다.
+    ruleSetFiles = files('config/pmd/ruleset-test.xml')
+    // PMD 7.3.0 + Java 25 환경에서 발생하는 class file major 69 파싱 이슈를 피한다.
+    classpath = files()
+}
+
 spotbugs {
     // Java 25(class file major 69) 지원 검증을 위해 최신 호환 후보로 상향
     toolVersion = '4.9.8'
