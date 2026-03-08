@@ -119,10 +119,13 @@ class ReviewHelpfulConcurrencyTest {
             });
         }
 
-        ready.await(10, TimeUnit.SECONDS);  // 전원 준비 완료 대기
-        start.countDown();                   // 동시 출발!
-        done.await(60, TimeUnit.SECONDS);    // 전원 완료 대기 (최대 60초)
-        executor.shutdown();
+        try {
+            ready.await(10, TimeUnit.SECONDS);  // 전원 준비 완료 대기
+            start.countDown();                   // 동시 출발!
+            done.await(60, TimeUnit.SECONDS);    // 전원 완료 대기 (최대 60초)
+        } finally {
+            shutdownExecutor(executor);
+        }
 
         // Then: DB에서 직접 조회하여 검증 (Hibernate 캐시 우회)
         Integer actualHelpfulCount = jdbcTemplate.queryForObject(
@@ -199,10 +202,13 @@ class ReviewHelpfulConcurrencyTest {
             });
         }
 
-        ready.await(10, TimeUnit.SECONDS);
-        start.countDown();
-        done.await(30, TimeUnit.SECONDS);
-        executor.shutdown();
+        try {
+            ready.await(10, TimeUnit.SECONDS);
+            start.countDown();
+            done.await(30, TimeUnit.SECONDS);
+        } finally {
+            shutdownExecutor(executor);
+        }
 
         // Then
         Integer actualHelpfulCount = jdbcTemplate.queryForObject(
@@ -273,10 +279,13 @@ class ReviewHelpfulConcurrencyTest {
                 });
             }
 
-            ready.await(5, TimeUnit.SECONDS);
-            start.countDown();
-            done.await(10, TimeUnit.SECONDS);
-            executor.shutdown();
+            try {
+                ready.await(5, TimeUnit.SECONDS);
+                start.countDown();
+                done.await(10, TimeUnit.SECONDS);
+            } finally {
+                shutdownExecutor(executor);
+            }
 
             Integer actualHelpfulCount = jdbcTemplate.queryForObject(
                     "SELECT helpful_count FROM reviews WHERE review_id = ?",
@@ -309,4 +318,16 @@ class ReviewHelpfulConcurrencyTest {
                     "UPDATE reviews SET helpful_count = 0 WHERE review_id = ?", testReviewId);
         }
     }
+    private void shutdownExecutor(ExecutorService executor) {
+        executor.shutdown();
+        try {
+            if (!executor.awaitTermination(5, TimeUnit.SECONDS)) {
+                executor.shutdownNow();
+            }
+        } catch (InterruptedException e) {
+            executor.shutdownNow();
+            Thread.currentThread().interrupt();
+        }
+    }
+
 }

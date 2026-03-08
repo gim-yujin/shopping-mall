@@ -335,10 +335,13 @@ class ReturnConcurrencyTest {
             });
         }
 
-        ready.await(10, TimeUnit.SECONDS);
-        start.countDown();
-        done.await(60, TimeUnit.SECONDS);
-        executor.shutdown();
+        try {
+            ready.await(10, TimeUnit.SECONDS);
+            start.countDown();
+            done.await(60, TimeUnit.SECONDS);
+        } finally {
+            shutdownExecutor(executor);
+        }
 
         // Then: DB 직접 조회
         String finalStatus = jdbcTemplate.queryForObject(
@@ -463,12 +466,17 @@ class ReturnConcurrencyTest {
             }
         });
 
-        ready.await(10, TimeUnit.SECONDS);
-        long startTime = System.currentTimeMillis();
-        start.countDown();
-        boolean completedInTime = done.await(30, TimeUnit.SECONDS);
-        long elapsed = System.currentTimeMillis() - startTime;
-        executor.shutdown();
+        boolean completedInTime;
+        long elapsed;
+        try {
+            ready.await(10, TimeUnit.SECONDS);
+            long startTime = System.currentTimeMillis();
+            start.countDown();
+            completedInTime = done.await(30, TimeUnit.SECONDS);
+            elapsed = System.currentTimeMillis() - startTime;
+        } finally {
+            shutdownExecutor(executor);
+        }
 
         // Then
         String finalStatus = jdbcTemplate.queryForObject(
@@ -587,10 +595,13 @@ class ReturnConcurrencyTest {
             }
         });
 
-        ready.await(10, TimeUnit.SECONDS);
-        start.countDown();
-        done.await(60, TimeUnit.SECONDS);
-        executor.shutdown();
+        try {
+            ready.await(10, TimeUnit.SECONDS);
+            start.countDown();
+            done.await(60, TimeUnit.SECONDS);
+        } finally {
+            shutdownExecutor(executor);
+        }
 
         // Then
         String finalStatus = jdbcTemplate.queryForObject(
@@ -717,10 +728,13 @@ class ReturnConcurrencyTest {
             }
         });
 
-        ready.await(10, TimeUnit.SECONDS);
-        start.countDown();
-        done.await(60, TimeUnit.SECONDS);
-        executor.shutdown();
+        try {
+            ready.await(10, TimeUnit.SECONDS);
+            start.countDown();
+            done.await(60, TimeUnit.SECONDS);
+        } finally {
+            shutdownExecutor(executor);
+        }
 
         // Then
         int finalStock = jdbcTemplate.queryForObject(
@@ -828,10 +842,13 @@ class ReturnConcurrencyTest {
             });
         }
 
-        ready.await(10, TimeUnit.SECONDS);
-        start.countDown();
-        done.await(60, TimeUnit.SECONDS);
-        executor.shutdown();
+        try {
+            ready.await(10, TimeUnit.SECONDS);
+            start.countDown();
+            done.await(60, TimeUnit.SECONDS);
+        } finally {
+            shutdownExecutor(executor);
+        }
 
         // Then
         String finalStatus = jdbcTemplate.queryForObject(
@@ -952,12 +969,17 @@ class ReturnConcurrencyTest {
             }
         });
 
-        ready.await(10, TimeUnit.SECONDS);
-        long startTime = System.currentTimeMillis();
-        start.countDown();
-        boolean completedInTime = done.await(30, TimeUnit.SECONDS);
-        long elapsed = System.currentTimeMillis() - startTime;
-        executor.shutdown();
+        boolean completedInTime;
+        long elapsed;
+        try {
+            ready.await(10, TimeUnit.SECONDS);
+            long startTime = System.currentTimeMillis();
+            start.countDown();
+            completedInTime = done.await(30, TimeUnit.SECONDS);
+            elapsed = System.currentTimeMillis() - startTime;
+        } finally {
+            shutdownExecutor(executor);
+        }
 
         String finalOrderStatus = jdbcTemplate.queryForObject(
                 "SELECT order_status FROM orders WHERE order_id = ?",
@@ -984,4 +1006,16 @@ class ReturnConcurrencyTest {
         // ④ 주문 상태는 DELIVERED 유지 (취소되지 않음)
         assertThat(finalOrderStatus).isEqualTo("DELIVERED");
     }
+    private void shutdownExecutor(ExecutorService executor) {
+        executor.shutdown();
+        try {
+            if (!executor.awaitTermination(5, TimeUnit.SECONDS)) {
+                executor.shutdownNow();
+            }
+        } catch (InterruptedException e) {
+            executor.shutdownNow();
+            Thread.currentThread().interrupt();
+        }
+    }
+
 }

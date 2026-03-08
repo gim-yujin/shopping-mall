@@ -148,10 +148,13 @@ class OrderSameUserConcurrencyTest {
         executor.submit(task);
         executor.submit(task);
 
-        assertThat(ready.await(5, TimeUnit.SECONDS)).isTrue();
-        start.countDown();
-        assertThat(done.await(30, TimeUnit.SECONDS)).isTrue();
-        executor.shutdown();
+        try {
+            assertThat(ready.await(5, TimeUnit.SECONDS)).isTrue();
+            start.countDown();
+            assertThat(done.await(30, TimeUnit.SECONDS)).isTrue();
+        } finally {
+            shutdownExecutor(executor);
+        }
 
         Integer createdOrders = jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM orders WHERE user_id = ? AND shipping_address = ?",
@@ -162,4 +165,16 @@ class OrderSameUserConcurrencyTest {
         assertThat(emptyCartFailureCount.get()).isEqualTo(1);
         assertThat(createdOrders).isEqualTo(1);
     }
+    private void shutdownExecutor(ExecutorService executor) {
+        executor.shutdown();
+        try {
+            if (!executor.awaitTermination(5, TimeUnit.SECONDS)) {
+                executor.shutdownNow();
+            }
+        } catch (InterruptedException e) {
+            executor.shutdownNow();
+            Thread.currentThread().interrupt();
+        }
+    }
+
 }
