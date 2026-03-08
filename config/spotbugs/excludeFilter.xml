@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<FindBugsFilter>
+    <!-- 팀 정책에 따라 false positive가 확인된 항목을 여기에 제외 규칙으로 추가 -->
+</FindBugsFilter>
