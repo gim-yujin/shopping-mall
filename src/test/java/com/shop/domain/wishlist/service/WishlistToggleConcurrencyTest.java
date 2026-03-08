@@ -68,7 +68,6 @@ class WishlistToggleConcurrencyTest {
     @DisplayName("같은 상품 10회 동시 토글 → 에러 없이 정상 처리")
     void concurrentToggle_noErrors() throws InterruptedException {
         int threadCount = 10;
-        ExecutorService executor = Executors.newFixedThreadPool(threadCount);
         CountDownLatch ready = new CountDownLatch(threadCount);
         CountDownLatch start = new CountDownLatch(1);
         CountDownLatch done = new CountDownLatch(threadCount);
@@ -77,29 +76,31 @@ class WishlistToggleConcurrencyTest {
         AtomicInteger failCount = new AtomicInteger(0);
         List<String> errors = Collections.synchronizedList(new ArrayList<>());
 
-        for (int i = 0; i < threadCount; i++) {
-            final int attempt = i + 1;
-            executor.submit(() -> {
-                ready.countDown();
-                try {
-                    start.await();
-                    wishlistService.toggleWishlist(testUserId, testProductId);
-                    successCount.incrementAndGet();
-                } catch (Exception e) {
-                    failCount.incrementAndGet();
-                    errors.add("시도#" + attempt + ": " + e.getClass().getSimpleName() + " - " + e.getMessage());
-                } finally {
-                    done.countDown();
-                }
-            });
-        }
+        try (ExecutorService executor = Executors.newFixedThreadPool(threadCount)) {
+            for (int i = 0; i < threadCount; i++) {
+                final int attempt = i + 1;
+                executor.submit(() -> {
+                    ready.countDown();
+                    try {
+                        start.await();
+                        wishlistService.toggleWishlist(testUserId, testProductId);
+                        successCount.incrementAndGet();
+                    } catch (Exception e) {
+                        failCount.incrementAndGet();
+                        errors.add("시도#" + attempt + ": " + e.getClass().getSimpleName() + " - " + e.getMessage());
+                    } finally {
+                        done.countDown();
+                    }
+                });
+            }
 
-        try {
-            ready.await(10, TimeUnit.SECONDS);
+            assertThat(ready.await(10, TimeUnit.SECONDS))
+                    .as("모든 스레드가 준비 상태가 되어야 합니다")
+                    .isTrue();
             start.countDown();
-            done.await(30, TimeUnit.SECONDS);
-        } finally {
-            shutdownExecutor(executor);
+            assertThat(done.await(30, TimeUnit.SECONDS))
+                    .as("모든 토글 작업이 제한 시간 내 완료되어야 합니다")
+                    .isTrue();
         }
 
         // DB 상태 확인
@@ -127,17 +128,6 @@ class WishlistToggleConcurrencyTest {
         assertThat(failCount.get())
                 .as("동시 토글 시 에러가 발생하면 안 됩니다: %s", errors)
                 .isEqualTo(0);
-    }
-    private void shutdownExecutor(ExecutorService executor) {
-        executor.shutdown();
-        try {
-            if (!executor.awaitTermination(5, TimeUnit.SECONDS)) {
-                executor.shutdownNow();
-            }
-        } catch (InterruptedException e) {
-            executor.shutdownNow();
-            Thread.currentThread().interrupt();
-        }
     }
 
 }
