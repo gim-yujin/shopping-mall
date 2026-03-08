@@ -24,6 +24,12 @@ import static org.assertj.core.api.Assertions.assertThat;
  *
  * 주의: 실제 PostgreSQL DB에 연결하여 테스트합니다.
  *       테스트 전후로 테스트 데이터를 정리합니다.
+ *
+ * [BUG FIX] review_helpfuls 테이블에 fk_helpful_user FK 제약이 존재하므로,
+ * 테스트에서 사용하는 모든 userId가 users 테이블에 실재해야 한다.
+ * ON CONFLICT DO NOTHING은 UNIQUE 제약 충돌만 무시하며,
+ * FK 위반은 DataIntegrityViolationException으로 전파된다.
+ * setUp()에서 ensureTestUserExists()로 테스트용 사용자를 미리 생성한다.
  */
 @SpringBootTest
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
@@ -46,6 +52,17 @@ class ReviewHelpfulConcurrencyTest {
     // 리뷰 작성자 ID — 셀프 투표 방지를 위해 제외
     private Long reviewAuthorId;
 
+    /**
+     * 테스트용 BCrypt 해시 (test-seed.sql과 동일한 값 재사용).
+     * 동시성 테스트에서는 실제 로그인을 수행하지 않으므로
+     * 유효한 BCrypt 형식이기만 하면 된다.
+     */
+    private static final String BCRYPT_HASH =
+            "$2b$10$yand.RRKtoh8L4rsWJv4xeM6T8771FwNQpJrpQpI6LIEdhvgNlGQy";
+
+    /** 테스트 1에서 사용할 시작 userId (reviewAuthorId 회피 후 동적 결정). */
+    private long test1StartUserId;
+
     @BeforeEach
     void setUp() {
         // JdbcTemplate으로 1건만 조회 (findAll() OOM 방지)
@@ -59,10 +76,54 @@ class ReviewHelpfulConcurrencyTest {
         // 이전 테스트 데이터 정리
         cleanUp();
 
+        // ── [BUG FIX] 테스트용 사용자 사전 생성 ──
+        // review_helpfuls.user_id → users.user_id FK 제약을 충족시키기 위해
+        // 각 테스트에서 사용할 모든 userId에 대응하는 users 레코드를 미리 삽입한다.
+
+        // 테스트 1용 사용자 범위 결정 (리뷰 작성자 회피)
+        int threadCount = 100;
+        test1StartUserId = (reviewAuthorId >= 1 && reviewAuthorId <= threadCount)
+                ? threadCount + 1
+                : 1;
+        for (int i = 0; i < threadCount; i++) {
+            ensureTestUserExists(test1StartUserId + i);
+        }
+
+        // 테스트 2용: 같은 사용자 동시 클릭 (userId 999999)
+        long sameUserId = (reviewAuthorId == 999999L) ? 999998L : 999999L;
+        ensureTestUserExists(sameUserId);
+
+        // 테스트 3용: insert 충돌 경로 재현 (userId 888888)
+        long conflictUserId = (reviewAuthorId == 888888L) ? 888887L : 888888L;
+        ensureTestUserExists(conflictUserId);
+
         System.out.println("========================================");
         System.out.println("테스트 리뷰 ID: " + testReviewId);
         System.out.println("리뷰 작성자 ID: " + reviewAuthorId + " (테스트에서 제외)");
         System.out.println("========================================");
+    }
+
+    /**
+     * 지정한 userId로 테스트용 사용자를 생성한다.
+     *
+     * review_helpfuls 테이블의 FK 제약(fk_helpful_user)을 만족시키기 위한 용도이며,
+     * 실제 로그인이나 인증에는 사용하지 않는다.
+     * ON CONFLICT (user_id) DO NOTHING으로 이미 존재하는 사용자는 건너뛴다.
+     * username/email에도 UNIQUE 제약이 있으므로 userId 기반으로 고유값을 생성한다.
+     */
+    private void ensureTestUserExists(long userId) {
+        jdbcTemplate.update(
+                "INSERT INTO users (user_id, username, email, password_hash, name, phone, " +
+                "role, tier_id, total_spent, point_balance, is_active, created_at, updated_at) " +
+                "VALUES (?, ?, ?, ?, ?, ?, 'ROLE_USER', 1, 0, 0, TRUE, NOW(), NOW()) " +
+                "ON CONFLICT (user_id) DO NOTHING",
+                userId,
+                "helpful_test_u" + userId,               // username (UNIQUE)
+                "helpful_test_" + userId + "@test.com",  // email (UNIQUE)
+                BCRYPT_HASH,
+                "테스트사용자" + userId,
+                "010-0000-0000"
+        );
     }
 
     @AfterEach
@@ -94,11 +155,8 @@ class ReviewHelpfulConcurrencyTest {
         AtomicInteger successCount = new AtomicInteger(0);
         AtomicInteger failCount = new AtomicInteger(0);
 
-        // 리뷰 작성자를 피해 userId를 선택
-        // 작성자가 1~100 범위면 101~200 사용, 아니면 1~100 사용
-        long startUserId = (reviewAuthorId >= 1 && reviewAuthorId <= threadCount)
-                ? threadCount + 1
-                : 1;
+        // setUp()에서 미리 생성한 사용자 범위를 사용 (리뷰 작성자 회피 완료)
+        long startUserId = test1StartUserId;
 
         System.out.println("테스트 사용자 범위: " + startUserId + " ~ " + (startUserId + threadCount - 1));
 
@@ -310,6 +368,12 @@ class ReviewHelpfulConcurrencyTest {
      * 테스트 데이터 정리
      * - review_helpfuls에서 테스트 리뷰 관련 레코드 삭제
      * - helpful_count를 0으로 리셋
+     *
+     * 테스트용 users 레코드는 삭제하지 않는다.
+     * review_helpfuls에 ON DELETE CASCADE가 설정되어 있어
+     * 사용자 삭제 시 helpful 레코드도 연쇄 삭제되지만,
+     * 매 @BeforeEach마다 100건의 사용자를 재생성하는 비용을 피하기 위해
+     * helpful 레코드만 직접 삭제하고 사용자는 재사용한다.
      */
     private void cleanUp() {
         if (testReviewId != null) {

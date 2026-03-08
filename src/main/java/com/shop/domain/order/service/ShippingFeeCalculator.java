@@ -19,13 +19,31 @@ public class ShippingFeeCalculator {
     /**
      * 등급별 무료배송 기준에 따라 배송비를 계산한다.
      *
+     * [FIX] freeShippingThreshold가 null인 경우(BASIC 등급 등) NPE 방어 처리.
+     * DB 스키마상 user_tiers.free_shipping_threshold는 nullable 컬럼이다.
+     * null은 "해당 등급에 무료배송 혜택이 없음"을 의미하므로,
+     * 항상 기본 배송비(3,000원)를 부과하는 것이 올바른 비즈니스 로직이다.
+     *
+     * 기존 코드는 null.compareTo()를 호출해 NPE가 발생했다.
+     * 이 버그는 test-seed.sql에 BASIC 등급(free_shipping_threshold=NULL)의
+     * 사용자가 추가된 후 모든 주문 생성 테스트에서 연쇄 실패를 일으켰다.
+     *
      * @param tier            사용자 등급 (무료배송 기준 금액 포함)
      * @param itemTotalAmount 상품 합계 금액
      * @return 배송비 (무료배송 조건 충족 시 0, 아니면 기본 배송비)
      */
     public BigDecimal calculateShippingFee(UserTier tier, BigDecimal itemTotalAmount) {
         BigDecimal freeThreshold = tier.getFreeShippingThreshold();
-        if (freeThreshold.compareTo(BigDecimal.ZERO) == 0 || itemTotalAmount.compareTo(freeThreshold) >= 0) {
+
+        // freeThreshold가 null이면 무료배송 혜택이 없는 등급 → 기본 배송비 부과
+        if (freeThreshold == null) {
+            return SHIPPING_FEE_BASE;
+        }
+
+        // freeThreshold가 0이면 무조건 무료배송,
+        // 주문 금액이 기준 이상이면 무료배송
+        if (freeThreshold.compareTo(BigDecimal.ZERO) == 0
+                || itemTotalAmount.compareTo(freeThreshold) >= 0) {
             return BigDecimal.ZERO;
         }
         return SHIPPING_FEE_BASE;

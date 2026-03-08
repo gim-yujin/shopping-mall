@@ -604,12 +604,14 @@ CREATE INDEX idx_point_history_user ON point_history(user_id, created_at DESC);
 CREATE INDEX idx_point_history_reference ON point_history(reference_type, reference_id);
 
 -- ============================================================================
--- 스키마 생성 완료
+-- 완료 메시지
 -- ============================================================================
--- [FIX] 기존 DO $$ ... END $$; PL/pgSQL 익명 블록을 제거했다.
--- 원인: Spring Boot의 ScriptUtils가 SQL 스크립트를 세미콜론(;) 기준으로 분할할 때,
--- $$ 달러 쿼팅 내부의 세미콜론까지 문장 구분자로 오인하는 경우가 있다.
--- 이로 인해 DO $$ 블록이 여러 개의 불완전한 SQL 조각으로 분리되어
--- PSQLException (Parser.java) 파싱 에러가 발생한다.
--- RAISE NOTICE는 디버깅 편의용이었으므로 주석으로 대체한다.
--- 총 17개 테이블, 50+ 인덱스 생성됨
+DO $$
+BEGIN
+    RAISE NOTICE '====================================================';
+    RAISE NOTICE '스키마 생성 완료!';
+    RAISE NOTICE '총 17개 테이블, 50+ 인덱스 생성됨';
+    RAISE NOTICE '====================================================';
+    RAISE NOTICE '다음 단계: 더미 데이터 생성 스크립트 작성';
+    RAISE NOTICE '====================================================';
+END $$;

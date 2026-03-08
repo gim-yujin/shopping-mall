@@ -41,7 +41,17 @@ class SearchServiceIntegrationTest {
                 "SELECT COUNT(*) FROM search_logs WHERE search_keyword = ?",
                 Integer.class, keywordForCleanup);
 
-        searchService.logSearch(11L, keywordForCleanup, 5, "127.0.0.1", "JUnit-Integration");
+        // [FIX] 기존 코드는 userId=11L을 하드코딩했으나, test-reset.sql이
+        // 스키마를 완전히 초기화(DROP SCHEMA CASCADE)하므로 user_id=11인 사용자가 존재하지 않는다.
+        // search_logs.user_id는 users(user_id)를 참조하는 FK이므로,
+        // 존재하지 않는 userId를 전달하면 @Async 내부에서 FK 위반이 발생해
+        // catch 블록에서 조용히 실패하고, 로그가 저장되지 않아 테스트가 깨진다.
+        // seed 사용자 ID(9001)를 사용하도록 변경한다.
+        Long validUserId = jdbcTemplate.queryForObject(
+                "SELECT user_id FROM users WHERE is_active = true LIMIT 1",
+                Long.class);
+
+        searchService.logSearch(validUserId, keywordForCleanup, 5, "127.0.0.1", "JUnit-Integration");
 
         // @Async로 변경된 logSearch가 별도 스레드에서 완료될 때까지 대기
         Thread.sleep(500);
