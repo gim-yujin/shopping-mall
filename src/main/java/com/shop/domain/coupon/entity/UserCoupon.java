@@ -45,15 +45,47 @@ public class UserCoupon {
     }
 
     public void use(Long orderId) {
+        if (orderId == null) {
+            throw new IllegalArgumentException("orderId는 필수입니다.");
+        }
+        if (!isAvailable()) {
+            throw new IllegalStateException("사용할 수 없는 쿠폰입니다.");
+        }
+        markUsed(orderId);
+    }
+
+    public void cancelUse() {
+        if (!Boolean.TRUE.equals(this.isUsed)) {
+            return;
+        }
+        markUnused();
+    }
+
+    private void markUsed(Long orderId) {
         this.isUsed = true;
         this.usedAt = LocalDateTime.now();
         this.orderId = orderId;
     }
 
-    public void cancelUse() {
+    /**
+     * 쿠폰 사용 취소 시 주문 연계를 해제하고 사용 메타데이터를 초기 상태로 되돌린다.
+     */
+    private void markUnused() {
         this.isUsed = false;
-        this.usedAt = null;
-        this.orderId = null;
+        clearUsedTimestamp();
+        detachOrder();
+    }
+
+    private void clearUsedTimestamp() {
+        this.usedAt = emptyValue();
+    }
+
+    private void detachOrder() {
+        this.orderId = emptyValue();
+    }
+
+    private static <T> T emptyValue() {
+        return null;
     }
 
     public boolean isAvailable() {
@@ -65,7 +97,7 @@ public class UserCoupon {
      * 테스트에서 시간을 제어할 수 있도록 시각을 파라미터로 받는다.
      */
     public boolean isAvailable(LocalDateTime now) {
-        return !isUsed
+        return !Boolean.TRUE.equals(isUsed)
                && now.isBefore(expiresAt)
                && coupon.getIsActive()
                && (now.isAfter(coupon.getValidFrom()) || now.isEqual(coupon.getValidFrom()))
