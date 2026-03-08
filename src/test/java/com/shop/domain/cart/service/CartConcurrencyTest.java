@@ -1,5 +1,7 @@
 package com.shop.domain.cart.service;
 
+import com.shop.testsupport.TestDataFactory;
+
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -53,7 +55,23 @@ class CartConcurrencyTest {
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
+    @Autowired
+    private TestDataFactory testDataFactory;
+
     private Long testUserId;
+    private TestDataFactory.FixtureContext fixtureContext;
+
+
+    @BeforeEach
+    void setUpFixture() {
+        fixtureContext = testDataFactory.newContext();
+        testUserId = fixtureContext.createActiveUser();
+    }
+
+    @AfterEach
+    void tearDownFixture() {
+        fixtureContext.cleanup();
+    }
 
     // =========================================================================
     // 시나리오 1: 같은 상품 동시 추가
@@ -64,17 +82,9 @@ class CartConcurrencyTest {
     @DisplayName("시나리오 1: 같은 상품 5회 동시 추가 → UNIQUE 위반 없이 정상 처리")
     void duplicateAdd_noErrors() throws InterruptedException {
         // Given
-        testUserId = jdbcTemplate.queryForObject(
-                "SELECT user_id FROM users WHERE is_active = true AND role = 'ROLE_USER' ORDER BY user_id LIMIT 1",
-                Long.class);
-
-        Long productId = jdbcTemplate.queryForObject(
-                "SELECT product_id FROM products WHERE is_active = true AND stock_quantity >= 100 LIMIT 1",
-                Long.class);
+        Long productId = fixtureContext.createActiveProduct(200);
 
         // 기존 장바구니 항목 정리
-        jdbcTemplate.update("DELETE FROM carts WHERE user_id = ? AND product_id = ?", testUserId, productId);
-
         System.out.println("========================================");
         System.out.println("[시나리오 1: 같은 상품 동시 추가]");
         System.out.println("  사용자 ID: " + testUserId);
@@ -138,9 +148,6 @@ class CartConcurrencyTest {
         }
         System.out.println("========================================");
 
-        // 정리
-        jdbcTemplate.update("DELETE FROM carts WHERE user_id = ? AND product_id = ?", testUserId, productId);
-
         // ① 에러 없음
         assertThat(failCount.get())
                 .as("동시 추가 시 에러가 발생하면 안 됩니다: %s", errors)
@@ -166,13 +173,7 @@ class CartConcurrencyTest {
     @DisplayName("시나리오 2: 이미 담긴 상품에 5회 동시 수량 추가 → Lost Update 방지")
     void concurrentQuantityIncrease_noLostUpdate() throws InterruptedException {
         // Given
-        testUserId = jdbcTemplate.queryForObject(
-                "SELECT user_id FROM users WHERE is_active = true AND role = 'ROLE_USER' ORDER BY user_id LIMIT 1",
-                Long.class);
-
-        Long productId = jdbcTemplate.queryForObject(
-                "SELECT product_id FROM products WHERE is_active = true AND stock_quantity >= 100 LIMIT 1",
-                Long.class);
+        Long productId = fixtureContext.createActiveProduct(200);
 
         // 장바구니에 수량 1로 미리 추가
         jdbcTemplate.update("DELETE FROM carts WHERE user_id = ? AND product_id = ?", testUserId, productId);
@@ -246,9 +247,6 @@ class CartConcurrencyTest {
         }
         System.out.println("========================================");
 
-        // 정리
-        jdbcTemplate.update("DELETE FROM carts WHERE user_id = ? AND product_id = ?", testUserId, productId);
-
         // ① 최종 수량 = 초기(1) + 5회 추가 = 6
         assertThat(finalQuantity)
                 .as("초기 수량(1) + 5회 추가 = 6이어야 합니다 (현재: %d, Lost Update: %d회)",
@@ -265,22 +263,11 @@ class CartConcurrencyTest {
     @DisplayName("시나리오 3: 49개 상태에서 5개 상품 동시 추가 → 최대 50개 제한 준수")
     void maxCartItems_limitEnforcement() throws InterruptedException {
         // Given
-        testUserId = jdbcTemplate.queryForObject(
-                "SELECT user_id FROM users WHERE is_active = true AND role = 'ROLE_USER' ORDER BY user_id LIMIT 1",
-                Long.class);
-
         // 기존 장바구니 정리
         jdbcTemplate.update("DELETE FROM carts WHERE user_id = ?", testUserId);
 
-        // 49개 상품을 장바구니에 미리 추가
-        List<Long> allProductIds = jdbcTemplate.queryForList(
-                "SELECT product_id FROM products WHERE is_active = true AND stock_quantity >= 10 ORDER BY product_id LIMIT 54",
-                Long.class);
-
-        if (allProductIds.size() < 54) {
-            System.out.println("상품 수가 부족하여 테스트를 건너뜁니다 (필요: 54, 실제: " + allProductIds.size() + ")");
-            return;
-        }
+        // 49개 상품을 장바구니에 미리 추가 + 동시 추가용 5개 상품 fixture
+        List<Long> allProductIds = fixtureContext.createActiveProducts(54, 20);
 
         // 처음 49개 상품을 장바구니에 미리 넣기
         List<Long> preloadProducts = allProductIds.subList(0, 49);
@@ -364,9 +351,6 @@ class CartConcurrencyTest {
         }
         System.out.println("========================================");
 
-        // 정리
-        jdbcTemplate.update("DELETE FROM carts WHERE user_id = ?", testUserId);
-
         // ① 기타 예외 없음
         assertThat(otherFailCount.get())
                 .as("예상치 못한 예외: %s", errors)
@@ -391,13 +375,7 @@ class CartConcurrencyTest {
     @Order(4)
     @DisplayName("시나리오 4: updateQuantity와 addToCart 동시 요청 → 일관된 최종 수량")
     void updateAndAdd_concurrentConsistency() throws InterruptedException {
-        testUserId = jdbcTemplate.queryForObject(
-                "SELECT user_id FROM users WHERE is_active = true AND role = 'ROLE_USER' ORDER BY user_id LIMIT 1",
-                Long.class);
-
-        Long productId = jdbcTemplate.queryForObject(
-                "SELECT product_id FROM products WHERE is_active = true AND stock_quantity >= 100 LIMIT 1",
-                Long.class);
+        Long productId = fixtureContext.createActiveProduct(200);
 
         jdbcTemplate.update("DELETE FROM carts WHERE user_id = ? AND product_id = ?", testUserId, productId);
         jdbcTemplate.update(
@@ -447,8 +425,6 @@ class CartConcurrencyTest {
                 "SELECT quantity FROM carts WHERE user_id = ? AND product_id = ?",
                 Integer.class, testUserId, productId);
 
-        jdbcTemplate.update("DELETE FROM carts WHERE user_id = ? AND product_id = ?", testUserId, productId);
-
         // removeFromCart가 먼저 수행되면 updateQuantity는 조회 시점에 항목을 찾지 못해
         // ResourceNotFoundException이 발생할 수 있다. 이는 동시성 시나리오에서 허용되는 결과다.
         assertThat(errors)
@@ -468,13 +444,7 @@ class CartConcurrencyTest {
     @Order(5)
     @DisplayName("시나리오 5: updateQuantity와 removeFromCart 동시 요청 → 일관된 최종 상태")
     void updateAndRemove_concurrentConsistency() throws InterruptedException {
-        testUserId = jdbcTemplate.queryForObject(
-                "SELECT user_id FROM users WHERE is_active = true AND role = 'ROLE_USER' ORDER BY user_id LIMIT 1",
-                Long.class);
-
-        Long productId = jdbcTemplate.queryForObject(
-                "SELECT product_id FROM products WHERE is_active = true AND stock_quantity >= 100 LIMIT 1",
-                Long.class);
+        Long productId = fixtureContext.createActiveProduct(200);
 
         jdbcTemplate.update("DELETE FROM carts WHERE user_id = ? AND product_id = ?", testUserId, productId);
         jdbcTemplate.update(
@@ -527,8 +497,6 @@ class CartConcurrencyTest {
         Integer finalQuantity = rowCount == 0 ? null : jdbcTemplate.queryForObject(
                 "SELECT quantity FROM carts WHERE user_id = ? AND product_id = ?",
                 Integer.class, testUserId, productId);
-
-        jdbcTemplate.update("DELETE FROM carts WHERE user_id = ? AND product_id = ?", testUserId, productId);
 
         // removeFromCart가 먼저 반영되면 updateQuantity는 대상을 찾지 못해
         // ResourceNotFoundException이 발생할 수 있으며, 이는 허용 가능한 경합 결과다.

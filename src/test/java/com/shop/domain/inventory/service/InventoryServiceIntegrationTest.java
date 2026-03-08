@@ -1,6 +1,8 @@
 package com.shop.domain.inventory.service;
 
 import com.shop.domain.inventory.entity.ProductInventoryHistory;
+import com.shop.testsupport.TestDataFactory;
+
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -24,19 +26,20 @@ class InventoryServiceIntegrationTest {
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
+    @Autowired
+    private TestDataFactory testDataFactory;
+
     private Long testProductId;
     private Long testUserId;
     private int originalStock;
     private String reasonTag;
+    private TestDataFactory.FixtureContext fixtureContext;
 
     @BeforeEach
     void setUp() {
-        testProductId = jdbcTemplate.queryForObject(
-                "SELECT product_id FROM products WHERE is_active = true AND stock_quantity >= 10 LIMIT 1",
-                Long.class);
-        testUserId = jdbcTemplate.queryForObject(
-                "SELECT user_id FROM users WHERE is_active = true AND role = 'ROLE_USER' LIMIT 1",
-                Long.class);
+        fixtureContext = testDataFactory.newContext();
+        testUserId = fixtureContext.createActiveUser();
+        testProductId = fixtureContext.createActiveProduct(30);
         originalStock = jdbcTemplate.queryForObject(
                 "SELECT stock_quantity FROM products WHERE product_id = ?",
                 Integer.class, testProductId);
@@ -51,6 +54,7 @@ class InventoryServiceIntegrationTest {
         jdbcTemplate.update(
                 "UPDATE products SET stock_quantity = ? WHERE product_id = ?",
                 originalStock, testProductId);
+        fixtureContext.cleanup();
     }
 
     @Test
