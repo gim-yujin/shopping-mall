@@ -1,5 +1,6 @@
 package com.shop.domain.wishlist.service;
 
+import com.shop.testsupport.TestDataFactory;
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -38,27 +39,18 @@ class WishlistToggleConcurrencyTest {
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
+    @Autowired
+    private TestDataFactory testDataFactory;
+
+    private TestDataFactory.FixtureContext fixtureContext;
     private Long testUserId;
     private Long testProductId;
 
     @BeforeEach
     void setUp() {
-        testUserId = jdbcTemplate.queryForObject(
-                """
-                SELECT u.user_id FROM users u
-                WHERE u.is_active = true AND u.role = 'ROLE_USER'
-                ORDER BY u.user_id LIMIT 1
-                """,
-                Long.class);
-
-        testProductId = jdbcTemplate.queryForObject(
-                "SELECT product_id FROM products WHERE is_active = true LIMIT 1",
-                Long.class);
-
-        // 초기 상태: 위시리스트에 없음
-        jdbcTemplate.update(
-                "DELETE FROM wishlists WHERE user_id = ? AND product_id = ?",
-                testUserId, testProductId);
+        fixtureContext = testDataFactory.newContext();
+        testUserId = fixtureContext.createActiveUser();
+        testProductId = fixtureContext.createActiveProduct(100);
 
         System.out.println("========================================");
         System.out.println("[위시리스트 토글 테스트 준비 완료]");
@@ -69,9 +61,7 @@ class WishlistToggleConcurrencyTest {
 
     @AfterEach
     void tearDown() {
-        jdbcTemplate.update(
-                "DELETE FROM wishlists WHERE user_id = ? AND product_id = ?",
-                testUserId, testProductId);
+        fixtureContext.cleanup();
     }
 
     @Test
@@ -109,7 +99,7 @@ class WishlistToggleConcurrencyTest {
             start.countDown();
             done.await(30, TimeUnit.SECONDS);
         } finally {
-            executor.close();
+            shutdownExecutor(executor);
         }
 
         // DB 상태 확인
