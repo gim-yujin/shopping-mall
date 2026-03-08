@@ -1,0 +1,62 @@
+name: Test Failure Root Cause
+description: 테스트 실패 원인 추적 결과를 공통 포맷으로 기록합니다.
+title: "[Test Failure] "
+labels:
+  - test
+  - root-cause
+body:
+  - type: textarea
+    id: summary
+    attributes:
+      label: 증상 요약
+      description: 실패한 테스트/브랜치/실행 환경을 간단히 작성해 주세요.
+      placeholder: |
+        - test: com.shop.domain.cart.service.CartConcurrencyTest
+        - branch: feature/...
+        - env: local / CI
+    validations:
+      required: true
+
+  - type: textarea
+    id: first-command
+    attributes:
+      label: 1차 재현 명령 실행 결과
+      description: 아래 고정 명령의 실행 로그(핵심 구간)를 첨부해 주세요.
+      value: |
+        ./gradlew test --tests com.shop.domain.cart.service.CartConcurrencyTest --stacktrace --info
+    validations:
+      required: true
+
+  - type: textarea
+    id: caused-by-chain
+    attributes:
+      label: 최초 실패 클래스의 Caused by 체인
+      description: build/reports/tests/test/index.html에서 최초 실패 클래스 기준으로 Caused by 체인을 붙여 주세요.
+      placeholder: |
+        (원문 스택트레이스 발췌)
+        Caused by: ...
+        Caused by: ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: innermost-psql
+    attributes:
+      label: 최초 BeanCreationException의 가장 안쪽 PSQLException 메시지
+      description: 필수 항목입니다. 요약하지 말고 원문 메시지를 그대로 기입해 주세요.
+      placeholder: |
+        예) ERROR: relation "..." does not exist
+    validations:
+      required: true
+
+  - type: textarea
+    id: sql-init-debug
+    attributes:
+      label: SQL init DEBUG 로그 확인 여부
+      description: 필요 시 아래 테스트 전용 로깅을 적용한 뒤 확인 결과를 작성해 주세요.
+      value: |
+        logging:
+          level:
+            org.springframework.jdbc.datasource.init: DEBUG
+    validations:
+      required: true
