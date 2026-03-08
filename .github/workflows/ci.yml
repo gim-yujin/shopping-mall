@@ -14,6 +14,9 @@ jobs:
   ci:
     name: ci
     runs-on: ubuntu-latest
+    env:
+      JDK_JAVA_OPTIONS: --enable-native-access=ALL-UNNAMED
+      ORG_GRADLE_JVMARGS: -Xmx2g -Dfile.encoding=UTF-8 --enable-native-access=ALL-UNNAMED
 
     steps:
       - name: Checkout source
