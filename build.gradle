@@ -182,27 +182,26 @@ jacoco {
 }
 
 tasks.named('jacocoTestReport', JacocoReport) {
-    dependsOn tasks.named('test')
+    dependsOn(tasks.named('test'))
+
     reports {
-        html.required = true   // 브라우저에서 확인 가능한 상세 리포트
-        xml.required = true    // CI 도구(SonarQube, Codecov 등) 연동용
+        html.required = true
+        xml.required = true
         csv.required = false
     }
 
-    // 커버리지 측정에서 제외할 클래스:
-    // - 설정/부트스트랩 클래스: 비즈니스 로직 없음
-    // - DTO/엔티티: getter/setter 위주로 측정 가치 낮음
-    // - 스케줄러: 크론 기반 실행이라 통합 테스트로 검증
-    afterEvaluate {
-        classDirectories.setFrom(files(classDirectories.files.collect {
-            fileTree(dir: it, excludes: [
-                    '**/config/**',
-                    '**/dto/**',
-                    '**/ShopApplication.class',
-                    '**/scheduler/**'
-            ])
-        }))
-    }
+    def excludes = [
+            '**/config/**',
+            '**/dto/**',
+            '**/ShopApplication.class',
+            '**/scheduler/**'
+    ]
+
+    classDirectories.setFrom(
+            files(classDirectories.files.collect {
+                fileTree(dir: it, exclude: excludes)
+            })
+    )
 }
 
 // 커버리지 최소 기준 (선택적 — CI에서 ./gradlew jacocoTestCoverageVerification 실행)
