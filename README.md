@@ -5,7 +5,7 @@
 ## 기술 스택
 
 - **Backend**: Spring Boot 3.4.1, Spring Security 6, Spring Data JPA, Spring Validation, Spring Cache, Actuator, Micrometer Prometheus
-- **Language/Build**: Java Toolchain 25 (컴파일 타깃 17), Gradle 8.12
+- **Language/Build**: Java Toolchain 25 (컴파일/테스트/패키징 class file 타깃 25), Gradle 8.12
 - **Database**: PostgreSQL
 - **View**: Thymeleaf, Thymeleaf Layout Dialect, Tailwind CSS(CDN)
 - **Cache**: Caffeine
@@ -62,7 +62,7 @@ com.shop
 - JDK 25+
 - PostgreSQL 14+
 
-> 이 프로젝트는 **Java 25 런타임**을 사용하고, 컴파일 타깃(class file)은 **Java 17**로 유지합니다.
+> 이 프로젝트는 **컴파일/테스트/패키징/런타임 전체를 Java 25(class file major 69)** 기준으로 통일합니다.
 
 ### 2) 데이터베이스 생성
 
@@ -127,6 +127,13 @@ docker compose -f monitoring/docker-compose.monitoring.yml up -d
 - Grafana: http://localhost:3000 (기본 계정 `admin` / `admin`)
 
 Grafana에서 데이터소스에 Prometheus(`http://prometheus:9090`)를 추가하면 대시보드를 구성할 수 있습니다.
+
+
+## CI/CD 및 배포 런타임 정책
+
+- GitHub Actions CI는 `actions/setup-java@v4` + `java-version: '25'`로 고정합니다.
+- 배포 서버(개발/스테이징/운영) JRE/JDK도 **반드시 Java 25**로 통일해야 합니다.
+- 로컬만 Java 25이고 배포 환경이 낮은 버전이면 `UnsupportedClassVersionError (major version 69)`로 기동 실패할 수 있습니다.
 
 ## 테스트
 

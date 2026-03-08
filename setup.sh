@@ -7,7 +7,7 @@ echo ""
 
 # Check Java
 if ! command -v java &> /dev/null; then
-    echo "[ERROR] Java is required. Please install JDK 17 or later."
+    echo "[ERROR] Java is required. Please install JDK 25 or later."
     exit 1
 fi
 
