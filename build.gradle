@@ -108,6 +108,17 @@ def enableSpotbugs = providers.gradleProperty('enableSpotbugs')
     .orElse(false)
 
 tasks.withType(com.github.spotbugs.snom.SpotBugsTask).configureEach {
+    // SpotBugs 실행 JDK를 컴파일 toolchain과 동일한 Java 25로 고정한다.
+    def spotbugsLauncher = javaToolchains.launcherFor {
+        languageVersion = JavaLanguageVersion.of(25)
+    }
+    if (metaClass.hasProperty(delegate, 'javaLauncher')) {
+        javaLauncher = spotbugsLauncher
+    }
+    if (metaClass.hasProperty(delegate, 'launcher')) {
+        launcher = spotbugsLauncher
+    }
+
     onlyIf {
         enableSpotbugs.get()
     }
@@ -115,6 +126,29 @@ tasks.withType(com.github.spotbugs.snom.SpotBugsTask).configureEach {
     reports {
         xml.required = true
         html.required = true
+    }
+}
+
+tasks.register('printSpotbugsLauncher') {
+    group = 'verification'
+    description = 'Prints the configured JDK launcher for SpotBugs tasks.'
+
+    doLast {
+        tasks.withType(com.github.spotbugs.snom.SpotBugsTask).each { task ->
+            def launcherProvider = null
+            if (task.metaClass.hasProperty(task, 'javaLauncher')) {
+                launcherProvider = task.javaLauncher
+            }
+            if ((launcherProvider == null || !launcherProvider.isPresent()) && task.metaClass.hasProperty(task, 'launcher')) {
+                launcherProvider = task.launcher
+            }
+            if (launcherProvider == null || !launcherProvider.isPresent()) {
+                println("${task.path} -> launcher not configured")
+                return
+            }
+            def launcherMetadata = launcherProvider.get().metadata
+            println("${task.path} -> Java ${launcherMetadata.languageVersion} @ ${launcherMetadata.installationPath}")
+        }
     }
 }
 
