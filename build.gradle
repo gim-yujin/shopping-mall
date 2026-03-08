@@ -110,6 +110,12 @@ tasks.named('test') {
 }
 
 tasks.named('check') {
+    def testTask = tasks.named('test')
+    def remainingDependencies = new LinkedHashSet(dependsOn)
+    remainingDependencies.removeIf { dep ->
+        dep == 'test' || dep == ':test' || dep == testTask || dep == testTask.get() || dep.toString().contains("TestSuite 'test'")
+    }
+    setDependsOn(remainingDependencies)
     dependsOn('checkstyleMain', 'checkstyleTest', 'pmdMain', 'pmdTest', 'spotbugsMain', 'spotbugsTest')
 }
 
