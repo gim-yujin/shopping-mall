@@ -2,6 +2,9 @@ plugins {
     id 'java'
     id 'org.springframework.boot' version '3.4.1'
     id 'io.spring.dependency-management' version '1.1.7'
+    id 'checkstyle'
+    id 'pmd'
+    id 'com.github.spotbugs' version '5.2.5'
 }
 
 group = 'com.shop'
@@ -56,8 +59,58 @@ dependencies {
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
 
+checkstyle {
+    toolVersion = '10.17.0'
+    configFile = file('config/checkstyle/checkstyle.xml')
+    maxWarnings = 0
+    ignoreFailures = false
+}
+
+tasks.withType(Checkstyle).configureEach {
+    reports {
+        xml.required = true
+        html.required = true
+    }
+}
+
+pmd {
+    toolVersion = '7.3.0'
+    ruleSets = []
+    ruleSetFiles = files('config/pmd/ruleset.xml')
+    consoleOutput = true
+}
+
+tasks.withType(Pmd).configureEach {
+    ignoreFailures = false
+    reports {
+        xml.required = true
+        html.required = true
+    }
+}
+
+spotbugs {
+    toolVersion = '4.8.6'
+    effort = com.github.spotbugs.snom.Effort.MAX
+    reportLevel = com.github.spotbugs.snom.Confidence.LOW
+    ignoreFailures = true
+    if (file('config/spotbugs/excludeFilter.xml').exists()) {
+        excludeFilter = file('config/spotbugs/excludeFilter.xml')
+    }
+}
+
+tasks.withType(com.github.spotbugs.snom.SpotBugsTask).configureEach {
+    reports {
+        xml.required = true
+        html.required = true
+    }
+}
+
 tasks.named('test') {
     useJUnitPlatform()
+}
+
+tasks.named('check') {
+    dependsOn('checkstyleMain', 'checkstyleTest', 'pmdMain', 'pmdTest', 'spotbugsMain', 'spotbugsTest')
 }
 
 tasks.withType(JavaExec).configureEach {
