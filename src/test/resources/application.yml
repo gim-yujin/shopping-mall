@@ -14,8 +14,9 @@ spring:
       connection-timeout: 5000
 
   jpa:
+    defer-datasource-initialization: true
     hibernate:
-      ddl-auto: update  # validate → update (테스트 시 스키마 자동 동기화)
+      ddl-auto: validate
     open-in-view: false
     show-sql: false
     properties:
@@ -31,6 +32,7 @@ spring:
   sql:
     init:
       mode: always
+      schema-locations: classpath:schema.sql
       data-locations: classpath:test-seed.sql
 
   thymeleaf:
