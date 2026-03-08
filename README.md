@@ -205,6 +205,42 @@ SpotBugs는 빌드 시간을 고려해 조건부로 실행합니다.
 ./gradlew test --tests com.shop.global.cache.CacheKeyGeneratorTest
 ```
 
+### 테스트 실패 원인 추적 루틴 (팀 공통)
+
+테스트가 실패하면 아래 루틴을 **항상 동일하게** 적용합니다.
+
+1) 1차 재현 명령(고정)
+
+```bash
+./gradlew test --tests com.shop.domain.cart.service.CartConcurrencyTest --stacktrace --info
+```
+
+2) 테스트 리포트에서 최초 실패 클래스의 `Caused by` 체인 확인
+
+- 리포트 경로: `build/reports/tests/test/index.html`
+- 절차:
+  - `index.html`에서 가장 먼저 실패한 클래스(최초 실패 클래스)를 연다.
+  - 상세 스택트레이스에서 `Caused by` 체인을 끝까지 내려가며 확인한다.
+  - 이슈에는 원인 체인을 요약하지 말고, 핵심 원문 메시지를 그대로 첨부한다.
+
+3) 필요 시 SQL init 로그 확인을 위한 테스트 전용 DEBUG 로깅
+
+- 목적: 테스트 시작 시 스키마/데이터 초기화(`schema.sql`, `data.sql`, 테스트 시드) 관련 문제를 빠르게 식별
+- 방법(일시 적용): `src/test/resources/application.yml`에 아래 로깅 레벨을 추가/수정 후 재실행
+
+```yaml
+logging:
+  level:
+    org.springframework.jdbc.datasource.init: DEBUG
+```
+
+- 확인 후에는 로그 노이즈를 줄이기 위해 원래 레벨로 되돌린다.
+
+4) 이슈 등록 시 필수 수집 항목
+
+- **최초 BeanCreationException의 가장 안쪽 PSQLException 메시지**
+- 위 메시지는 추정/요약이 아니라, 스택트레이스 원문 기준으로 기록한다.
+
 ### CI/로컬 동일 변수 규약
 
 테스트 DB 연결값은 CI와 로컬에서 아래 **동일한 환경변수 이름**을 사용합니다.
