@@ -3,9 +3,9 @@ spring:
     name: shopping-mall
 
   datasource:
-    url: jdbc:postgresql://localhost:5432/shopping_mall_db?stringtype=unspecified
-    username: postgres
-    password: 4321
+    url: ${TEST_DB_URL:jdbc:postgresql://localhost:5432/shopping_mall_db?stringtype=unspecified}
+    username: ${TEST_DB_USERNAME:postgres}
+    password: ${TEST_DB_PASSWORD:4321}
     hikari:
       maximum-pool-size: 17
       minimum-idle: 17
