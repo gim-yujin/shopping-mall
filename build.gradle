@@ -16,7 +16,7 @@ springBoot {
 
 def targetJavaVersion = providers.gradleProperty('javaVersion')
     .map { it as int }
-    .orElse(25)
+    .orElse(21)
 
 java {
     toolchain {
