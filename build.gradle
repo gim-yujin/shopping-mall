@@ -5,6 +5,7 @@ plugins {
     id 'checkstyle'
     id 'pmd'
     id 'com.github.spotbugs' version '5.2.5'
+    id 'jacoco'
 }
 
 group = 'com.shop'
@@ -168,6 +169,56 @@ tasks.register('printSpotbugsLauncher') {
 
 tasks.named('test') {
     useJUnitPlatform()
+    // JaCoCo 에이전트를 테스트 실행 시 자동 연결하여 커버리지 데이터를 수집한다.
+    finalizedBy tasks.named('jacocoTestReport')
+}
+
+// ── JaCoCo 커버리지 설정 ──
+// 테스트 실행 후 ./gradlew jacocoTestReport 로 HTML 리포트 생성,
+// ./gradlew jacocoTestCoverageVerification 으로 최소 커버리지 검증.
+// 리포트 경로: build/reports/jacoco/test/html/index.html
+jacoco {
+    toolVersion = '0.8.12'
+}
+
+tasks.named('jacocoTestReport', JacocoReport) {
+    dependsOn tasks.named('test')
+    reports {
+        html.required = true   // 브라우저에서 확인 가능한 상세 리포트
+        xml.required = true    // CI 도구(SonarQube, Codecov 등) 연동용
+        csv.required = false
+    }
+
+    // 커버리지 측정에서 제외할 클래스:
+    // - 설정/부트스트랩 클래스: 비즈니스 로직 없음
+    // - DTO/엔티티: getter/setter 위주로 측정 가치 낮음
+    // - 스케줄러: 크론 기반 실행이라 통합 테스트로 검증
+    afterEvaluate {
+        classDirectories.setFrom(files(classDirectories.files.collect {
+            fileTree(dir: it, excludes: [
+                    '**/config/**',
+                    '**/dto/**',
+                    '**/ShopApplication.class',
+                    '**/scheduler/**'
+            ])
+        }))
+    }
+}
+
+// 커버리지 최소 기준 (선택적 — CI에서 ./gradlew jacocoTestCoverageVerification 실행)
+// 현재는 기준을 낮게 설정하여 기존 빌드가 깨지지 않도록 한다.
+// 테스트 커버리지가 충분히 확보된 후 단계적으로 상향 조정한다.
+tasks.named('jacocoTestCoverageVerification', JacocoCoverageVerification) {
+    violationRules {
+        rule {
+            // 프로젝트 전체 기준 라인 커버리지 하한
+            limit {
+                counter = 'LINE'
+                value = 'COVEREDRATIO'
+                minimum = 0.30  // 30% — 초기 기준, 단계적 상향 예정
+            }
+        }
+    }
 }
 
 tasks.named('check') {

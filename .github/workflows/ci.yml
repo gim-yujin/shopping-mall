@@ -89,7 +89,7 @@ jobs:
           TEST_DB_URL: jdbc:postgresql://localhost:5432/shopping_mall_db?stringtype=unspecified
           TEST_DB_USERNAME: postgres
           TEST_DB_PASSWORD: 4321
-        run: ./gradlew test
+        run: ./gradlew test --stacktrace # 임시로 스택 트레이스 출력
 
       - name: Upload static analysis reports
         if: always()
