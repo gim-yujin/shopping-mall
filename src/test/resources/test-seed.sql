@@ -23,7 +23,12 @@ ON CONFLICT (tier_id) DO UPDATE SET
     free_shipping_threshold = EXCLUDED.free_shipping_threshold,
     description = EXCLUDED.description;
 
-SELECT setval('user_tiers_tier_id_seq', GREATEST((SELECT COALESCE(MAX(tier_id), 1) FROM user_tiers), 1));
+SELECT setval(
+    pg_get_serial_sequence('user_tiers', 'tier_id'),
+    GREATEST((SELECT COALESCE(MAX(tier_id), 1) FROM user_tiers), 1),
+    TRUE
+)
+WHERE pg_get_serial_sequence('user_tiers', 'tier_id') IS NOT NULL;
 
 INSERT INTO categories (
     category_id,
@@ -45,4 +50,9 @@ ON CONFLICT (category_id) DO UPDATE SET
     display_order = EXCLUDED.display_order,
     is_active = EXCLUDED.is_active;
 
-SELECT setval('categories_category_id_seq', GREATEST((SELECT COALESCE(MAX(category_id), 1) FROM categories), 1));
+SELECT setval(
+    pg_get_serial_sequence('categories', 'category_id'),
+    GREATEST((SELECT COALESCE(MAX(category_id), 1) FROM categories), 1),
+    TRUE
+)
+WHERE pg_get_serial_sequence('categories', 'category_id') IS NOT NULL;
