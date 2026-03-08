@@ -57,6 +57,14 @@ jobs:
             sleep 1
           done
 
+      - name: Reset public schema before check
+        env:
+          PGPASSWORD: 4321
+        run: |
+          psql -h localhost -p 5432 -U postgres -d shopping_mall_db -v ON_ERROR_STOP=1 \
+            -c "DROP SCHEMA IF EXISTS public CASCADE;" \
+            -c "CREATE SCHEMA public;"
+
       - name: Run quality checks (blocking)
         env:
           TEST_DB_URL: jdbc:postgresql://localhost:5432/shopping_mall_db?stringtype=unspecified
@@ -67,6 +75,14 @@ jobs:
       - name: Run SpotBugs (non-blocking, Java 21 compatibility fallback)
         continue-on-error: true
         run: ./gradlew spotbugsMain spotbugsTest -PenableSpotbugs=true
+
+      - name: Reset public schema before test
+        env:
+          PGPASSWORD: 4321
+        run: |
+          psql -h localhost -p 5432 -U postgres -d shopping_mall_db -v ON_ERROR_STOP=1 \
+            -c "DROP SCHEMA IF EXISTS public CASCADE;" \
+            -c "CREATE SCHEMA public;"
 
       - name: Run tests
         env:

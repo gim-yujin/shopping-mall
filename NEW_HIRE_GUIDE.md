@@ -40,3 +40,25 @@
 - 로컬에서 애플리케이션 실행 후 주문 생성/취소 시나리오를 직접 수행한다.
 - 테스트 클래스를 읽고, 테스트 데이터 준비/복구 패턴을 이해한다.
 - 작은 수정(예: 목록 정렬 조건 추가)을 통해 Controller-Service-Repository 전 구간 디버깅을 경험한다.
+
+## 6) 테스트/DB 운영 가이드 (CI와 로컬 정합성)
+- 테스트는 **CI와 동일하게 PostgreSQL 14.x**에서 실행합니다.
+- 테스트 실행 직전마다 아래 명령으로 `public` 스키마를 초기화해 상태 의존성을 제거합니다.
+
+```bash
+export TEST_DB_URL='jdbc:postgresql://localhost:5432/shopping_mall_db?stringtype=unspecified'
+export TEST_DB_USERNAME='postgres'
+export TEST_DB_PASSWORD='4321'
+
+PGPASSWORD="$TEST_DB_PASSWORD" psql \
+  -h localhost -p 5432 \
+  -U "$TEST_DB_USERNAME" \
+  -d shopping_mall_db \
+  -v ON_ERROR_STOP=1 \
+  -c "DROP SCHEMA IF EXISTS public CASCADE;" \
+  -c "CREATE SCHEMA public;"
+
+./gradlew test
+```
+
+- 회귀 확인 시에는 초기화 후 `./gradlew test`를 2회 연속 실행해 첫 실행/재실행 모두 성공하는지 확인합니다.
