@@ -14,7 +14,7 @@ spring:
       connection-timeout: 5000
 
   jpa:
-    defer-datasource-initialization: true
+    defer-datasource-initialization: false
     hibernate:
       ddl-auto: validate
     open-in-view: false
@@ -32,8 +32,11 @@ spring:
   sql:
     init:
       mode: always
-      schema-locations: classpath:test-reset.sql,classpath:schema.sql
-      data-locations: classpath:test-seed.sql
+      schema-locations:
+        - classpath:test-reset.sql
+        - classpath:schema.sql
+      data-locations:
+        - classpath:test-seed.sql
 
   thymeleaf:
     cache: true
