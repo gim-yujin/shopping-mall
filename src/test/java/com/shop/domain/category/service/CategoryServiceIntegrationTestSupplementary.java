@@ -20,6 +20,10 @@ import static org.assertj.core.api.Assertions.*;
 })
 class CategoryServiceIntegrationTestSupplementary {
 
+    CategoryServiceIntegrationTestSupplementary() {
+        // 기본 생성자 (PMD AtLeastOneConstructor 대응)
+    }
+
     @Autowired
     private CategoryService categoryService;
 

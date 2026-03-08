@@ -2,7 +2,6 @@ package com.shop.domain.order.service;
 
 import com.shop.domain.order.dto.OrderCreateRequest;
 import com.shop.domain.order.entity.Order;
-import com.shop.domain.order.entity.OrderStatus;
 import com.shop.global.exception.BusinessException;
 import com.shop.global.exception.ResourceNotFoundException;
 import org.junit.jupiter.api.*;
