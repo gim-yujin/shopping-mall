@@ -14,19 +14,17 @@ springBoot {
     mainClass = 'com.shop.ShopApplication'
 }
 
-def targetJavaVersion = providers.gradleProperty('javaVersion')
-    .map { it as int }
-    .orElse(21)
+def targetJavaVersion = 21
 
 java {
     toolchain {
-        languageVersion = JavaLanguageVersion.of(targetJavaVersion.get())
+        languageVersion = JavaLanguageVersion.of(targetJavaVersion)
     }
 }
 
 tasks.withType(JavaCompile).configureEach {
     // 컴파일/테스트/패키징 산출물의 class file 타깃을 toolchain과 단일화한다.
-    options.release = targetJavaVersion.get()
+    options.release = targetJavaVersion
 }
 
 repositories {
@@ -60,7 +58,7 @@ dependencies {
     // Test
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
     testImplementation 'org.springframework.security:spring-security-test'
-    // Java 25 런타임에서 Mockito inline instrumentation 호환성 보강
+    // Java 21 런타임에서 Mockito inline instrumentation 호환성 보강
     testRuntimeOnly 'net.bytebuddy:byte-buddy:1.17.5'
     testRuntimeOnly 'net.bytebuddy:byte-buddy-agent:1.17.5'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
@@ -103,13 +101,13 @@ tasks.named('pmdTest', Pmd).configure {
 }
 
 tasks.named('pmdMain', Pmd).configure {
-    // 임시 우회: PMD의 classpath 기반 type resolution 의존을 낮춰 Java 25 class 파싱 실패를 회피한다.
+    // 임시 우회: PMD의 classpath 기반 type resolution 의존을 낮춰 최신 class 파싱 실패를 회피한다.
     // PMD 버전 상향 후에는 정상 classpath 분석을 다시 활성화할 계획이다.
     classpath = files()
 }
 
 spotbugs {
-    // Java 25(class file major 69) 지원 검증을 위해 최신 호환 후보로 상향
+    // Java 21(class file major 65)에서도 안정적으로 동작하도록 최신 호환 후보 유지
     toolVersion = '4.9.8'
     effort = com.github.spotbugs.snom.Effort.MAX
     reportLevel = com.github.spotbugs.snom.Confidence.LOW
@@ -126,7 +124,7 @@ def enableSpotbugs = providers.gradleProperty('enableSpotbugs')
 tasks.withType(com.github.spotbugs.snom.SpotBugsTask).configureEach {
     // SpotBugs 실행 JDK를 컴파일 toolchain과 동일한 버전으로 고정한다.
     def spotbugsLauncher = javaToolchains.launcherFor {
-        languageVersion = JavaLanguageVersion.of(targetJavaVersion.get())
+        languageVersion = JavaLanguageVersion.of(targetJavaVersion)
     }
     if (metaClass.hasProperty(delegate, 'javaLauncher')) {
         javaLauncher = spotbugsLauncher
