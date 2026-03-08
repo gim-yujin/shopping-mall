@@ -252,7 +252,7 @@ class OrderDeadlockTest {
             start.countDown();
             done.await(30, TimeUnit.SECONDS);
         } finally {
-            shutdownExecutor(executor);
+            executor.close();
         }
 
         // 결과 수집

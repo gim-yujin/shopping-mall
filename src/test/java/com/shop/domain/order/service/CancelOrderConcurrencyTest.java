@@ -45,6 +45,7 @@ import static org.assertj.core.api.Assertions.assertThat;
         "spring.datasource.hikari.maximum-pool-size=50",
         "logging.level.org.hibernate.SQL=WARN"
 })
+@SuppressWarnings("PMD.CloseResource")
 class CancelOrderConcurrencyTest {
 
     @Autowired
@@ -246,7 +247,7 @@ class CancelOrderConcurrencyTest {
             start.countDown();
             done.await(60, TimeUnit.SECONDS);
         } finally {
-            shutdownExecutor(executor);
+            executor.close();
         }
 
         // Then: DB 직접 조회
@@ -449,7 +450,7 @@ class CancelOrderConcurrencyTest {
             start.countDown();
             done.await(60, TimeUnit.SECONDS);
         } finally {
-            shutdownExecutor(executor);
+            executor.close();
         }
 
         // Then

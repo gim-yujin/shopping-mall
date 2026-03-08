@@ -31,6 +31,7 @@ import static org.assertj.core.api.Assertions.assertThat;
         "spring.datasource.hikari.maximum-pool-size=50",
         "logging.level.org.hibernate.SQL=WARN"
 })
+@SuppressWarnings("PMD.CloseResource")
 class UserConcurrencyTest {
 
     @Autowired
@@ -120,7 +121,7 @@ class UserConcurrencyTest {
             start.countDown();
             done.await(30, TimeUnit.SECONDS);
         } finally {
-            shutdownExecutor(executor);
+            executor.close();
         }
 
         Integer userCount = jdbcTemplate.queryForObject(
@@ -222,7 +223,7 @@ class UserConcurrencyTest {
             start.countDown();
             done.await(30, TimeUnit.SECONDS);
         } finally {
-            shutdownExecutor(executor);
+            executor.close();
         }
 
         Integer userCount = jdbcTemplate.queryForObject(
@@ -350,7 +351,7 @@ class UserConcurrencyTest {
             start.countDown();
             done.await(30, TimeUnit.SECONDS);
         } finally {
-            shutdownExecutor(executor);
+            executor.close();
         }
 
         Integer emailCount = jdbcTemplate.queryForObject(

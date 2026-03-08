@@ -31,6 +31,7 @@ import static org.assertj.core.api.Assertions.assertThat;
         "spring.datasource.hikari.maximum-pool-size=50",
         "logging.level.org.hibernate.SQL=WARN"
 })
+@SuppressWarnings("PMD.CloseResource")
 class ReviewHelpfulConcurrencyTest {
 
     @Autowired
@@ -124,7 +125,7 @@ class ReviewHelpfulConcurrencyTest {
             start.countDown();                   // 동시 출발!
             done.await(60, TimeUnit.SECONDS);    // 전원 완료 대기 (최대 60초)
         } finally {
-            shutdownExecutor(executor);
+            executor.close();
         }
 
         // Then: DB에서 직접 조회하여 검증 (Hibernate 캐시 우회)
@@ -207,7 +208,7 @@ class ReviewHelpfulConcurrencyTest {
             start.countDown();
             done.await(30, TimeUnit.SECONDS);
         } finally {
-            shutdownExecutor(executor);
+            executor.close();
         }
 
         // Then
@@ -284,7 +285,7 @@ class ReviewHelpfulConcurrencyTest {
                 start.countDown();
                 done.await(10, TimeUnit.SECONDS);
             } finally {
-                shutdownExecutor(executor);
+                executor.close();
             }
 
             Integer actualHelpfulCount = jdbcTemplate.queryForObject(

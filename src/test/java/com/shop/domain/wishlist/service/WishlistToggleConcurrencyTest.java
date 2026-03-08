@@ -109,7 +109,7 @@ class WishlistToggleConcurrencyTest {
             start.countDown();
             done.await(30, TimeUnit.SECONDS);
         } finally {
-            shutdownExecutor(executor);
+            executor.close();
         }
 
         // DB 상태 확인

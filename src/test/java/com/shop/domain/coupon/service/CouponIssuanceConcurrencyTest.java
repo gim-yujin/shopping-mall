@@ -196,7 +196,7 @@ class CouponIssuanceConcurrencyTest {
             start.countDown();
             done.await(60, TimeUnit.SECONDS);
         } finally {
-            shutdownExecutor(executor);
+            executor.close();
         }
 
         // Then
@@ -286,7 +286,7 @@ class CouponIssuanceConcurrencyTest {
             start.countDown();
             done.await(60, TimeUnit.SECONDS);
         } finally {
-            shutdownExecutor(executor);
+            executor.close();
         }
 
         // Then

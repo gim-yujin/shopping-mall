@@ -72,6 +72,7 @@ import static org.assertj.core.api.Assertions.assertThat;
         "spring.datasource.hikari.maximum-pool-size=50",
         "logging.level.org.hibernate.SQL=WARN"
 })
+@SuppressWarnings("PMD.CloseResource")
 class ReturnConcurrencyTest {
 
     @Autowired private OrderService orderService;
@@ -340,7 +341,7 @@ class ReturnConcurrencyTest {
             start.countDown();
             done.await(60, TimeUnit.SECONDS);
         } finally {
-            shutdownExecutor(executor);
+            executor.close();
         }
 
         // Then: DB 직접 조회
@@ -475,7 +476,7 @@ class ReturnConcurrencyTest {
             completedInTime = done.await(30, TimeUnit.SECONDS);
             elapsed = System.currentTimeMillis() - startTime;
         } finally {
-            shutdownExecutor(executor);
+            executor.close();
         }
 
         // Then
@@ -600,7 +601,7 @@ class ReturnConcurrencyTest {
             start.countDown();
             done.await(60, TimeUnit.SECONDS);
         } finally {
-            shutdownExecutor(executor);
+            executor.close();
         }
 
         // Then
@@ -733,7 +734,7 @@ class ReturnConcurrencyTest {
             start.countDown();
             done.await(60, TimeUnit.SECONDS);
         } finally {
-            shutdownExecutor(executor);
+            executor.close();
         }
 
         // Then
@@ -847,7 +848,7 @@ class ReturnConcurrencyTest {
             start.countDown();
             done.await(60, TimeUnit.SECONDS);
         } finally {
-            shutdownExecutor(executor);
+            executor.close();
         }
 
         // Then
@@ -978,7 +979,7 @@ class ReturnConcurrencyTest {
             completedInTime = done.await(30, TimeUnit.SECONDS);
             elapsed = System.currentTimeMillis() - startTime;
         } finally {
-            shutdownExecutor(executor);
+            executor.close();
         }
 
         String finalOrderStatus = jdbcTemplate.queryForObject(
