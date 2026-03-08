@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ruleset name="shopping-mall-rules-test"
+         xmlns="http://pmd.sourceforge.net/ruleset/2.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://pmd.sourceforge.net/ruleset/2.0.0 https://pmd.github.io/schema/ruleset_2_0_0.xsd">
+    <description>Shopping Mall 프로젝트 PMD 테스트 소스 전용 규칙셋</description>
+
+    <!--
+      PMD Java type resolution 재귀(TypeOps) 이슈를 회피하기 위해
+      테스트 소스셋에서는 타입 해석 의존도가 높은 Null 관련 규칙을 제외한다.
+    -->
+
+    <!-- 자원 누수 / 자원 관리 -->
+    <rule ref="category/java/errorprone.xml/CloseResource"/>
+    <rule ref="category/java/errorprone.xml/CheckSkipResult"/>
+
+    <!-- 심각한 버그성 패턴 -->
+    <rule ref="category/java/errorprone.xml/AssignmentInOperand"/>
+    <rule ref="category/java/errorprone.xml/ReturnFromFinallyBlock"/>
+    <rule ref="category/java/errorprone.xml/DoNotCallGarbageCollectionExplicitly"/>
+</ruleset>
