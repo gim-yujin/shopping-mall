@@ -213,7 +213,7 @@ class OrderOversellingTest {
             start.countDown();                      // 동시 출발!
             done.await(60, TimeUnit.SECONDS);
         } finally {
-            shutdownExecutor(executor);
+            executor.close();
         }
 
         // Then: DB에서 직접 검증

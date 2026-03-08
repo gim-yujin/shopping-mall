@@ -11,7 +11,6 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -75,8 +74,7 @@ class LoginAttemptServiceTest {
         String ipAddress = "203.0.113.10";
 
         int attempts = 64;
-        ExecutorService executor = Executors.newFixedThreadPool(8);
-        try {
+        try (ExecutorService executor = Executors.newFixedThreadPool(8)) {
             List<Callable<Long>> tasks = new ArrayList<>();
             for (int i = 0; i < attempts; i++) {
                 tasks.add(() -> service.recordFailure(username, ipAddress));
@@ -85,16 +83,6 @@ class LoginAttemptServiceTest {
             List<Future<Long>> futures = executor.invokeAll(tasks);
             for (Future<Long> future : futures) {
                 future.get();
-            }
-        } finally {
-            executor.shutdown();
-            try {
-                if (!executor.awaitTermination(5, TimeUnit.SECONDS)) {
-                    executor.shutdownNow();
-                }
-            } catch (InterruptedException e) {
-                executor.shutdownNow();
-                Thread.currentThread().interrupt();
             }
         }
 

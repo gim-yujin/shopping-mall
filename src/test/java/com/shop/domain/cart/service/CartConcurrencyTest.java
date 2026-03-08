@@ -44,6 +44,7 @@ import static org.assertj.core.api.Assertions.assertThat;
         "spring.datasource.hikari.maximum-pool-size=50",
         "logging.level.org.hibernate.SQL=WARN"
 })
+@SuppressWarnings("PMD.CloseResource")
 class CartConcurrencyTest {
 
     @Autowired
@@ -113,7 +114,7 @@ class CartConcurrencyTest {
             start.countDown();
             done.await(30, TimeUnit.SECONDS);
         } finally {
-            shutdownExecutor(executor);
+            executor.close();
         }
 
         // Then
@@ -223,7 +224,7 @@ class CartConcurrencyTest {
             start.countDown();
             done.await(30, TimeUnit.SECONDS);
         } finally {
-            shutdownExecutor(executor);
+            executor.close();
         }
 
         // Then
@@ -344,7 +345,7 @@ class CartConcurrencyTest {
             start.countDown();
             done.await(30, TimeUnit.SECONDS);
         } finally {
-            shutdownExecutor(executor);
+            executor.close();
         }
 
         // Then
@@ -439,7 +440,7 @@ class CartConcurrencyTest {
             start.countDown();
             done.await(30, TimeUnit.SECONDS);
         } finally {
-            shutdownExecutor(executor);
+            executor.close();
         }
 
         Integer finalQuantity = jdbcTemplate.queryForObject(
@@ -516,7 +517,7 @@ class CartConcurrencyTest {
             start.countDown();
             done.await(30, TimeUnit.SECONDS);
         } finally {
-            shutdownExecutor(executor);
+            executor.close();
         }
 
         Integer rowCount = jdbcTemplate.queryForObject(

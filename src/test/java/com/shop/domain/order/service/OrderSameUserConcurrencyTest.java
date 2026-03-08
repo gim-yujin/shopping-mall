@@ -24,6 +24,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import static org.assertj.core.api.Assertions.assertThat;
 
 @SpringBootTest
+@SuppressWarnings("PMD.CloseResource")
 class OrderSameUserConcurrencyTest {
 
     @Autowired
@@ -153,7 +154,7 @@ class OrderSameUserConcurrencyTest {
             start.countDown();
             assertThat(done.await(30, TimeUnit.SECONDS)).isTrue();
         } finally {
-            shutdownExecutor(executor);
+            executor.close();
         }
 
         Integer createdOrders = jdbcTemplate.queryForObject(
