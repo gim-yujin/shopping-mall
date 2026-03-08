@@ -8,6 +8,8 @@
     <!--
       초기 단계에서는 NPE/자원 누수/심각한 버그 가능성 중심으로 최소 규칙만 적용한다.
       스타일성 노이즈 규칙은 제외하고, 팀 합의 후 단계적으로 확장한다.
+      - LocalVariableCouldBeFinal
+      - MethodArgumentCouldBeFinal
     -->
 
     <!-- Null 관련 잠재 버그 -->
