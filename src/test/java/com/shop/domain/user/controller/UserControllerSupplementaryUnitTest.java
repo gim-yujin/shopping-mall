@@ -2,9 +2,7 @@ package com.shop.domain.user.controller;
 
 import com.shop.domain.coupon.service.CouponService;
 import com.shop.domain.order.service.OrderService;
-import com.shop.domain.point.entity.PointHistory;
 import com.shop.domain.point.service.PointQueryService;
-import com.shop.domain.review.entity.Review;
 import com.shop.domain.review.service.ReviewService;
 import com.shop.domain.user.dto.SignupRequest;
 import com.shop.domain.user.entity.User;
@@ -22,7 +20,6 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.PageImpl;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
