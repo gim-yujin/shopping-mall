@@ -205,8 +205,9 @@ tasks.named('jacocoTestReport', JacocoReport) {
 }
 
 // 커버리지 최소 기준 (선택적 — CI에서 ./gradlew jacocoTestCoverageVerification 실행)
-// 현재는 기준을 낮게 설정하여 기존 빌드가 깨지지 않도록 한다.
-// 테스트 커버리지가 충분히 확보된 후 단계적으로 상향 조정한다.
+// 전체 Instruction 88%, 50% 미만 패키지 0개 달성 후 60%로 상향 (2025-03).
+// 현재 최하위 패키지가 61%(wishlist.controller)이므로 60% 기준은 안전 마진 확보 상태이다.
+// 다음 상향 시점: 전체 90%+ 달성 후 70%로 검토.
 tasks.named('jacocoTestCoverageVerification', JacocoCoverageVerification) {
     violationRules {
         rule {
@@ -214,7 +215,7 @@ tasks.named('jacocoTestCoverageVerification', JacocoCoverageVerification) {
             limit {
                 counter = 'LINE'
                 value = 'COVEREDRATIO'
-                minimum = 0.30  // 30% — 초기 기준, 단계적 상향 예정
+                minimum = 0.60  // 60% — 2차 기준 (30% → 60%, 2025-03 상향)
             }
         }
     }
