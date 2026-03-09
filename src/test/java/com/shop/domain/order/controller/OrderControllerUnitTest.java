@@ -8,7 +8,6 @@ import com.shop.domain.coupon.entity.UserCoupon;
 import com.shop.domain.coupon.service.CouponService;
 import com.shop.domain.order.dto.OrderCreateRequest;
 import com.shop.domain.order.entity.Order;
-import com.shop.domain.order.entity.OrderStatus;
 import com.shop.domain.order.entity.PaymentMethod;
 import com.shop.domain.order.service.OrderService;
 import com.shop.domain.product.entity.Product;
