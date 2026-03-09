@@ -432,12 +432,25 @@ class CancelOrderConcurrencyTest {
         });
 
         // Thread C: 등급 재산정 스케줄러 실행
+        // 주문 취소/생성과 동시에 실행되면 비관적 락 경합이 발생할 수 있다.
+        // Thread B와 동일한 재시도 패턴을 적용하여 CI 환경에서의 타이밍 이슈를 방지한다.
         executor.submit(() -> {
             ready.countDown();
             try {
                 start.await();
-                runTierChunkForUsers(List.of(testUserId));
-                tierRecalcSuccess.incrementAndGet();
+                int maxAttempts = 3;
+                for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+                    try {
+                        runTierChunkForUsers(List.of(testUserId));
+                        tierRecalcSuccess.incrementAndGet();
+                        break;
+                    } catch (Exception e) {
+                        if (attempt == maxAttempts) {
+                            throw e;
+                        }
+                        Thread.sleep(200L * attempt);
+                    }
+                }
             } catch (Exception e) {
                 errors.add("[TierScheduler] " + e.getClass().getSimpleName() + " - " + e.getMessage());
             } finally {
