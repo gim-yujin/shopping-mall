@@ -15,7 +15,7 @@
 ### 코드베이스 스냅샷
 
 - 메인 코드: `src/main/java` 기준 **138개 Java 파일**
-- 테스트 코드: `src/test/java` 기준 **76개 Java 파일**
+- 테스트 코드: `src/test/java` 기준 **89개 Java 파일**
 - 템플릿: `src/main/resources/templates` 기준 **30개 HTML 파일**
 
 ---
