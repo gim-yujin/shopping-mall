@@ -214,4 +214,5 @@ docker compose -f monitoring/docker-compose.monitoring.yml up -d
 - `docs/order-invariant-checks.md`: 주문 무결성 점검 규칙
 - `docs/search-log-ops-policy.md`: 검색 로그 운영 정책
 - `load-test-analysis.md`, `thymeleaf-optimization-analysis.md`: 성능/최적화 분석 문서
+- `docs/archive/shopmall-phase0-report.md`: 프로젝트 0단계 회고/상세 보고서(아카이브)
 

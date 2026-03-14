@@ -1,5 +1,7 @@
 # ShopMall 프로젝트 상세 보고서
 
+> ⚠️ 이 문서는 아카이브이며, 최신 운영 기준은 `README.md`를 참고하세요.
+
 > **프로젝트명:** ShopMall — 대규모 쇼핑몰 웹 애플리케이션  
 > **기술 스택:** Spring Boot 3.4.1 · Java 21 · PostgreSQL 14+ · Thymeleaf · Tailwind CSS  
 > **프로젝트 기간:** 2026년 2월 7일 ~ 2월 11일  
