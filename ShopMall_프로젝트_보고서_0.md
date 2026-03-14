@@ -121,7 +121,7 @@ CREATE INDEX idx_review_content_gin ON reviews USING gin(to_tsvector('simple', c
 
 ### 3.1 패키지 구조
 
-Package-by-Feature 패턴을 채택하여 10개 도메인을 독립적으로 관리한다. 총 67개의 Java 파일로 구성되며, 각 도메인은 controller, entity, repository, service 계층을 포함한다.
+Package-by-Feature 패턴을 채택하여 도메인을 독립적으로 관리한다. 정적 수치(도메인/파일 수)는 `scripts/doc-stats.sh`로 자동 집계하며, 본 문서의 수치는 **as of commit `4221c68`** 기준이다. 각 도메인은 controller, entity, repository, service 계층을 포함한다.
 
 ```
 com.shop
@@ -598,36 +598,40 @@ Page<Product> findDeals(Pageable pageable);
 
 ## 8. 프로젝트 구조 요약
 
+> 본 장의 파일/패키지 수치는 릴리스·태그 시점에만 고정하며, 평시 문서에서는 **as of commit `4221c68`** 기준으로 표기한다.
+
+### 8.1 자동 집계 기준 / 명령
+
+- 스크립트: `scripts/doc-stats.sh`
+- 집계 범위
+  - Java 파일 수: `src/main/java/**/*.java`
+  - 템플릿 파일 수: `src/main/resources/templates/**/*.html`
+  - Java 패키지 수: `src/main/java` 하위 실제 package 디렉터리(unique)
+  - 도메인 패키지 수: `src/main/java/com/shop/domain/*`
+- 실행 명령
+
+```bash
+scripts/doc-stats.sh
+```
+
+### 8.2 현재 구조 요약 (as of commit `4221c68`)
+
 ```
 shopping-mall/
 ├── build.gradle
 ├── src/main/
 │   ├── java/com/shop/
 │   │   ├── ShopApplication.java
-│   │   ├── domain/
-│   │   │   ├── cart/          (4 files)
-│   │   │   ├── category/      (4 files)
-│   │   │   ├── coupon/        (5 files)
-│   │   │   ├── inventory/     (3 files)
-│   │   │   ├── order/         (6 files)
-│   │   │   ├── product/       (7 files)
-│   │   │   ├── review/        (5 files)
-│   │   │   ├── search/        (4 files)
-│   │   │   ├── user/          (10 files, incl. scheduler)
-│   │   │   └── wishlist/      (4 files)
+│   │   ├── domain/            (11 packages)
 │   │   └── global/
-│   │       ├── common/        (1 file)
-│   │       ├── config/        (3 files)
-│   │       ├── exception/     (4 files)
-│   │       └── security/      (3 files)
 │   └── resources/
 │       ├── application.yml
 │       ├── schema.sql          (17 tables, 52 indexes)
 │       ├── migration/          (버전별 DB 마이그레이션 SQL)
 │       ├── sql/                (도메인별 수동/보조 SQL 스크립트)
-│       └── templates/          (22 HTML files)
+│       └── templates/          (30 HTML files)
 │
-Total: 67 Java files, 22 HTML templates, 17 DB tables, 52 DB indexes
+Total (auto-counted): 138 Java files, 69 Java packages, 11 domain packages, 30 HTML templates
 ```
 
 ---
