@@ -3,6 +3,9 @@
 대규모 트래픽과 동시성 이슈를 고려해 설계한 **Spring Boot 기반 이커머스 웹 애플리케이션**입니다.  
 서버 사이드 렌더링(Thymeleaf)과 일부 REST API를 함께 사용하며, 주문/재고/쿠폰/포인트/반품 등 실제 쇼핑몰 핵심 시나리오를 중심으로 구현되어 있습니다.
 
+> 📌 **최신 기준 문서(SSOT, Single Source of Truth)는 이 `README.md`입니다.**
+> 구현/운영 세부 내용은 아래 연계 문서(`docs/`)를 참고하고, 기준 정책 변경 시 README와 연계 문서를 함께 갱신합니다.
+
 ---
 
 ## 1) 프로젝트 개요
@@ -76,6 +79,8 @@ src/main/java/com/shop
 
 ## 5) 운영/설계 포인트
 
+아래는 빠른 이해를 위한 요약이며, 구현 세부 규칙과 배경은 링크된 문서에서 관리합니다.
+
 - **동시성 안전성**: 주문/취소/반품 처리 시 상태 전이 검증 및 락 기반 제어로 오버셀/경합 이슈를 완화합니다.
 - **도메인 분리**: 서비스 파사드 + 하위 전문 서비스 분리(주문 생성/취소/조회/부분취소 등)로 변경 영향 범위를 축소합니다.
 - **성능 최적화**:
@@ -93,6 +98,12 @@ src/main/java/com/shop
   - 검색 로그 보존 기간 기반 배치 삭제
   - 리뷰 helpful_count 정합성 보정
   - 사용자 연간 구매액 기반 등급 재산정
+
+세부 문서:
+
+- `docs/implementation-details.md`: 아키텍처/주문 처리/데이터 모델의 구현 상세
+- `docs/order-invariant-checks.md`: 주문 무결성 점검 규칙
+- `docs/search-log-ops-policy.md`: 검색 로그 운영 정책
 
 ---
 
@@ -211,8 +222,8 @@ docker compose -f monitoring/docker-compose.monitoring.yml up -d
 ## 9) 참고 문서
 
 - `NEW_HIRE_GUIDE.md`: 온보딩 및 학습 순서
+- `docs/implementation-details.md`: 구현 상세(README 요약 항목의 상세 기준)
 - `docs/order-invariant-checks.md`: 주문 무결성 점검 규칙
 - `docs/search-log-ops-policy.md`: 검색 로그 운영 정책
 - `load-test-analysis.md`, `thymeleaf-optimization-analysis.md`: 성능/최적화 분석 문서
 - `docs/archive/shopmall-phase0-report.md`: 프로젝트 0단계 회고/상세 보고서(아카이브)
-
