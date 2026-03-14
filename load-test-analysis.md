@@ -1,4 +1,6 @@
-# Shopping Mall 부하 테스트 Phase 8 — 종합 분석 보고서
+# 분석: Shopping Mall 부하 테스트 Phase 8
+
+대상 독자: 운영자
 
 ## 1. 캐시 미스 시나리오 비교
 

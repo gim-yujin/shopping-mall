@@ -1,4 +1,6 @@
-# PMD MethodNamingConventions 예외 적용 기록
+# 결정기록: PMD MethodNamingConventions 예외
+
+대상 독자: 신규 개발자
 
 ## 배경
 Spring Data JPA 파생 쿼리 메서드는 연관 엔티티 경로를 나타내기 위해 메서드명에 `_`를 사용할 수 있다.
