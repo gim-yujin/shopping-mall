@@ -102,6 +102,7 @@ src/main/java/com/shop
 
 세부 문서:
 
+- `docs/README.md`: docs 문서 인덱스(카테고리/상태 태그)
 - `docs/implementation-details.md`: 아키텍처/주문 처리/데이터 모델의 구현 상세
 - `docs/order-invariant-checks.md`: 주문 무결성 점검 규칙
 - `docs/search-log-ops-policy.md`: 검색 로그 운영 정책
