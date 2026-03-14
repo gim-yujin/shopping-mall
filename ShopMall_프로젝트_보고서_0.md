@@ -291,7 +291,7 @@ cancelOrder(orderId)
 
 **연간 등급 재산정 (TierScheduler):**
 
-매년 1월 1일 00:00에 Spring Scheduler가 자동 실행되어 전년도 주문금액 기준으로 전체 회원의 등급을 재산정한다.
+매년 1월 1일 00:00에 Spring Scheduler가 자동 실행된다. 정책 기준은 **전년도 실적 집계는 참고 데이터로만 사용**하고, 실제 등급 판정은 `users.total_spent`(누적 구매금액)으로 수행하는 방식으로 확정했다.
 
 ```
 @Scheduled(cron = "0 0 0 1 1 *")  // 매년 1월 1일 00:00
@@ -299,8 +299,8 @@ recalculateTiers()
   ├─ 전년도(1/1 ~ 12/31) 취소 제외 주문금액 집계
   │   SELECT user_id, SUM(final_amount) GROUP BY user_id
   ├─ 전체 회원 순회
-  │   ├─ totalSpent = 전년도 주문금액으로 갱신 (누적 리셋)
-  │   ├─ 전년도 금액 기준 새 등급 결정
+  │   ├─ user.totalSpent(누적값) 기준 새 등급 결정
+  │   ├─ 전년도 금액은 이력 문구/리포팅에만 사용
   │   └─ 변경 시 user_tier_history에 이력 저장
   └─ 로그: "승급 12명, 강등 5명, 유지 83명"
 ```
