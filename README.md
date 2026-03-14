@@ -20,6 +20,7 @@
 - 메인 코드: `src/main/java` 기준 **138개 Java 파일**
 - 테스트 코드: `src/test/java` 기준 **89개 Java 파일**
 - 템플릿: `src/main/resources/templates` 기준 **30개 HTML 파일**
+- DB 스키마: **17개 테이블**, **52개 인덱스** (일반 50 + UNIQUE 2)
 
 ---
 
@@ -193,6 +194,22 @@ PGPASSWORD="$TEST_DB_PASSWORD" psql \
 ```bash
 ./scripts/check-domain-dependencies.sh
 ```
+
+### 7-4. 문서 수치 검증/갱신
+
+README에 적힌 코드/스키마 수치는 아래 스크립트로 검증합니다.
+
+```bash
+./scripts/validate-doc-stats.sh
+```
+
+- 출력: Markdown 표(`실제값` vs `문서값`)
+- 실패 조건: README 수치와 실제 리포지토리 수치가 다르면 non-zero 종료
+
+수치 갱신 방법:
+1. 스크립트를 실행해 실제 수치를 확인합니다.
+2. `README.md`의 `코드베이스 스냅샷` 값을 실제값으로 수정합니다.
+3. 다시 스크립트를 실행해 모두 `✅ 일치`인지 확인합니다.
 
 ---
 
