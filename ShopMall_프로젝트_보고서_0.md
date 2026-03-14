@@ -29,7 +29,7 @@ ShopMall은 성능 최적화 학습을 목적으로 설계된 대규모 이커�
 | CSS | Tailwind CSS (CDN) | 3.x |
 | Security | Spring Security 6 | - |
 | Cache | Spring Cache + Caffeine | 3.1.8 |
-| Build Tool | Gradle | Kotlin DSL |
+| Build Tool | Gradle (Groovy DSL, `build.gradle`) | - |
 
 ---
 
@@ -608,7 +608,8 @@ shopping-mall/
 │   └── resources/
 │       ├── application.yml
 │       ├── schema.sql          (15 tables, 50+ indexes)
-│       ├── data.sql            (초기 데이터)
+│       ├── migration/          (버전별 DB 마이그레이션 SQL)
+│       ├── sql/                (도메인별 수동/보조 SQL 스크립트)
 │       └── templates/          (22 HTML files)
 │
 Total: 67 Java files, 22 HTML templates, 15 DB tables
