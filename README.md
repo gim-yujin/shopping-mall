@@ -105,6 +105,8 @@ src/main/java/com/shop
 - `docs/implementation-details.md`: 아키텍처/주문 처리/데이터 모델의 구현 상세
 - `docs/order-invariant-checks.md`: 주문 무결성 점검 규칙
 - `docs/search-log-ops-policy.md`: 검색 로그 운영 정책
+- `docs/adr/ADR-0001-tier-criteria-cumulative-total-spent.md`: 등급 산정 기준(누적 `total_spent`) 결정 배경
+- `docs/adr/ADR-0002-point-accrual-on-delivery-and-cancel-policy.md`: 포인트 적립 시점/취소·반품 정산 정책
 
 ---
 
@@ -242,5 +244,8 @@ docker compose -f monitoring/docker-compose.monitoring.yml up -d
 - `docs/implementation-details.md`: 구현 상세(README 요약 항목의 상세 기준)
 - `docs/order-invariant-checks.md`: 주문 무결성 점검 규칙
 - `docs/search-log-ops-policy.md`: 검색 로그 운영 정책
+- `docs/adr/template.md`: ADR 작성 템플릿
+- `docs/adr/ADR-0001-tier-criteria-cumulative-total-spent.md`: 등급 산정 기준 ADR
+- `docs/adr/ADR-0002-point-accrual-on-delivery-and-cancel-policy.md`: 포인트 정산/취소 정책 ADR
 - `load-test-analysis.md`, `thymeleaf-optimization-analysis.md`: 성능/최적화 분석 문서
 - `docs/archive/shopmall-phase0-report.md`: 프로젝트 0단계 회고/상세 보고서(아카이브)

@@ -256,6 +256,8 @@ public class OrderService {
     /**
      * [P0 FIX] 배송 완료 시 적립 포인트 정산.
      *
+     * ADR 참고: docs/adr/ADR-0002-point-accrual-on-delivery-and-cancel-policy.md
+     *
      * 기존 문제: 주문 생성 즉시 포인트가 적립(user.addPoints)되어,
      * 적립 포인트를 다른 주문에 사용한 뒤 첫 주문을 취소하면
      * 취소 시 음수→0 클램핑으로 인해 포인트 부당 지급이 발생했다.
