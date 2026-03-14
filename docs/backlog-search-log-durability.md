@@ -1,4 +1,6 @@
-# Backlog: SearchService.logSearch 내구성 강화 (큐/이벤트 로그 분리)
+# 분석: Search 로그 내구성 강화 백로그
+
+대상 독자: 운영자
 
 ## 배경
 현재 검색 로그는 애플리케이션 프로세스 내 `@Async` 실행 + DB 저장 방식이다.
