@@ -33,6 +33,7 @@ import java.util.List;
  *
  * OrderService(God Class)에서 분리: 재고 복구, 포인트 환불, 쿠폰 복원,
  * 등급 재계산 등 주문 취소에 필요한 모든 보상(compensating) 로직을 담당한다.
+ * ADR 참고: docs/adr/ADR-0002-point-accrual-on-delivery-and-cancel-policy.md
  */
 @Service
 public class OrderCancellationService {

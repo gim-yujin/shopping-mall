@@ -63,6 +63,8 @@ import java.util.List;
  * <p><b>P0-3 등급 재계산:</b>
  * OrderCancellationService와 동일하게 userTierRepository로 등급을 재계산한다.</p>
  *
+ * <p>ADR 참고: docs/adr/ADR-0002-point-accrual-on-delivery-and-cancel-policy.md</p>
+ *
  * <p><b>P1-1 Order 비관적 잠금:</b>
  * Order를 먼저 비관적 잠금으로 획득하여 동일 주문에 대한 모든 취소 작업을 직렬화한다.</p>
  *

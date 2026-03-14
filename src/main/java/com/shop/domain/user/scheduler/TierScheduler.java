@@ -72,7 +72,9 @@ public class TierScheduler {
     }
 
     /**
-     * 매년 1월 1일 00:00:00 실행
+     * 매년 1월 1일 00:00:00 실행.
+     *
+     * ADR 참고: docs/adr/ADR-0001-tier-criteria-cumulative-total-spent.md
      * 전년도 주문금액은 리포팅/이력 문구에만 사용하고,
      * 등급 산정은 users.total_spent(누적 구매 금액) 기준으로 통일한다.
      *
