@@ -124,4 +124,31 @@ class TierSchedulerUnitTest {
         verify(user, never()).setTotalSpent(any());
         verify(user).updateTier(newTier);
     }
+
+    @Test
+    @DisplayName("전년도 실적이 높아도 누적 구매금액이 낮으면 승급하지 않는다")
+    void processTierChunk_doesNotUseYearlySpentAsTierSource() {
+        User user = mock(User.class);
+        UserTier welcomeTier = mock(UserTier.class);
+        UserTier defaultTier = mock(UserTier.class);
+
+        when(user.getUserId()).thenReturn(11L);
+        when(user.getTier()).thenReturn(welcomeTier);
+        when(user.getTotalSpent()).thenReturn(new BigDecimal("1000"));
+        when(welcomeTier.getTierId()).thenReturn(1);
+        when(welcomeTier.getTierLevel()).thenReturn(1);
+        when(defaultTier.getTierId()).thenReturn(1);
+
+        when(userTierRepository.findFirstByMinSpentLessThanEqualOrderByTierLevelDesc(new BigDecimal("1000")))
+                .thenReturn(Optional.of(defaultTier));
+        when(userRepository.findAllByIdInWithLockAndTierOrderByUserId(List.of(11L)))
+                .thenReturn(List.of(user));
+
+        tierScheduler.processTierChunk(2024, Map.of(11L, new BigDecimal("9000000")), defaultTier, List.of(user));
+
+        verify(userTierRepository).findFirstByMinSpentLessThanEqualOrderByTierLevelDesc(new BigDecimal("1000"));
+        verify(user, never()).updateTier(any());
+        verify(tierHistoryRepository, never()).save(any());
+    }
+
 }
