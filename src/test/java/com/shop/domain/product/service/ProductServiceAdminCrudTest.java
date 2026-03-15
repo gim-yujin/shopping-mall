@@ -29,12 +29,14 @@ class ProductServiceAdminCrudTest {
     @Mock private ProductImageRepository productImageRepository;
     @Mock private ViewCountService viewCountService;
     @Mock private CategoryService categoryService;
+    // [P1 FIX] 상품 수정 시 재고 변경분 이력 기록을 위해 추가
+    @Mock private com.shop.domain.inventory.service.InventoryService inventoryService;
 
     private ProductService productService;
 
     @BeforeEach
     void setUp() {
-        productService = new ProductService(productRepository, productImageRepository, viewCountService, categoryService);
+        productService = new ProductService(productRepository, productImageRepository, viewCountService, categoryService, inventoryService);
     }
 
     private AdminProductRequest buildRequest() {
@@ -104,7 +106,11 @@ class ProductServiceAdminCrudTest {
         assertThat(result.getProductName()).isEqualTo("수정된 상품");
         assertThat(result.getPrice()).isEqualByComparingTo("19900");
         assertThat(result.getCategory()).isSameAs(newCat);
-        assertThat(result.getStockQuantity()).isEqualTo(100);
+
+        // [P1 FIX] 재고 변경분(100-50=50)은 InventoryService를 경유하여 처리된다.
+        // InventoryService가 mock이므로 Product의 stockQuantity는 직접 변경되지 않고,
+        // 대신 adjustStock 호출이 위임되었는지를 검증한다.
+        verify(inventoryService).adjustStock(1L, 50, "ADMIN_EDIT", null);
     }
 
     @Test

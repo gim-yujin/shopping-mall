@@ -29,11 +29,15 @@ class InventoryServiceUnitTestSupplementary {
     @Mock
     private ProductRepository productRepository;
 
+    // [P0 FIX] 재고 조정 후 캐시 무효화를 위한 Outbox 이벤트 발행
+    @Mock
+    private com.shop.global.outbox.OutboxEventPublisher outboxEventPublisher;
+
     private InventoryService inventoryService;
 
     @BeforeEach
     void setUp() {
-        inventoryService = new InventoryService(historyRepository, productRepository);
+        inventoryService = new InventoryService(historyRepository, productRepository, outboxEventPublisher);
     }
 
     @Test

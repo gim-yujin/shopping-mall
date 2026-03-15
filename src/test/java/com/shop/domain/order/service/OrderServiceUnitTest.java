@@ -16,6 +16,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.math.BigDecimal;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.*;
@@ -223,10 +224,19 @@ class OrderServiceUnitTest {
         when(orderRepository.findByIdWithLock(orderId)).thenReturn(Optional.of(order));
         when(order.getOrderStatus()).thenReturn(OrderStatus.SHIPPED);
         when(order.isPointsSettled()).thenReturn(false);
-        when(order.getEarnedPointsSnapshot()).thenReturn(earned);
+        // [P0 FIX] settleEarnedPoints가 earnedPointsSnapshot 대신 finalAmount 기준으로
+        // 재계산하므로 이 스텁은 더 이상 settleEarnedPoints에서 호출되지 않는다.
+        // 다른 코드 경로에서 참조될 가능성을 위해 lenient로 유지한다.
+        lenient().when(order.getEarnedPointsSnapshot()).thenReturn(earned);
         when(order.getUserId()).thenReturn(userId);
         when(order.getOrderId()).thenReturn(orderId);
         when(order.getOrderNumber()).thenReturn("ORD-TEST");
+        // [P0 FIX] settleEarnedPoints가 부분취소 반영을 위해
+        // finalAmount - refundedAmount 기준으로 포인트를 재계산하므로
+        // 해당 필드들의 스텁이 필요하다.
+        when(order.getFinalAmount()).thenReturn(new BigDecimal("100000"));
+        when(order.getRefundedAmount()).thenReturn(BigDecimal.ZERO);
+        when(order.getPointEarnRateSnapshot()).thenReturn(new BigDecimal("1.50"));
         when(userRepository.findByIdWithLockAndTier(userId)).thenReturn(Optional.of(user));
         when(user.getUserId()).thenReturn(userId);
         when(user.getPointBalance()).thenReturn(earned);
@@ -234,7 +244,8 @@ class OrderServiceUnitTest {
         orderService.updateOrderStatus(orderId, "DELIVERED");
 
         verify(order).markDelivered();
-        verify(user).addPoints(earned);
+        // [P0 FIX] 재계산: 100,000 × 1.50% = 1,500P
+        verify(user).addPoints(1500);
         verify(pointHistoryRepository).save(any(PointHistory.class));
         verify(order).settlePoints();
     }
@@ -280,7 +291,13 @@ class OrderServiceUnitTest {
         when(orderRepository.findByIdWithLock(orderId)).thenReturn(Optional.of(order));
         when(order.getOrderStatus()).thenReturn(OrderStatus.SHIPPED);
         when(order.isPointsSettled()).thenReturn(false);
-        when(order.getEarnedPointsSnapshot()).thenReturn(0);
+        // [P0 FIX] settleEarnedPoints가 earnedPointsSnapshot을 직접 사용하지 않으므로 lenient
+        lenient().when(order.getEarnedPointsSnapshot()).thenReturn(0);
+        // [P0 FIX] settleEarnedPoints가 finalAmount 기준으로 재계산하므로
+        // pointEarnRateSnapshot = 0 으로 설정하여 적립 0P를 재현한다.
+        when(order.getFinalAmount()).thenReturn(new BigDecimal("50000"));
+        when(order.getRefundedAmount()).thenReturn(BigDecimal.ZERO);
+        when(order.getPointEarnRateSnapshot()).thenReturn(BigDecimal.ZERO);
 
         orderService.updateOrderStatus(orderId, "DELIVERED");
 

@@ -40,11 +40,15 @@ class ProductServiceUnitTestSupplementary {
     @Mock
     private CategoryService categoryService;
 
+    // [P1 FIX] 상품 수정 시 재고 변경분 이력 기록을 위해 추가
+    @Mock
+    private com.shop.domain.inventory.service.InventoryService inventoryService;
+
     private ProductService productService;
 
     @BeforeEach
     void setUp() {
-        productService = new ProductService(productRepository, productImageRepository, viewCountService, categoryService);
+        productService = new ProductService(productRepository, productImageRepository, viewCountService, categoryService, inventoryService);
     }
 
     // ==================== 미커버 메서드 5개 ====================

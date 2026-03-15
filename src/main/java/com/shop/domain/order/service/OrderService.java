@@ -268,13 +268,36 @@ public class OrderService {
      * 취소 시 적립 포인트 차감 없이 사용 포인트 환불만 하면 된다.
      *
      * points_settled 플래그로 중복 정산을 방지한다(멱등성 보장).
+     *
+     * [P0 BUG FIX] 부분취소 후 배송완료 시 적립 포인트 과다 지급 방지.
+     *
+     * 기존 문제: earnedPointsSnapshot은 주문 생성 시 finalAmount 기준으로 계산되었다.
+     * PAID 상태에서 부분취소가 발생하면 refundedAmount가 증가하지만,
+     * 배송완료 시 settleEarnedPoints()는 원래의 earnedPointsSnapshot을 그대로 사용했다.
+     * 예: 30,000원 주문(450P 적립 예정) → 10,000원 부분취소 → 배송완료 시 450P 적립
+     *     실제로는 20,000원에 대한 300P만 적립되어야 한다.
+     *
+     * 수정: 배송완료 시 실제 유효 결제금액(finalAmount - refundedAmount)을 기준으로
+     * 적립 포인트를 재계산한다. 부분취소가 없었다면 earnedPointsSnapshot과 동일하고,
+     * 부분취소가 있었다면 환불 비율만큼 감소한 정확한 금액이 적립된다.
      */
     private void settleEarnedPoints(Order order) {
         if (order.isPointsSettled()) {
             return;
         }
 
-        int earned = order.getEarnedPointsSnapshot();
+        // [P0 FIX] 부분취소 반영: 실제 유효 결제금액 기준으로 적립 포인트 재계산.
+        // 부분취소가 없으면 refundedAmount=0이므로 earnedPointsSnapshot과 동일한 결과.
+        // 부분취소가 있으면 환불된 금액을 차감한 실결제금액 기준으로 재계산한다.
+        BigDecimal effectivePaidAmount = order.getFinalAmount().subtract(order.getRefundedAmount());
+        if (effectivePaidAmount.compareTo(BigDecimal.ZERO) < 0) {
+            effectivePaidAmount = BigDecimal.ZERO;
+        }
+
+        int earned = effectivePaidAmount.multiply(order.getPointEarnRateSnapshot())
+                .divide(BigDecimal.valueOf(100), 0, java.math.RoundingMode.FLOOR)
+                .intValue();
+
         if (earned > 0) {
             User user = userRepository.findByIdWithLockAndTier(order.getUserId())
                     .orElseThrow(() -> new ResourceNotFoundException("사용자", order.getUserId()));

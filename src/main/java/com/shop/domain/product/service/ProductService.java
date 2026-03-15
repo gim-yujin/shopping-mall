@@ -2,6 +2,7 @@ package com.shop.domain.product.service;
 
 import com.shop.domain.category.entity.Category;
 import com.shop.domain.category.service.CategoryService;
+import com.shop.domain.inventory.service.InventoryService;
 import com.shop.domain.product.dto.AdminProductRequest;
 import com.shop.domain.product.dto.CachedProductDetail;
 import com.shop.domain.product.entity.Product;
@@ -36,15 +37,18 @@ public class ProductService {
     private final ProductImageRepository productImageRepository;
     private final ViewCountService viewCountService;
     private final CategoryService categoryService;
+    private final InventoryService inventoryService;
 
     public ProductService(ProductRepository productRepository,
                           ProductImageRepository productImageRepository,
                           ViewCountService viewCountService,
-                          CategoryService categoryService) {
+                          CategoryService categoryService,
+                          InventoryService inventoryService) {
         this.productRepository = productRepository;
         this.productImageRepository = productImageRepository;
         this.viewCountService = viewCountService;
         this.categoryService = categoryService;
+        this.inventoryService = inventoryService;
     }
 
     public Product findById(Long productId) {
@@ -225,6 +229,20 @@ public class ProductService {
         return savedProduct;
     }
 
+    /**
+     * 관리자 상품 수정.
+     *
+     * [P1 BUG FIX] 재고 변경 시 ProductInventoryHistory 미기록 및 캐시 무효화 누락 수정.
+     *
+     * 기존 문제: product.update()가 stockQuantity를 직접 덮어쓰면서
+     * ProductInventoryHistory에 변경 이력이 남지 않았다.
+     * 감사(audit) 시 관리자의 재고 조정 내역을 추적할 수 없고,
+     * Outbox 이벤트가 발행되지 않아 상품 상세 캐시가 갱신되지 않았다.
+     *
+     * 수정: 재고 수량이 변경된 경우에만 InventoryService.adjustStock()을
+     * 호출하여 비관적 잠금 + 이력 기록 + Outbox 이벤트 발행을 수행한다.
+     * product.update()에는 원래 재고값을 전달하여 이중 변경을 방지한다.
+     */
     @Transactional
     @Caching(evict = {
             @CacheEvict(value = "productDetail", key = "#productId"),
@@ -239,14 +257,27 @@ public class ProductService {
         Product product = productRepository.findById(productId)
                 .orElseThrow(() -> new ResourceNotFoundException("상품", productId));
         Category category = categoryService.findById(request.getCategoryId());
+
+        // [P1 FIX] 재고 변경분 감지: 변경 전 재고를 보존하고 차이가 있으면 이력 기록
+        int currentStock = product.getStockQuantity();
+        int requestedStock = request.getStockQuantity();
+        int stockDelta = requestedStock - currentStock;
+
+        // product.update()에는 현재 재고를 전달하여 재고값은 변경하지 않음
+        // 재고 변경은 InventoryService를 통해 이력+캐시 무효화와 함께 처리
         product.update(
                 request.getProductName(),
                 category,
                 request.getDescription(),
                 request.getPrice(),
                 request.getOriginalPrice(),
-                request.getStockQuantity()
+                stockDelta != 0 ? currentStock : requestedStock
         );
+
+        // 재고 변경분이 있을 때만 InventoryService 경유 — 이력 기록 + Outbox 이벤트 발행
+        if (stockDelta != 0) {
+            inventoryService.adjustStock(productId, stockDelta, "ADMIN_EDIT", null);
+        }
 
         // [P2-9] 이미지 전량 교체 전략: 기존 이미지를 모두 삭제 후 새 목록으로 재생성.
         // 부분 수정(개별 추가/삭제/순서 변경)보다 구현이 단순하며,

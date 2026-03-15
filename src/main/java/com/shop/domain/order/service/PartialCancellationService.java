@@ -1,5 +1,7 @@
 package com.shop.domain.order.service;
 
+import com.shop.domain.coupon.entity.UserCoupon;
+import com.shop.domain.coupon.repository.UserCouponRepository;
 import com.shop.domain.inventory.entity.ProductInventoryHistory;
 import com.shop.domain.inventory.repository.ProductInventoryHistoryRepository;
 import com.shop.domain.order.entity.Order;
@@ -94,6 +96,7 @@ public class PartialCancellationService {
     private final UserRepository userRepository;
     private final UserTierRepository userTierRepository;
     private final PointHistoryRepository pointHistoryRepository;
+    private final UserCouponRepository userCouponRepository;
     private final EntityManager entityManager;
     private final OutboxEventPublisher outboxEventPublisher;
     private final OrderInvariantValidator orderInvariantValidator;
@@ -104,6 +107,7 @@ public class PartialCancellationService {
                                       UserRepository userRepository,
                                       UserTierRepository userTierRepository,
                                       PointHistoryRepository pointHistoryRepository,
+                                      UserCouponRepository userCouponRepository,
                                       EntityManager entityManager,
                                       OutboxEventPublisher outboxEventPublisher,
                                       OrderInvariantValidator orderInvariantValidator) {
@@ -113,6 +117,7 @@ public class PartialCancellationService {
         this.userRepository = userRepository;
         this.userTierRepository = userTierRepository;
         this.pointHistoryRepository = pointHistoryRepository;
+        this.userCouponRepository = userCouponRepository;
         this.entityManager = entityManager;
         this.outboxEventPublisher = outboxEventPublisher;
         this.orderInvariantValidator = orderInvariantValidator;
@@ -437,11 +442,26 @@ public class PartialCancellationService {
     /**
      * 모든 아이템의 잔여 수량이 0이면 주문 상태를 CANCELLED로 전이한다.
      * PENDING/PAID 상태에서만 적용하며, DELIVERED 상태는 유지한다.
+     *
+     * [P0 BUG FIX] 부분취소로 전체 CANCELLED 전이 시 쿠폰 미복원 수정.
+     *
+     * 기존 문제: 3개 아이템 주문에 쿠폰을 적용한 후, 아이템을 하나씩 개별 부분취소하면
+     * 마지막 아이템 취소 시 transitionIfFullyCancelled()가 order.cancel()을 호출하여
+     * 주문 상태가 CANCELLED로 전이되었다. 그러나 쿠폰 복원 로직은
+     * OrderCancellationService.cancelOrderInternal()에만 존재하여,
+     * 부분취소 경로로 전체 취소에 도달하면 쿠폰이 영구 소실되었다.
+     *
+     * 수정: 부분취소로 인한 전체 CANCELLED 전이 시에도 쿠폰을 복원한다.
+     * OrderCancellationService.cancelOrderInternal()의 쿠폰 복원 로직과 동일하게
+     * userCouponRepository.findByOrderId()로 사용된 쿠폰을 찾아 cancelUse()를 호출한다.
      */
     private void transitionIfFullyCancelled(Order order) {
         boolean allZero = order.getItems().stream()
                 .allMatch(i -> i.getRemainingQuantity() == 0);
         if (allZero && order.isCancellable()) {
+            // [P0 FIX] 쿠폰 복원 — OrderCancellationService.cancelOrderInternal()과 동일
+            userCouponRepository.findByOrderId(order.getOrderId())
+                    .ifPresent(UserCoupon::cancelUse);
             order.cancel();
         }
     }

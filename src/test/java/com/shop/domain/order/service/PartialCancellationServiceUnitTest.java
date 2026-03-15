@@ -68,6 +68,8 @@ class PartialCancellationServiceUnitTest {
     @Mock private UserRepository userRepository;
     @Mock private UserTierRepository userTierRepository;
     @Mock private PointHistoryRepository pointHistoryRepository;
+    // [P0 FIX] 부분취소 경로 전체 CANCELLED 전이 시 쿠폰 복원을 위해 추가
+    @Mock private com.shop.domain.coupon.repository.UserCouponRepository userCouponRepository;
     @Mock private EntityManager entityManager;
     @Mock private OutboxEventPublisher outboxEventPublisher;
     @Mock private OrderInvariantValidator orderInvariantValidator;
@@ -79,6 +81,7 @@ class PartialCancellationServiceUnitTest {
         service = new PartialCancellationService(
                 orderRepository, productRepository, inventoryHistoryRepository,
                 userRepository, userTierRepository, pointHistoryRepository,
+                userCouponRepository,
                 entityManager, outboxEventPublisher, orderInvariantValidator);
     }
 
