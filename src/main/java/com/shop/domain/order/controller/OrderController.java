@@ -15,8 +15,13 @@ import com.shop.domain.user.service.UserService;
 import com.shop.global.common.PageDefaults;
 import com.shop.global.common.PagingParams;
 import com.shop.global.exception.BusinessException;
+import com.shop.global.idempotency.IdempotencyRecord;
+import com.shop.global.idempotency.IdempotencyService;
 import com.shop.global.security.SecurityUtil;
 import jakarta.validation.Valid;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Controller;
 import org.springframework.validation.BindingResult;
@@ -31,22 +36,47 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
+import java.util.UUID;
 
+/**
+ * 주문 SSR 컨트롤러.
+ *
+ * <h3>[P0] 멱등성 키 패턴 적용 — 폼 더블 서브밋 방지</h3>
+ *
+ * <p><b>문제:</b> 결제 버튼 더블 클릭, 브라우저 뒤로가기 후 재제출, 느린 네트워크에서의
+ * 사용자 반복 클릭 등으로 동일한 주문이 중복 생성될 수 있다.</p>
+ *
+ * <p><b>해결:</b> 체크아웃 페이지 렌더링 시 UUID를 생성하여 hidden input에 포함한다.
+ * 주문 생성 시 이 키를 멱등성 키로 사용하여 중복 주문을 차단한다.
+ * JavaScript 비활성화 환경에서도 동작하는 서버 사이드 방어이다.</p>
+ *
+ * <p><b>기존 JS 더블 클릭 방지와의 역할 분담:</b></p>
+ * <ul>
+ *   <li>JS 비활성화 (disabled 속성) → UX 최적화, 즉각적인 피드백</li>
+ *   <li>서버 멱등성 키 → 데이터 정합성 보장, JS 우회/실패 시에도 동작</li>
+ * </ul>
+ */
 @Controller
 @RequestMapping("/orders")
 public class OrderController {
+
+    private static final Logger log = LoggerFactory.getLogger(OrderController.class);
 
     private final OrderService orderService;
     private final CartService cartService;
     private final UserService userService;
     private final CouponService couponService;
+    private final IdempotencyService idempotencyService;
 
     public OrderController(OrderService orderService, CartService cartService,
-                           UserService userService, CouponService couponService) {
+                           UserService userService, CouponService couponService,
+                           IdempotencyService idempotencyService) {
         this.orderService = orderService;
         this.cartService = cartService;
         this.userService = userService;
         this.couponService = couponService;
+        this.idempotencyService = idempotencyService;
     }
 
     /**
@@ -79,12 +109,29 @@ public class OrderController {
         model.addAttribute("availableCoupons", availableCoupons);
         model.addAttribute("couponDisplayNames", buildCouponDisplayNames(availableCoupons));
         model.addAttribute("paymentMethods", Arrays.asList(PaymentMethod.values()));
+
+        // [P0] 멱등성 키: 체크아웃 페이지 렌더링마다 새 UUID를 생성하여 hidden input에 포함한다.
+        // 폼 제출 시 이 키가 함께 전송되어 더블 서브밋, 브라우저 뒤로가기 후 재제출을 차단한다.
+        // 페이지를 새로고침(GET)하면 새 UUID가 발급되므로 사용자는 정상적으로 재주문 가능하다.
+        model.addAttribute("idempotencyKey", UUID.randomUUID().toString());
+
         return "order/checkout";
     }
 
+    /**
+     * 주문 생성 (멱등성 보장).
+     *
+     * <p>[P0] hidden input으로 전달된 멱등성 키를 사용하여 폼 더블 서브밋을 차단한다.
+     * 체크아웃 페이지 렌더링 시 UUID가 생성되므로, 페이지 새로고침(GET) 없이
+     * 뒤로가기 → 재제출하면 동일한 키가 전송되어 중복 주문이 방지된다.</p>
+     *
+     * <p><b>멱등성 키가 없는 경우:</b> 기존 비멱등 동작으로 폴백한다.
+     * 구버전 폼 템플릿이나 테스트에서 idempotencyKey를 전달하지 않아도 동작한다.</p>
+     */
     @PostMapping
     public String createOrder(@Valid OrderCreateRequest request,
                               BindingResult bindingResult,
+                              @RequestParam(name = "idempotencyKey", required = false) String idempotencyKey,
                               RedirectAttributes redirectAttributes) {
         if (bindingResult.hasErrors()) {
             redirectAttributes.addFlashAttribute("errorMessage", "입력값을 확인해주세요.");
@@ -94,7 +141,84 @@ public class OrderController {
         }
 
         Long userId = SecurityUtil.getCurrentUserId().orElseThrow();
-        // 배송비는 클라이언트 입력을 무시하고 OrderService에서 서버 정책으로 재계산한다.
+
+        // 멱등성 키가 없으면 기존 비멱등 동작으로 폴백 (하위 호환)
+        if (idempotencyKey == null || idempotencyKey.isBlank()) {
+            return createOrderWithoutIdempotency(userId, request, redirectAttributes);
+        }
+
+        // ── 멱등성 키 패턴 적용 ────────────────────────────
+
+        // 1단계: 기존 레코드 확인
+        Optional<IdempotencyRecord> existing = idempotencyService.findExisting(userId, idempotencyKey);
+        if (existing.isPresent()) {
+            IdempotencyRecord prev = existing.get();
+
+            if (prev.isCompleted()) {
+                // 이전 성공 결과가 있으면 같은 주문 상세 페이지로 리다이렉트
+                log.info("SSR 멱등성 키 중복 요청 (COMPLETED) - userId={}, key={}, orderId={}",
+                        userId, idempotencyKey, prev.getResourceId());
+                redirectAttributes.addFlashAttribute("successMessage", "주문이 완료되었습니다.");
+                return "redirect:/orders/" + prev.getResourceId();
+            }
+
+            if (prev.isProcessing()) {
+                // 이전 요청 처리 중 — 체크아웃으로 돌려보내고 안내 메시지 표시
+                log.warn("SSR 멱등성 키 중복 요청 (PROCESSING) - userId={}, key={}", userId, idempotencyKey);
+                redirectAttributes.addFlashAttribute("errorMessage",
+                        "이전 주문 요청이 처리 중입니다. 잠시 후 주문 내역을 확인해주세요.");
+                return "redirect:/orders";
+            }
+
+            // FAILED — 재시도 허용 (아래 initRecord에서 retryAfterFailure 사용)
+            log.info("SSR 멱등성 키 재시도 (FAILED) - userId={}, key={}", userId, idempotencyKey);
+        }
+
+        // 2단계: PROCESSING 레코드 생성
+        IdempotencyRecord record;
+        boolean isRetry = existing.isPresent();
+        try {
+            record = isRetry
+                    ? idempotencyService.retryAfterFailure(userId, idempotencyKey, "ORDER")
+                    : idempotencyService.initRecord(userId, idempotencyKey, "ORDER");
+        } catch (DataIntegrityViolationException e) {
+            // 동시에 같은 키로 폼이 제출된 경우
+            log.info("SSR 멱등성 키 동시 삽입 충돌 - userId={}, key={}", userId, idempotencyKey);
+            redirectAttributes.addFlashAttribute("errorMessage",
+                    "주문 요청이 중복되었습니다. 잠시 후 주문 내역을 확인해주세요.");
+            return "redirect:/orders";
+        }
+
+        // 3단계: 주문 생성 실행
+        try {
+            Order order = orderService.createOrder(userId, request);
+
+            // 4단계: 성공 → COMPLETED 전환 (SSR이므로 응답 JSON 없이 orderId만 저장)
+            idempotencyService.markCompletedForSsr(record.getRecordId(), order.getOrderId());
+
+            redirectAttributes.addFlashAttribute("successMessage", "주문이 완료되었습니다.");
+            return "redirect:/orders/" + order.getOrderId();
+
+        } catch (BusinessException e) {
+            // 5단계: 비즈니스 예외 → FAILED 전환 (같은 키로 재시도 가능)
+            idempotencyService.markFailed(record.getRecordId());
+            redirectAttributes.addFlashAttribute("errorMessage", e.getMessage());
+            return "redirect:/orders/checkout";
+        } catch (Exception e) {
+            // 예상치 못한 예외 → FAILED 전환 후 재throw
+            idempotencyService.markFailed(record.getRecordId());
+            throw e;
+        }
+    }
+
+    /**
+     * 멱등성 키 없이 주문을 생성한다 (하위 호환용).
+     *
+     * <p>구버전 폼 템플릿이나 테스트에서 idempotencyKey를 전달하지 않는 경우
+     * 기존 동작을 그대로 유지한다.</p>
+     */
+    private String createOrderWithoutIdempotency(Long userId, OrderCreateRequest request,
+                                                  RedirectAttributes redirectAttributes) {
         try {
             Order order = orderService.createOrder(userId, request);
             redirectAttributes.addFlashAttribute("successMessage", "주문이 완료되었습니다.");

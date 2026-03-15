@@ -500,6 +500,30 @@ COMMENT ON COLUMN point_history.balance_after IS '변동 후 잔액 스냅샷';
 COMMENT ON COLUMN point_history.reference_type IS 'ORDER: 주문, CANCEL: 전체취소, PARTIAL_CANCEL: 부분취소, RETURN: 반품 환불, ADMIN: 관리자, SYSTEM: 시스템';
 
 -- ============================================================================
+-- 18. IDEMPOTENCY_RECORDS (멱등성 키 레코드)
+-- ============================================================================
+-- 주문 생성 등 멱등성 보장이 필요한 API 요청의 중복 방지 레코드.
+-- 클라이언트가 X-Idempotency-Key 헤더로 UUID를 전달하면
+-- (user_id, idempotency_key) UNIQUE 제약으로 중복 요청을 물리적으로 차단한다.
+CREATE TABLE idempotency_records (
+    record_id       BIGSERIAL PRIMARY KEY,
+    user_id         BIGINT       NOT NULL,
+    idempotency_key VARCHAR(64)  NOT NULL,
+    status          VARCHAR(20)  NOT NULL DEFAULT 'PROCESSING',
+    resource_type   VARCHAR(50)  NOT NULL,
+    resource_id     BIGINT,
+    response_body   TEXT,
+    http_status     INT,
+    created_at      TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    completed_at    TIMESTAMP,
+
+    CONSTRAINT fk_idempotency_user FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE CASCADE,
+    CONSTRAINT chk_idempotency_status CHECK (status IN ('PROCESSING', 'COMPLETED', 'FAILED'))
+);
+
+COMMENT ON TABLE idempotency_records IS '멱등성 키 레코드 (주문 중복 생성 방지)';
+
+-- ============================================================================
 -- 인덱스 생성
 -- ============================================================================
 
@@ -603,6 +627,10 @@ CREATE INDEX idx_search_date ON search_logs(searched_at DESC);
 CREATE INDEX idx_point_history_user ON point_history(user_id, created_at DESC);
 CREATE INDEX idx_point_history_reference ON point_history(reference_type, reference_id);
 
+-- Idempotency_Records 인덱스
+CREATE UNIQUE INDEX uk_idempotency_user_key ON idempotency_records(user_id, idempotency_key);
+CREATE INDEX idx_idempotency_created ON idempotency_records(created_at);
+
 -- ============================================================================
 -- 스키마 생성 완료
 -- ============================================================================
@@ -612,4 +640,4 @@ CREATE INDEX idx_point_history_reference ON point_history(reference_type, refere
 -- 이로 인해 DO $$ 블록이 여러 개의 불완전한 SQL 조각으로 분리되어
 -- PSQLException (Parser.java) 파싱 에러가 발생한다.
 -- RAISE NOTICE는 디버깅 편의용이었으므로 주석으로 대체한다.
--- 총 17개 테이블, 50+ 인덱스 생성됨
+-- 총 18개 테이블, 50+ 인덱스 생성됨

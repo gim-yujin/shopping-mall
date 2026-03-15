@@ -136,7 +136,8 @@ class TierSchedulerUnitTest {
         when(user.getTier()).thenReturn(welcomeTier);
         when(user.getTotalSpent()).thenReturn(new BigDecimal("1000"));
         when(welcomeTier.getTierId()).thenReturn(1);
-        when(welcomeTier.getTierLevel()).thenReturn(1);
+        // getTierLevel 스터빙 불필요: tierId가 동일(둘 다 1)하여
+        // updateTier 분기에 진입하지 않으므로 getTierLevel()이 호출되지 않음
         when(defaultTier.getTierId()).thenReturn(1);
 
         when(userTierRepository.findFirstByMinSpentLessThanEqualOrderByTierLevelDesc(new BigDecimal("1000")))

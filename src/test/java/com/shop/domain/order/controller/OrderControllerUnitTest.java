@@ -73,13 +73,15 @@ class OrderControllerUnitTest {
     private UserService userService;
     @Mock
     private CouponService couponService;
+    @Mock
+    private com.shop.global.idempotency.IdempotencyService idempotencyService;
 
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
         OrderController controller = new OrderController(
-                orderService, cartService, userService, couponService);
+                orderService, cartService, userService, couponService, idempotencyService);
 
         // PaymentMethodValidator가 @ValidPaymentMethod 어노테이션을 처리하려면
         // LocalValidatorFactoryBean이 standaloneSetup에 등록되어야 한다.

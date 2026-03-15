@@ -99,4 +99,8 @@ app:
     metrics:
       logging-enabled: true
       log-interval-ms: 30000
+  # 멱등성 키 레코드 관리 설정
+  idempotency:
+    retention-hours: 24      # COMPLETED/FAILED 레코드 보존 기간 (시간)
+    cleanup-batch-size: 5000 # 정리 스케줄러 1회당 삭제 배치 크기
 

@@ -58,11 +58,20 @@ class OrderApiControllerUnitTest {
     @Mock
     private OrderService orderService;
 
+    @Mock
+    private com.shop.global.idempotency.IdempotencyService idempotencyService;
+
+    private final com.fasterxml.jackson.databind.ObjectMapper objectMapper = new com.fasterxml.jackson.databind.ObjectMapper();
+
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
-        OrderApiController controller = new OrderApiController(orderService);
+        // ObjectMapper에 JavaTimeModule 등록 (LocalDateTime 직렬화용)
+        objectMapper.findAndRegisterModules();
+
+        OrderApiController controller = new OrderApiController(
+                orderService, idempotencyService, objectMapper);
 
         // @Valid + @RequestBody 조합에서 Bean Validation이 동작하려면
         // LocalValidatorFactoryBean을 standaloneSetup에 등록해야 한다.
