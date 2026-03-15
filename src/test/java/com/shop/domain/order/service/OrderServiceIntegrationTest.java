@@ -59,6 +59,9 @@ class OrderServiceIntegrationTest {
     @Autowired
     private ProductService productService;
 
+    @Autowired
+    private com.shop.global.outbox.OutboxEventPoller outboxEventPoller;
+
     // 테스트 대상
     private Long testUserId;
     private Long testProductId;
@@ -349,6 +352,10 @@ class OrderServiceIntegrationTest {
 
         Order created = orderService.createOrder(testUserId, defaultRequest());
         createdOrderIds.add(created.getOrderId());
+
+        // [Outbox] 캐시 무효화는 폴러가 비동기로 처리하므로 명시적으로 실행한다.
+        // 운영에서는 5초 간격으로 자동 실행되며, 테스트에서는 즉시 호출하여 검증한다.
+        outboxEventPoller.pollAndProcess();
 
         assertThat(cache.get(testProductId)).isNull();
     }
@@ -668,6 +675,10 @@ class OrderServiceIntegrationTest {
         assertThat(cache.get(testProductId)).isNotNull();
 
         orderService.cancelOrder(order.getOrderId(), testUserId);
+
+        // [Outbox] 캐시 무효화는 폴러가 비동기로 처리하므로 명시적으로 실행한다.
+        outboxEventPoller.pollAndProcess();
+
         assertThat(cache.get(testProductId)).isNull();
 
         productService.findByIdCached(testProductId);

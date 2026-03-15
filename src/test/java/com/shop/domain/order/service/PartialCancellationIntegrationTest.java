@@ -63,6 +63,7 @@ class PartialCancellationIntegrationTest {
     @Autowired private OrderService orderService;
     @Autowired private JdbcTemplate jdbcTemplate;
     @Autowired private CacheManager cacheManager;
+    @Autowired private com.shop.global.outbox.OutboxEventPoller outboxEventPoller;
 
     // 테스트 대상
     private Long testUserId;
@@ -410,8 +411,11 @@ class PartialCancellationIntegrationTest {
         cache.put(testProductIdA, "dummy-cached-value");
         assertThat(cache.get(testProductIdA)).isNotNull();
 
-        // When: 부분 취소 (ProductStockChangedEvent 발행 → 캐시 무효화)
+        // When: 부분 취소 (Outbox 이벤트 기록 → 폴러가 캐시 무효화)
         orderService.partialCancel(order.getOrderId(), testUserId, orderItemIdA, 1);
+
+        // [Outbox] 캐시 무효화는 폴러가 비동기로 처리하므로 명시적으로 실행한다.
+        outboxEventPoller.pollAndProcess();
 
         // Then: 캐시 무효화 확인
         assertThat(cache.get(testProductIdA))

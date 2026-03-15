@@ -524,6 +524,25 @@ CREATE TABLE idempotency_records (
 COMMENT ON TABLE idempotency_records IS '멱등성 키 레코드 (주문 중복 생성 방지)';
 
 -- ============================================================================
+-- 19. OUTBOX_EVENTS (Transactional Outbox)
+-- ============================================================================
+-- 비즈니스 트랜잭션과 함께 저장되는 이벤트 레코드.
+-- 폴러가 주기적으로 PENDING 이벤트를 읽어 처리하고 PROCESSED로 전이한다.
+CREATE TABLE outbox_events (
+    event_id        BIGSERIAL    PRIMARY KEY,
+    event_type      VARCHAR(100) NOT NULL,
+    payload         TEXT         NOT NULL,
+    status          VARCHAR(20)  NOT NULL DEFAULT 'PENDING',
+    created_at      TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    processed_at    TIMESTAMP,
+    retry_count     INT          NOT NULL DEFAULT 0,
+
+    CONSTRAINT chk_outbox_status CHECK (status IN ('PENDING', 'PROCESSED', 'FAILED'))
+);
+
+COMMENT ON TABLE outbox_events IS 'Transactional Outbox 이벤트 레코드';
+
+-- ============================================================================
 -- 인덱스 생성
 -- ============================================================================
 
@@ -631,6 +650,10 @@ CREATE INDEX idx_point_history_reference ON point_history(reference_type, refere
 CREATE UNIQUE INDEX uk_idempotency_user_key ON idempotency_records(user_id, idempotency_key);
 CREATE INDEX idx_idempotency_created ON idempotency_records(created_at);
 
+-- Outbox_Events 인덱스
+CREATE INDEX idx_outbox_pending ON outbox_events(status, created_at) WHERE status = 'PENDING';
+CREATE INDEX idx_outbox_processed_at ON outbox_events(processed_at) WHERE status = 'PROCESSED';
+
 -- ============================================================================
 -- 스키마 생성 완료
 -- ============================================================================
@@ -640,4 +663,4 @@ CREATE INDEX idx_idempotency_created ON idempotency_records(created_at);
 -- 이로 인해 DO $$ 블록이 여러 개의 불완전한 SQL 조각으로 분리되어
 -- PSQLException (Parser.java) 파싱 에러가 발생한다.
 -- RAISE NOTICE는 디버깅 편의용이었으므로 주석으로 대체한다.
--- 총 18개 테이블, 50+ 인덱스 생성됨
+-- 총 19개 테이블, 50+ 인덱스 생성됨

@@ -7,7 +7,7 @@ import com.shop.domain.coupon.repository.UserCouponRepository;
 import com.shop.domain.inventory.entity.ProductInventoryHistory;
 import com.shop.domain.inventory.repository.ProductInventoryHistoryRepository;
 import com.shop.domain.order.dto.OrderCreateRequest;
-import com.shop.global.event.ProductStockChangedEvent;
+import com.shop.global.outbox.OutboxEventPublisher;
 import com.shop.domain.order.entity.Order;
 import com.shop.domain.order.entity.PaymentMethod;
 import com.shop.domain.order.entity.OrderItem;
@@ -26,7 +26,6 @@ import com.shop.global.exception.InsufficientStockException;
 import com.shop.global.exception.ResourceNotFoundException;
 import jakarta.persistence.EntityManager;
 import org.springframework.stereotype.Service;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
@@ -57,7 +56,7 @@ public class OrderCreationService {
     private final UserTierRepository userTierRepository;
     private final PointHistoryRepository pointHistoryRepository;
     private final EntityManager entityManager;
-    private final ApplicationEventPublisher eventPublisher;
+    private final OutboxEventPublisher outboxEventPublisher;
     private final ShippingFeeCalculator shippingFeeCalculator;
     private final OrderInvariantValidator orderInvariantValidator;
 
@@ -68,7 +67,7 @@ public class OrderCreationService {
                                 UserTierRepository userTierRepository,
                                 PointHistoryRepository pointHistoryRepository,
                                 EntityManager entityManager,
-                                ApplicationEventPublisher eventPublisher,
+                                OutboxEventPublisher outboxEventPublisher,
                                 ShippingFeeCalculator shippingFeeCalculator,
                                 OrderInvariantValidator orderInvariantValidator) {
         this.orderRepository = orderRepository;
@@ -80,7 +79,7 @@ public class OrderCreationService {
         this.userTierRepository = userTierRepository;
         this.pointHistoryRepository = pointHistoryRepository;
         this.entityManager = entityManager;
-        this.eventPublisher = eventPublisher;
+        this.outboxEventPublisher = outboxEventPublisher;
         this.shippingFeeCalculator = shippingFeeCalculator;
         this.orderInvariantValidator = orderInvariantValidator;
     }
@@ -326,10 +325,13 @@ public class OrderCreationService {
             cartRepository.deleteByUserId(userId);
         }
 
-        // 8) 재고 변경 이벤트 발행 (캐시 무효화는 AFTER_COMMIT 리스너에서 처리)
-        eventPublisher.publishEvent(new ProductStockChangedEvent(
+        // 8) [Outbox] 재고 변경 이벤트를 Outbox 테이블에 기록한다.
+        // 기존: eventPublisher.publishEvent() → 인메모리 이벤트, 커밋 후 크래시 시 유실
+        // 변경: outbox_events INSERT → 비즈니스 데이터와 같은 트랜잭션에서 원자적 저장
+        // 폴러(OutboxEventPoller)가 5초 간격으로 PENDING 이벤트를 읽어 캐시를 무효화한다.
+        outboxEventPublisher.publishStockChanged(
                 orderLines.stream().map(OrderLine::productId).toList()
-        ));
+        );
 
         return savedOrder;
     }

@@ -5,7 +5,7 @@ import com.shop.domain.coupon.repository.UserCouponRepository;
 import com.shop.domain.inventory.repository.ProductInventoryHistoryRepository;
 import com.shop.domain.order.entity.Order;
 import com.shop.domain.order.entity.OrderItem;
-import com.shop.global.event.ProductStockChangedEvent;
+import com.shop.global.outbox.OutboxEventPublisher;
 import com.shop.domain.order.repository.OrderRepository;
 import com.shop.domain.order.validation.OrderInvariantValidator;
 import com.shop.domain.point.entity.PointHistory;
@@ -23,7 +23,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.context.ApplicationEventPublisher;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -51,7 +50,7 @@ class OrderCancellationServiceUnitTest {
     @Mock private UserTierRepository userTierRepository;
     @Mock private PointHistoryRepository pointHistoryRepository;
     @Mock private EntityManager entityManager;
-    @Mock private ApplicationEventPublisher eventPublisher;
+    @Mock private OutboxEventPublisher outboxEventPublisher;
     @Mock private OrderInvariantValidator orderInvariantValidator;
 
     private OrderCancellationService cancellationService;
@@ -61,7 +60,7 @@ class OrderCancellationServiceUnitTest {
         cancellationService = new OrderCancellationService(
                 orderRepository, productRepository, userRepository,
                 inventoryHistoryRepository, userCouponRepository,
-                userTierRepository, pointHistoryRepository, entityManager, eventPublisher, orderInvariantValidator);
+                userTierRepository, pointHistoryRepository, entityManager, outboxEventPublisher, orderInvariantValidator);
     }
 
     @Test
@@ -104,7 +103,7 @@ class OrderCancellationServiceUnitTest {
         verify(pointHistoryRepository).save(any(PointHistory.class));
         verify(userCoupon).cancelUse();
         verify(order).cancel();
-        verify(eventPublisher).publishEvent(new ProductStockChangedEvent(List.of(7L)));
+        verify(outboxEventPublisher).publishStockChanged(List.of(7L));
     }
 
     @Test
@@ -131,6 +130,6 @@ class OrderCancellationServiceUnitTest {
         verify(userRepository, never()).findByIdWithLockAndTier(any());
         verify(userCouponRepository, never()).findByOrderId(any());
         verify(order, never()).cancel();
-        verifyNoInteractions(inventoryHistoryRepository, userTierRepository, pointHistoryRepository, entityManager, eventPublisher, orderInvariantValidator);
+        verifyNoInteractions(inventoryHistoryRepository, userTierRepository, pointHistoryRepository, entityManager, outboxEventPublisher, orderInvariantValidator);
     }
 }

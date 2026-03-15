@@ -103,4 +103,10 @@ app:
   idempotency:
     retention-hours: 24      # COMPLETED/FAILED 레코드 보존 기간 (시간)
     cleanup-batch-size: 5000 # 정리 스케줄러 1회당 삭제 배치 크기
+  # Transactional Outbox 설정
+  outbox:
+    max-retries: 5           # 이벤트 처리 최대 재시도 횟수 (초과 시 FAILED)
+    batch-size: 100          # 폴러 1회당 처리할 최대 이벤트 수
+    retention-days: 7        # PROCESSED 이벤트 보존 기간 (일)
+    cleanup-batch-size: 5000 # 정리 스케줄러 1회당 삭제 배치 크기
 

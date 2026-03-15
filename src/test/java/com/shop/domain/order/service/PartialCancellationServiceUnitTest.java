@@ -6,7 +6,7 @@ import com.shop.domain.order.entity.Order;
 import com.shop.domain.order.entity.OrderItem;
 import com.shop.domain.order.entity.OrderItemStatus;
 import com.shop.domain.order.entity.OrderStatus;
-import com.shop.global.event.ProductStockChangedEvent;
+import com.shop.global.outbox.OutboxEventPublisher;
 import com.shop.domain.order.repository.OrderRepository;
 import com.shop.domain.order.validation.OrderInvariantValidator;
 import com.shop.domain.point.entity.PointHistory;
@@ -28,7 +28,6 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.context.ApplicationEventPublisher;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -70,7 +69,7 @@ class PartialCancellationServiceUnitTest {
     @Mock private UserTierRepository userTierRepository;
     @Mock private PointHistoryRepository pointHistoryRepository;
     @Mock private EntityManager entityManager;
-    @Mock private ApplicationEventPublisher eventPublisher;
+    @Mock private OutboxEventPublisher outboxEventPublisher;
     @Mock private OrderInvariantValidator orderInvariantValidator;
 
     private PartialCancellationService service;
@@ -80,7 +79,7 @@ class PartialCancellationServiceUnitTest {
         service = new PartialCancellationService(
                 orderRepository, productRepository, inventoryHistoryRepository,
                 userRepository, userTierRepository, pointHistoryRepository,
-                entityManager, eventPublisher, orderInvariantValidator);
+                entityManager, outboxEventPublisher, orderInvariantValidator);
     }
 
     // ── 테스트 픽스처 빌더 ──────────────────────────────────
@@ -303,7 +302,7 @@ class PartialCancellationServiceUnitTest {
         }
 
         @Test
-        @DisplayName("[P1-3] 재고 복구 후 ProductStockChangedEvent가 발행된다")
+        @DisplayName("[Outbox] 재고 복구 후 Outbox 이벤트가 기록된다")
         void stockChangeEvent_isPublished() {
             Order order = createTestOrder(OrderStatus.PAID);
             Product product = createMockProduct(10L, 50);
@@ -315,7 +314,7 @@ class PartialCancellationServiceUnitTest {
 
             service.partialCancel(101L, 1L, 100L, 1);
 
-            verify(eventPublisher).publishEvent(new ProductStockChangedEvent(List.of(10L)));
+            verify(outboxEventPublisher).publishStockChanged(List.of(10L));
         }
 
         @Test
@@ -492,7 +491,7 @@ class PartialCancellationServiceUnitTest {
             // User 조회도 발생하지 않음 (포인트/등급 변경 없음)
             verifyNoInteractions(userRepository);
             // 캐시 무효화 이벤트도 발행되지 않음
-            verifyNoInteractions(eventPublisher);
+            verifyNoInteractions(outboxEventPublisher);
             // PointHistory 기록 없음
             verifyNoInteractions(pointHistoryRepository);
         }
@@ -632,7 +631,7 @@ class PartialCancellationServiceUnitTest {
             verify(itemA).approveReturn(eq(2), any(BigDecimal.class));
 
             // 캐시 무효화 이벤트 발행 확인
-            verify(eventPublisher).publishEvent(any(ProductStockChangedEvent.class));
+            verify(outboxEventPublisher).publishStockChanged(any());
         }
 
         @Test
@@ -835,7 +834,7 @@ class PartialCancellationServiceUnitTest {
             verifyNoInteractions(productRepository);
             verifyNoInteractions(userRepository);
             verifyNoInteractions(pointHistoryRepository);
-            verifyNoInteractions(eventPublisher);
+            verifyNoInteractions(outboxEventPublisher);
         }
 
         @Test
