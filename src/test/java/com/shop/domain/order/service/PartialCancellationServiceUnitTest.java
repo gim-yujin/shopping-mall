@@ -393,6 +393,89 @@ class PartialCancellationServiceUnitTest {
 
             verify(order, never()).cancel();
         }
+
+        /**
+         * [P0-2 버그 시나리오 재현 테스트] 부분취소 경로 전체 CANCELLED 전이 시 쿠폰 복원.
+         *
+         * <h3>버그 시나리오</h3>
+         * <ol>
+         *   <li>쿠폰을 적용하여 2개 아이템 주문 (orderId=1)</li>
+         *   <li>아이템A 부분취소 → 잔여수량 0</li>
+         *   <li>아이템B 부분취소 → 잔여수량 0 → transitionIfFullyCancelled() → CANCELLED</li>
+         * </ol>
+         *
+         * <h3>기존 버그</h3>
+         * <p>transitionIfFullyCancelled()가 order.cancel()만 호출하고
+         * 쿠폰 복원 로직이 없었다. 쿠폰 복원은 OrderCancellationService.cancelOrderInternal()
+         * 에만 존재하여, 부분취소 경로로 전체 취소에 도달하면 쿠폰이 영구 소실되었다.</p>
+         *
+         * <h3>수정 후 기대 동작</h3>
+         * <p>transitionIfFullyCancelled()에서 CANCELLED 전이 전에
+         * userCouponRepository.findByOrderId()로 쿠폰을 찾아 cancelUse()를 호출한다.</p>
+         */
+        @Test
+        @DisplayName("[P0-2 재현] 부분취소로 전체 CANCELLED 전이 시 쿠폰이 복원된다")
+        void allItemsCancelled_viaPartialCancel_restoresCoupon() {
+            Order order = createTestOrder(OrderStatus.PAID);
+            OrderItem itemA = order.getItems().get(0);
+            OrderItem itemB = order.getItems().get(1);
+            // 마지막 부분취소로 모든 아이템 잔여수량이 0이 되는 시나리오
+            when(itemA.getRemainingQuantity()).thenReturn(1, 0);
+            when(itemB.getRemainingQuantity()).thenReturn(0);
+
+            Product product = createMockProduct(10L, 50);
+            User user = createMockUser(101L, 500, new BigDecimal("100000"));
+
+            // 이 주문에 사용된 쿠폰이 존재
+            com.shop.domain.coupon.entity.UserCoupon usedCoupon =
+                    mock(com.shop.domain.coupon.entity.UserCoupon.class);
+            when(userCouponRepository.findByOrderId(1L)).thenReturn(Optional.of(usedCoupon));
+
+            when(orderRepository.findByIdAndUserIdWithLock(1L, 101L)).thenReturn(Optional.of(order));
+            when(productRepository.findByIdWithLock(10L)).thenReturn(Optional.of(product));
+            when(userRepository.findByIdWithLockAndTier(101L)).thenReturn(Optional.of(user));
+
+            service.partialCancel(101L, 1L, 100L, 1);
+
+            // 핵심 검증: 주문이 CANCELLED로 전이되고, 쿠폰이 복원된다
+            verify(order).cancel();
+            verify(userCouponRepository).findByOrderId(1L);
+            verify(usedCoupon).cancelUse();
+        }
+
+        /**
+         * [P0-2 보완] 쿠폰 미사용 주문의 부분취소 전체 CANCELLED 전이 시 에러가 없다.
+         *
+         * 쿠폰을 사용하지 않은 주문에서 모든 아이템을 부분취소하면
+         * userCouponRepository.findByOrderId()가 empty를 반환하고,
+         * cancelUse()가 호출되지 않아야 한다 (NPE 방지).
+         */
+        @Test
+        @DisplayName("[P0-2 보완] 쿠폰 미사용 주문의 전체 부분취소 시 에러 없이 CANCELLED 전이")
+        void allItemsCancelled_noCoupon_cancelledWithoutError() {
+            Order order = createTestOrder(OrderStatus.PAID);
+            OrderItem itemA = order.getItems().get(0);
+            OrderItem itemB = order.getItems().get(1);
+            when(itemA.getRemainingQuantity()).thenReturn(1, 0);
+            when(itemB.getRemainingQuantity()).thenReturn(0);
+
+            Product product = createMockProduct(10L, 50);
+            User user = createMockUser(101L, 500, new BigDecimal("100000"));
+
+            // 쿠폰 미사용 주문 → findByOrderId가 empty 반환
+            when(userCouponRepository.findByOrderId(1L)).thenReturn(Optional.empty());
+
+            when(orderRepository.findByIdAndUserIdWithLock(1L, 101L)).thenReturn(Optional.of(order));
+            when(productRepository.findByIdWithLock(10L)).thenReturn(Optional.of(product));
+            when(userRepository.findByIdWithLockAndTier(101L)).thenReturn(Optional.of(user));
+
+            // NPE 없이 정상 실행되는지 검증
+            assertThatCode(() -> service.partialCancel(101L, 1L, 100L, 1))
+                    .doesNotThrowAnyException();
+
+            verify(order).cancel();
+            verify(userCouponRepository).findByOrderId(1L);
+        }
     }
 
     // ═══════════════════════════════════════════════════════════

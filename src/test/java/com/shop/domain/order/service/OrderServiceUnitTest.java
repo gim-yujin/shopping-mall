@@ -311,6 +311,67 @@ class OrderServiceUnitTest {
 
     // ── Step 3: 반품 관리 조회 위임 테스트 ────────────────────
 
+    /**
+     * [P0-1 버그 시나리오 재현 테스트] 부분취소 후 배송완료 시 적립 포인트 과다 지급 방지.
+     *
+     * <h3>버그 시나리오</h3>
+     * <ol>
+     *   <li>30,000원 주문, 1.5% 적립률 → earnedPointsSnapshot = 450P</li>
+     *   <li>PAID 상태에서 10,000원분 부분취소 → refundedAmount = 10,000원</li>
+     *   <li>배송완료(DELIVERED) → settleEarnedPoints 호출</li>
+     * </ol>
+     *
+     * <h3>기존 버그</h3>
+     * <p>settleEarnedPoints()가 earnedPointsSnapshot(450P)을 그대로 적립.
+     * 부분취소로 10,000원이 환불되었으므로 실결제금액은 20,000원인데
+     * 30,000원 기준 포인트(450P)가 적립되어 150P 과다 지급.</p>
+     *
+     * <h3>수정 후 기대 동작</h3>
+     * <p>settleEarnedPoints()가 (finalAmount - refundedAmount) × pointEarnRate로 재계산.
+     * (30,000 - 10,000) × 1.5% = 300P만 적립.</p>
+     */
+    @Test
+    @DisplayName("[P0-1 재현] 부분취소 후 배송완료 시 적립 포인트가 실결제금액 기준으로 감소한다")
+    void settleEarnedPoints_afterPartialCancel_recalculatesBasedOnEffectivePaid() {
+        Long orderId = 1L;
+        Long userId = 101L;
+
+        Order order = mock(Order.class);
+        User user = mock(User.class);
+
+        when(orderRepository.findByIdWithLock(orderId)).thenReturn(Optional.of(order));
+        when(order.getOrderStatus()).thenReturn(OrderStatus.SHIPPED);
+        when(order.isPointsSettled()).thenReturn(false);
+        when(order.getUserId()).thenReturn(userId);
+        when(order.getOrderId()).thenReturn(orderId);
+        when(order.getOrderNumber()).thenReturn("ORD-P0-1");
+
+        // 시나리오: 30,000원 주문 후 10,000원 부분취소 → refundedAmount = 10,000
+        when(order.getFinalAmount()).thenReturn(new BigDecimal("30000"));
+        when(order.getRefundedAmount()).thenReturn(new BigDecimal("10000"));
+        when(order.getPointEarnRateSnapshot()).thenReturn(new BigDecimal("1.50"));
+        // earnedPointsSnapshot은 주문 생성 시점의 원래 값(450P)이지만,
+        // 수정된 settleEarnedPoints는 이 값을 사용하지 않고 재계산한다.
+        lenient().when(order.getEarnedPointsSnapshot()).thenReturn(450);
+
+        when(userRepository.findByIdWithLockAndTier(userId)).thenReturn(Optional.of(user));
+        when(user.getUserId()).thenReturn(userId);
+        when(user.getPointBalance()).thenReturn(300);
+
+        orderService.updateOrderStatus(orderId, "DELIVERED");
+
+        // 핵심 검증: (30,000 - 10,000) × 1.5% = 300P (기존 버그: 450P)
+        verify(user).addPoints(300);
+        verify(order).settlePoints();
+
+        // 포인트 이력이 300P로 기록되는지 검증
+        org.mockito.ArgumentCaptor<PointHistory> captor =
+                org.mockito.ArgumentCaptor.forClass(PointHistory.class);
+        verify(pointHistoryRepository).save(captor.capture());
+        assertThat(captor.getValue().getAmount()).isEqualTo(300);
+        assertThat(captor.getValue().getChangeType()).isEqualTo(PointHistory.EARN);
+    }
+
     @Test
     @DisplayName("getReturnRequests — queryService.getReturnRequests에 위임한다")
     void getReturnRequests_delegatesToQueryService() {
