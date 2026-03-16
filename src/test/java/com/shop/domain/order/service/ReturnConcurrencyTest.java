@@ -337,9 +337,13 @@ class ReturnConcurrencyTest {
         }
 
         try {
-            ready.await(10, TimeUnit.SECONDS);
+            assertThat(ready.await(10, TimeUnit.SECONDS))
+                    .as("모든 스레드가 준비 상태가 되어야 합니다")
+                    .isTrue();
             start.countDown();
-            done.await(60, TimeUnit.SECONDS);
+            assertThat(done.await(60, TimeUnit.SECONDS))
+                    .as("지정 시간 내 모든 작업이 완료되어야 합니다")
+                    .isTrue();
         } finally {
             executor.close();
         }
@@ -470,7 +474,9 @@ class ReturnConcurrencyTest {
         boolean completedInTime;
         long elapsed;
         try {
-            ready.await(10, TimeUnit.SECONDS);
+            assertThat(ready.await(10, TimeUnit.SECONDS))
+                    .as("모든 스레드가 준비 상태가 되어야 합니다")
+                    .isTrue();
             long startTime = System.currentTimeMillis();
             start.countDown();
             completedInTime = done.await(30, TimeUnit.SECONDS);
@@ -597,9 +603,13 @@ class ReturnConcurrencyTest {
         });
 
         try {
-            ready.await(10, TimeUnit.SECONDS);
+            assertThat(ready.await(10, TimeUnit.SECONDS))
+                    .as("모든 스레드가 준비 상태가 되어야 합니다")
+                    .isTrue();
             start.countDown();
-            done.await(60, TimeUnit.SECONDS);
+            assertThat(done.await(60, TimeUnit.SECONDS))
+                    .as("지정 시간 내 모든 작업이 완료되어야 합니다")
+                    .isTrue();
         } finally {
             executor.close();
         }
@@ -730,9 +740,13 @@ class ReturnConcurrencyTest {
         });
 
         try {
-            ready.await(10, TimeUnit.SECONDS);
+            assertThat(ready.await(10, TimeUnit.SECONDS))
+                    .as("모든 스레드가 준비 상태가 되어야 합니다")
+                    .isTrue();
             start.countDown();
-            done.await(60, TimeUnit.SECONDS);
+            assertThat(done.await(60, TimeUnit.SECONDS))
+                    .as("지정 시간 내 모든 작업이 완료되어야 합니다")
+                    .isTrue();
         } finally {
             executor.close();
         }
@@ -844,9 +858,13 @@ class ReturnConcurrencyTest {
         }
 
         try {
-            ready.await(10, TimeUnit.SECONDS);
+            assertThat(ready.await(10, TimeUnit.SECONDS))
+                    .as("모든 스레드가 준비 상태가 되어야 합니다")
+                    .isTrue();
             start.countDown();
-            done.await(60, TimeUnit.SECONDS);
+            assertThat(done.await(60, TimeUnit.SECONDS))
+                    .as("지정 시간 내 모든 작업이 완료되어야 합니다")
+                    .isTrue();
         } finally {
             executor.close();
         }
@@ -973,7 +991,9 @@ class ReturnConcurrencyTest {
         boolean completedInTime;
         long elapsed;
         try {
-            ready.await(10, TimeUnit.SECONDS);
+            assertThat(ready.await(10, TimeUnit.SECONDS))
+                    .as("모든 스레드가 준비 상태가 되어야 합니다")
+                    .isTrue();
             long startTime = System.currentTimeMillis();
             start.countDown();
             completedInTime = done.await(30, TimeUnit.SECONDS);
@@ -995,7 +1015,9 @@ class ReturnConcurrencyTest {
         System.out.println("========================================");
 
         // ① 데드락 없이 빠르게 완료
-        assertThat(completedInTime).isTrue();
+        assertThat(completedInTime)
+                .as("지정 시간 내 모든 작업이 완료되어야 합니다")
+                .isTrue();
         assertThat(elapsed).isLessThan(5000);
 
         // ② 반품 신청 성공

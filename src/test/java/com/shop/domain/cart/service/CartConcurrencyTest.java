@@ -1,5 +1,6 @@
 package com.shop.domain.cart.service;
 
+import com.shop.testsupport.ConcurrencyTestSupport;
 import com.shop.testsupport.TestDataFactory;
 
 import org.junit.jupiter.api.*;
@@ -120,9 +121,16 @@ class CartConcurrencyTest {
         }
 
         try {
-            ready.await(10, TimeUnit.SECONDS);
-            start.countDown();
-            done.await(30, TimeUnit.SECONDS);
+            ConcurrencyTestSupport.assertAllWorkersCompleted(
+                    ready,
+                    start,
+                    done,
+                    10,
+                    30,
+                    TimeUnit.SECONDS,
+                    threadCount,
+                    successCount::get,
+                    failCount::get);
         } finally {
             executor.close();
         }
@@ -221,9 +229,16 @@ class CartConcurrencyTest {
         }
 
         try {
-            ready.await(10, TimeUnit.SECONDS);
-            start.countDown();
-            done.await(30, TimeUnit.SECONDS);
+            ConcurrencyTestSupport.assertAllWorkersCompleted(
+                    ready,
+                    start,
+                    done,
+                    10,
+                    30,
+                    TimeUnit.SECONDS,
+                    threadCount,
+                    successCount::get,
+                    failCount::get);
         } finally {
             executor.close();
         }
@@ -328,9 +343,16 @@ class CartConcurrencyTest {
         }
 
         try {
-            ready.await(10, TimeUnit.SECONDS);
-            start.countDown();
-            done.await(30, TimeUnit.SECONDS);
+            ConcurrencyTestSupport.assertAllWorkersCompleted(
+                    ready,
+                    start,
+                    done,
+                    10,
+                    30,
+                    TimeUnit.SECONDS,
+                    threadCount,
+                    successCount::get,
+                    failCount::get);
         } finally {
             executor.close();
         }
@@ -414,9 +436,16 @@ class CartConcurrencyTest {
         });
 
         try {
-            ready.await(10, TimeUnit.SECONDS);
-            start.countDown();
-            done.await(30, TimeUnit.SECONDS);
+            ConcurrencyTestSupport.assertAllWorkersCompleted(
+                    ready,
+                    start,
+                    done,
+                    10,
+                    30,
+                    TimeUnit.SECONDS,
+                    threadCount,
+                    successCount::get,
+                    failCount::get);
         } finally {
             executor.close();
         }
@@ -483,9 +512,16 @@ class CartConcurrencyTest {
         });
 
         try {
-            ready.await(10, TimeUnit.SECONDS);
-            start.countDown();
-            done.await(30, TimeUnit.SECONDS);
+            ConcurrencyTestSupport.assertAllWorkersCompleted(
+                    ready,
+                    start,
+                    done,
+                    10,
+                    30,
+                    TimeUnit.SECONDS,
+                    threadCount,
+                    successCount::get,
+                    failCount::get);
         } finally {
             executor.close();
         }
