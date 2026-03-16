@@ -6,6 +6,7 @@ import com.shop.domain.review.dto.ReviewCreateRequest;
 import com.shop.domain.review.entity.Review;
 import com.shop.global.exception.BusinessException;
 import com.shop.global.exception.ResourceNotFoundException;
+import com.shop.testsupport.ActiveDataLookupHelper;
 import jakarta.persistence.EntityManagerFactory;
 import org.hibernate.stat.Statistics;
 import org.junit.jupiter.api.*;
@@ -52,6 +53,9 @@ class ReviewServiceIntegrationTest {
     @Autowired
     private EntityManagerFactory entityManagerFactory;
 
+    @Autowired
+    private ActiveDataLookupHelper activeDataLookupHelper;
+
     private Long testUserId;
     private Long otherUserId;
     private Long testProductId;
@@ -74,10 +78,8 @@ class ReviewServiceIntegrationTest {
         testUserId = userIds.get(0);
         otherUserId = userIds.get(1);
 
-        // 활성 상품 1개
-        testProductId = jdbcTemplate.queryForObject(
-                "SELECT product_id FROM products WHERE is_active = true LIMIT 1",
-                Long.class);
+        // 테스트 의도: "아무거나 1건"의 활성 상품으로 최소 PK 1건을 안정적으로 선택.
+        testProductId = activeDataLookupHelper.findRepresentativeActiveProductId();
 
         // review_count를 실제 리뷰 수와 동기화 (이전 테스트/운영으로 불일치 가능)
         jdbcTemplate.update("""
@@ -344,11 +346,8 @@ class ReviewServiceIntegrationTest {
     @Test
     @DisplayName("createReview 실패 — 주문 상품과 요청 상품 불일치")
     void createReview_productMismatch_throwsException() {
-        Long anotherProductId = jdbcTemplate.queryForObject(
-                "SELECT product_id FROM products WHERE is_active = true AND product_id <> ? ORDER BY product_id LIMIT 1",
-                Long.class,
-                testProductId
-        );
+        // 테스트 의도: "특정 조건의 대표 1건"(현재 상품 제외)으로 최소 PK 상품을 선택.
+        Long anotherProductId = activeDataLookupHelper.findRepresentativeActiveProductIdExcluding(testProductId, 0);
         assertThat(anotherProductId).as("테스트용 다른 상품이 필요합니다.").isNotNull();
 
         Long orderItemId = createOrderItemForReview(testUserId, anotherProductId, "DELIVERED");
@@ -601,11 +600,8 @@ class ReviewServiceIntegrationTest {
     @DisplayName("getHelpedReviewIds — 도움돼요 누른 리뷰 ID 반환")
     void getHelpedReviewIds_returnsCorrectIds() {
         // Given
-        Long anotherProductId = jdbcTemplate.queryForObject(
-                "SELECT product_id FROM products WHERE is_active = true AND product_id <> ? ORDER BY product_id LIMIT 1",
-                Long.class,
-                testProductId
-        );
+        // 테스트 의도: "특정 조건의 대표 1건"(현재 상품 제외)으로 최소 PK 상품을 선택.
+        Long anotherProductId = activeDataLookupHelper.findRepresentativeActiveProductIdExcluding(testProductId, 0);
         assertThat(anotherProductId).as("테스트용 다른 상품이 필요합니다.").isNotNull();
 
         Review r1 = reviewService.createReview(testUserId,

@@ -1,6 +1,7 @@
 package com.shop.domain.product.service;
 
 import com.shop.domain.product.dto.CachedProductDetail;
+import com.shop.testsupport.ActiveDataLookupHelper;
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -28,14 +29,16 @@ class ProductServiceIntegrationTest {
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
+    @Autowired
+    private ActiveDataLookupHelper activeDataLookupHelper;
+
     private Long testProductId;
     private int originalViewCount;
 
     @BeforeEach
     void setUp() {
-        testProductId = jdbcTemplate.queryForObject(
-                "SELECT product_id FROM products WHERE is_active = true LIMIT 1",
-                Long.class);
+        // 테스트 의도: "아무거나 1건"의 활성 상품으로 최소 PK 1건을 안정적으로 선택.
+        testProductId = activeDataLookupHelper.findRepresentativeActiveProductId();
         originalViewCount = jdbcTemplate.queryForObject(
                 "SELECT view_count FROM products WHERE product_id = ?",
                 Integer.class, testProductId);

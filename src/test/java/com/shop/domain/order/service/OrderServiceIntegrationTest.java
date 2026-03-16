@@ -7,6 +7,7 @@ import com.shop.domain.order.repository.OrderRepository;
 import com.shop.domain.product.service.ProductService;
 import com.shop.global.exception.BusinessException;
 import com.shop.global.exception.InsufficientStockException;
+import com.shop.testsupport.ActiveDataLookupHelper;
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -62,6 +63,9 @@ class OrderServiceIntegrationTest {
     @Autowired
     private com.shop.global.outbox.OutboxEventPoller outboxEventPoller;
 
+    @Autowired
+    private ActiveDataLookupHelper activeDataLookupHelper;
+
     // 테스트 대상
     private Long testUserId;
     private Long testProductId;
@@ -75,24 +79,15 @@ class OrderServiceIntegrationTest {
 
     @BeforeEach
     void setUp() {
-        // 1) 활성 상품 1개 (충분한 재고)
-        testProductId = jdbcTemplate.queryForObject(
-                "SELECT product_id FROM products WHERE is_active = true AND stock_quantity >= 100 LIMIT 1",
-                Long.class);
+        // 테스트 의도: "특정 조건의 대표 1건"(재고 100 이상)으로 최소 PK 상품을 선택.
+        testProductId = activeDataLookupHelper.findRepresentativeActiveProductIdWithMinStock(100);
 
         originalProductState = jdbcTemplate.queryForMap(
                 "SELECT stock_quantity, sales_count FROM products WHERE product_id = ?",
                 testProductId);
 
-        // 2) 활성 사용자 1명 (빈 장바구니)
-        testUserId = jdbcTemplate.queryForObject(
-                """
-                SELECT u.user_id FROM users u
-                WHERE u.is_active = true AND u.role = 'ROLE_USER'
-                  AND NOT EXISTS (SELECT 1 FROM carts c WHERE c.user_id = u.user_id)
-                ORDER BY u.user_id LIMIT 1
-                """,
-                Long.class);
+        // 테스트 의도: "특정 조건의 대표 1건"(빈 장바구니 사용자)으로 최소 PK 사용자를 선택.
+        testUserId = activeDataLookupHelper.findRepresentativeActiveUserIdWithEmptyCart();
 
         originalUserState = jdbcTemplate.queryForMap(
                 "SELECT total_spent, point_balance, tier_id FROM users WHERE user_id = ?",
@@ -364,9 +359,8 @@ class OrderServiceIntegrationTest {
     @DisplayName("createOrder 실패 — 선택 주문 요청 ID 일부 누락 시 실패")
     void createOrder_partialOrderWithMissingRequestedIds_throwsBusinessException() {
         // Given: 서로 다른 장바구니 항목 2개를 선택 주문 대상으로 구성
-        Long secondProductId = jdbcTemplate.queryForObject(
-                "SELECT product_id FROM products WHERE is_active = true AND stock_quantity >= 10 AND product_id <> ? LIMIT 1",
-                Long.class, testProductId);
+        // 테스트 의도: "특정 조건의 대표 1건"(재고 10 이상 + 기존 상품 제외)으로 최소 PK 상품 선택.
+        Long secondProductId = activeDataLookupHelper.findRepresentativeActiveProductIdExcluding(testProductId, 10);
 
         Long firstCartId = addCartItemAndReturnId(testUserId, testProductId, 1);
         Long secondCartId = addCartItemAndReturnId(testUserId, secondProductId, 1);
