@@ -150,9 +150,13 @@ class OrderSameUserConcurrencyTest {
         executor.submit(task);
 
         try {
-            assertThat(ready.await(5, TimeUnit.SECONDS)).isTrue();
+            assertThat(ready.await(5, TimeUnit.SECONDS))
+                    .as("모든 스레드가 준비 상태가 되어야 합니다")
+                    .isTrue();
             start.countDown();
-            assertThat(done.await(30, TimeUnit.SECONDS)).isTrue();
+            assertThat(done.await(30, TimeUnit.SECONDS))
+                    .as("지정 시간 내 모든 작업이 완료되어야 합니다")
+                    .isTrue();
         } finally {
             executor.close();
         }
