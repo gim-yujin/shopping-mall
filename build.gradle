@@ -58,6 +58,7 @@ dependencies {
 
     // Test
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'org.awaitility:awaitility:4.2.2'
     testImplementation 'org.springframework.security:spring-security-test'
     // Java 21 런타임에서 Mockito inline instrumentation 호환성 보강
     testRuntimeOnly 'net.bytebuddy:byte-buddy:1.17.5'
