@@ -130,7 +130,7 @@ class CartConcurrencyTest {
                     TimeUnit.SECONDS,
                     threadCount,
                     successCount::get,
-                    failCount::get);
+                    () -> limitFailCount.get() + otherFailCount.get());
         } finally {
             executor.close();
         }
@@ -236,9 +236,9 @@ class CartConcurrencyTest {
                     10,
                     30,
                     TimeUnit.SECONDS,
-                    threadCount,
-                    successCount::get,
-                    failCount::get);
+                    2,
+                    () -> 2 - errors.size(),
+                    errors::size);
         } finally {
             executor.close();
         }
@@ -352,7 +352,7 @@ class CartConcurrencyTest {
                     TimeUnit.SECONDS,
                     threadCount,
                     successCount::get,
-                    failCount::get);
+                    () -> limitFailCount.get() + otherFailCount.get());
         } finally {
             executor.close();
         }
@@ -443,9 +443,9 @@ class CartConcurrencyTest {
                     10,
                     30,
                     TimeUnit.SECONDS,
-                    threadCount,
-                    successCount::get,
-                    failCount::get);
+                    2,
+                    () -> 2 - errors.size(),
+                    errors::size);
         } finally {
             executor.close();
         }
@@ -519,9 +519,9 @@ class CartConcurrencyTest {
                     10,
                     30,
                     TimeUnit.SECONDS,
-                    threadCount,
-                    successCount::get,
-                    failCount::get);
+                    2,
+                    () -> 2 - errors.size(),
+                    errors::size);
         } finally {
             executor.close();
         }
