@@ -9,7 +9,9 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.TestPropertySource;
 
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
+import static org.awaitility.Awaitility.await;
 import static org.assertj.core.api.Assertions.assertThat;
 
 @SpringBootTest
@@ -35,7 +37,7 @@ class SearchServiceIntegrationTest {
 
     @Test
     @DisplayName("logSearch - search_logs에 검색 로그가 저장됨")
-    void logSearch_persistsRow() throws InterruptedException {
+    void logSearch_persistsRow() {
         keywordForCleanup = "TEST_SEARCH_" + System.currentTimeMillis();
         int before = jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM search_logs WHERE search_keyword = ?",
@@ -53,16 +55,20 @@ class SearchServiceIntegrationTest {
 
         searchService.logSearch(validUserId, keywordForCleanup, 5, "127.0.0.1", "JUnit-Integration");
 
-        // @Async로 변경된 logSearch가 별도 스레드에서 완료될 때까지 대기
-        Thread.sleep(500);
+        // @Async로 변경된 logSearch가 별도 스레드에서 완료되어 DB 상태가 기대값이 될 때까지 폴링
+        await()
+                .atMost(3, TimeUnit.SECONDS)
+                .pollInterval(100, TimeUnit.MILLISECONDS)
+                .untilAsserted(() -> {
+                    int current = jdbcTemplate.queryForObject(
+                            "SELECT COUNT(*) FROM search_logs WHERE search_keyword = ?",
+                            Integer.class, keywordForCleanup);
 
-        int after = jdbcTemplate.queryForObject(
-                "SELECT COUNT(*) FROM search_logs WHERE search_keyword = ?",
-                Integer.class, keywordForCleanup);
-
-        assertThat(after)
-                .as("검색 로그가 1건 추가되어야 함")
-                .isEqualTo(before + 1);
+                    assertThat(current)
+                            .withFailMessage("검색 로그 반영 대기 타임아웃 - keyword=%s, before=%s, expected=%s, current=%s",
+                                    keywordForCleanup, before, before + 1, current)
+                            .isEqualTo(before + 1);
+                });
     }
 
     @Test

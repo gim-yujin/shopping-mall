@@ -24,6 +24,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.lang.reflect.Method;
 import java.time.Year;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.locks.LockSupport;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -425,7 +426,7 @@ class CancelOrderConcurrencyTest {
                         if (attempt == maxAttempts) {
                             throw e;
                         }
-                        Thread.sleep(100L * attempt);
+                        LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(100L * attempt));
                     }
                 }
             } catch (Exception e) {
@@ -452,7 +453,7 @@ class CancelOrderConcurrencyTest {
                         if (attempt == maxAttempts) {
                             throw e;
                         }
-                        Thread.sleep(200L * attempt);
+                        LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(200L * attempt));
                     }
                 }
             } catch (Exception e) {
