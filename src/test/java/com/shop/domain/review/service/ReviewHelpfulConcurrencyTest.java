@@ -145,7 +145,7 @@ class ReviewHelpfulConcurrencyTest {
     void concurrentHelpful_differentUsers() throws InterruptedException {
         // Given
         int threadCount = 100;
-        int poolSize = 50;
+        int poolSize = threadCount;
 
         ExecutorService executor = Executors.newFixedThreadPool(poolSize);
         CountDownLatch ready = new CountDownLatch(threadCount);  // 전원 준비 대기
@@ -179,11 +179,16 @@ class ReviewHelpfulConcurrencyTest {
         }
 
         try {
-            ready.await(10, TimeUnit.SECONDS);  // 전원 준비 완료 대기
-            start.countDown();                   // 동시 출발!
-            done.await(60, TimeUnit.SECONDS);    // 전원 완료 대기 (최대 60초)
+            assertThat(ready.await(10, TimeUnit.SECONDS))
+                    .as("모든 스레드가 준비 상태가 되어야 합니다")
+                    .isTrue();
+            start.countDown();
+            assertThat(done.await(60, TimeUnit.SECONDS))
+                    .as("지정 시간 내 모든 작업이 완료되어야 합니다")
+                    .isTrue();
         } finally {
-            executor.close();
+            start.countDown();
+            shutdownExecutor(executor);
         }
 
         // Then: DB에서 직접 조회하여 검증 (Hibernate 캐시 우회)
@@ -262,11 +267,16 @@ class ReviewHelpfulConcurrencyTest {
         }
 
         try {
-            ready.await(10, TimeUnit.SECONDS);
+            assertThat(ready.await(10, TimeUnit.SECONDS))
+                    .as("모든 스레드가 준비 상태가 되어야 합니다")
+                    .isTrue();
             start.countDown();
-            done.await(30, TimeUnit.SECONDS);
+            assertThat(done.await(30, TimeUnit.SECONDS))
+                    .as("지정 시간 내 모든 작업이 완료되어야 합니다")
+                    .isTrue();
         } finally {
-            executor.close();
+            start.countDown();
+            shutdownExecutor(executor);
         }
 
         // Then
@@ -339,11 +349,16 @@ class ReviewHelpfulConcurrencyTest {
             }
 
             try {
-                ready.await(5, TimeUnit.SECONDS);
+                assertThat(ready.await(5, TimeUnit.SECONDS))
+                        .as("모든 스레드가 준비 상태가 되어야 합니다")
+                        .isTrue();
                 start.countDown();
-                done.await(10, TimeUnit.SECONDS);
+                assertThat(done.await(10, TimeUnit.SECONDS))
+                        .as("지정 시간 내 모든 작업이 완료되어야 합니다")
+                        .isTrue();
             } finally {
-                executor.close();
+                start.countDown();
+                shutdownExecutor(executor);
             }
 
             Integer actualHelpfulCount = jdbcTemplate.queryForObject(
