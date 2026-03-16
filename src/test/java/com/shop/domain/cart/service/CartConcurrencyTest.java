@@ -130,7 +130,7 @@ class CartConcurrencyTest {
                     TimeUnit.SECONDS,
                     threadCount,
                     successCount::get,
-                    () -> limitFailCount.get() + otherFailCount.get());
+                    failCount::get);
         } finally {
             executor.close();
         }
@@ -236,9 +236,9 @@ class CartConcurrencyTest {
                     10,
                     30,
                     TimeUnit.SECONDS,
-                    2,
-                    () -> 2 - errors.size(),
-                    errors::size);
+                    threadCount,
+                    successCount::get,
+                    failCount::get);
         } finally {
             executor.close();
         }
