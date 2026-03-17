@@ -40,8 +40,21 @@ import java.util.UUID;
 /**
  * 주문 생성 전담 서비스.
  *
- * OrderService(God Class)에서 분리: 장바구니 → 주문 변환, 재고 차감,
- * 쿠폰/포인트 처리, 결제 금액 계산 등 주문 생성에 필요한 모든 로직을 담당한다.
+ * <p>OrderService(God Class)에서 분리: 장바구니 → 주문 변환, 재고 차감,
+ * 쿠폰/포인트 처리, 결제 금액 계산 등 주문 생성에 필요한 모든 로직을 담당한다.</p>
+ *
+ * <h3>[Phase 3 코드 품질] createOrder() 메서드 분해</h3>
+ *
+ * <p><b>문제:</b> createOrder()가 250줄 이상의 단일 메서드로,
+ * 장바구니 결정 → 재고 차감 → 쿠폰 할인 → 포인트 사용 → 주문 생성 → 후처리까지
+ * 모든 단계를 한 메서드에서 처리했다. 코드 리뷰 시 개별 단계의 시작/끝을 파악하기 어렵고,
+ * 특정 단계만 테스트하거나 수정할 때 관련 없는 코드를 읽어야 했다.</p>
+ *
+ * <p><b>해결:</b> 각 비즈니스 단계를 의미 있는 이름의 private 메서드로 추출한다.
+ * createOrder()는 전체 흐름을 한눈에 파악할 수 있는 고수준 오케스트레이터가 되고,
+ * 각 단계의 세부 로직은 해당 메서드 안에 캡슐화된다.
+ * 메서드 간 데이터 전달은 내부 record 타입(CartSelection, StockDeductionResult, CouponResult)을
+ * 사용하여 타입 안전하게 처리한다.</p>
  */
 @Service
 @Transactional(readOnly = true)
@@ -84,6 +97,12 @@ public class OrderCreationService {
         this.orderInvariantValidator = orderInvariantValidator;
     }
 
+    /**
+     * 주문을 생성한다.
+     *
+     * <p>[Phase 3 코드 품질] 고수준 오케스트레이터로 재구성.
+     * 각 단계가 명확한 이름의 메서드로 분리되어 전체 흐름을 한눈에 파악할 수 있다.</p>
+     */
     @Transactional
     public Order createOrder(Long userId, OrderCreateRequest request) {
         PaymentMethod paymentMethod = PaymentMethod.fromCode(request.paymentMethod())
@@ -92,9 +111,58 @@ public class OrderCreationService {
         // 같은 사용자의 동시 주문 요청을 트랜잭션 단위로 직렬화
         cartRepository.acquireUserCartLock(userId);
 
-        // [P1-6] 장바구니 선택 주문 지원.
-        // cartItemIds가 null/빈 리스트이면 전체 장바구니를 주문한다 (기존 동작 호환).
-        // 값이 있으면 해당 ID의 장바구니 항목만 주문 대상으로 사용한다.
+        // 1) 장바구니 항목 결정 (전체 / 선택 주문)
+        CartSelection cartSelection = resolveCartItems(userId, request);
+
+        // 2) 사용자 & 등급 정보 로드
+        User user = userRepository.findByIdWithLockAndTier(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("사용자", userId));
+        UserTier tier = user.getTier();
+
+        // 3) 재고 차감 & 주문 라인 생성
+        StockDeductionResult stockResult = deductStockAndBuildOrderLines(
+                cartSelection.items(), tier.getDiscountRate());
+
+        // 4) 쿠폰 할인 적용
+        CouponResult couponResult = applyCouponDiscount(request, stockResult.totalAmount(), userId);
+        BigDecimal totalDiscount = stockResult.tierDiscountTotal().add(couponResult.discount());
+
+        // 5) 포인트 사용
+        int usePoints = processPointsUsage(request, user, stockResult.totalAmount(), totalDiscount);
+
+        // 6) 배송비 & 최종 금액 계산
+        BigDecimal shippingFee = shippingFeeCalculator.calculateShippingFee(tier, stockResult.totalAmount());
+        BigDecimal usedPointsAmount = BigDecimal.valueOf(usePoints);
+        BigDecimal finalAmount = shippingFeeCalculator.calculateFinalAmount(
+                stockResult.totalAmount(), totalDiscount.add(usedPointsAmount), shippingFee);
+
+        // 7) 주문 생성 & 저장
+        Order savedOrder = buildAndSaveOrder(
+                userId, paymentMethod, request, stockResult, couponResult,
+                usePoints, shippingFee, finalAmount, tier);
+
+        // 8) 후처리 (재고 이력, 쿠폰 사용, 등급 재계산, 장바구니 정리, 이벤트 발행)
+        finalizeOrder(savedOrder, user, tier, stockResult, couponResult,
+                cartSelection, usePoints);
+
+        return savedOrder;
+    }
+
+    // ── 1단계: 장바구니 항목 결정 ────────────────────────────────
+
+    /**
+     * [Phase 3 코드 품질] 장바구니 선택 로직을 분리.
+     *
+     * <p><b>문제:</b> 전체 주문과 선택 주문의 분기 로직이 createOrder() 상단에
+     * 25줄 이상 혼재하여, 이후 단계의 시작점을 파악하기 어려웠다.</p>
+     *
+     * <p><b>해결:</b> 장바구니 결정 로직을 별도 메서드로 추출하고,
+     * 결과를 CartSelection record로 반환하여 isPartialOrder 플래그까지 캡슐화한다.</p>
+     *
+     * <p>[P1-6] cartItemIds가 null/빈 리스트이면 전체 장바구니를 주문한다 (기존 동작 호환).
+     * 값이 있으면 해당 ID의 장바구니 항목만 주문 대상으로 사용한다.</p>
+     */
+    private CartSelection resolveCartItems(Long userId, OrderCreateRequest request) {
         List<Cart> cartItems;
         boolean isPartialOrder;
         if (request.cartItemIds() != null && !request.cartItemIds().isEmpty()) {
@@ -121,15 +189,26 @@ public class OrderCreationService {
         // 데드락 예방을 위해 상품 ID 순으로 정렬 (자원 획득 순서 일관성 유지)
         cartItems.sort(java.util.Comparator.comparing(cart -> cart.getProduct().getProductId()));
 
-        // 0) 사용자 & 등급 정보 로드
-        User user = userRepository.findByIdWithLockAndTier(userId)
-                .orElseThrow(() -> new ResourceNotFoundException("사용자", userId));
-        UserTier tier = user.getTier();
-        BigDecimal tierDiscountRate = tier.getDiscountRate();  // e.g. 5.00 = 5%
+        return new CartSelection(cartItems, isPartialOrder);
+    }
 
+    // ── 3단계: 재고 차감 & 주문 라인 생성 ──────────────────────────
+
+    /**
+     * [Phase 3 코드 품질] 재고 차감 + 주문 라인 빌드 + 등급 할인 계산을 분리.
+     *
+     * <p><b>문제:</b> 상품별 재고 차감, 소계 계산, 등급 할인 계산, 재고 이력 스냅샷 생성이
+     * 하나의 for 루프 안에 40줄 이상 혼재했다. 재고 관련 로직만 확인하려 해도
+     * 할인 계산 코드를 함께 읽어야 했다.</p>
+     *
+     * <p><b>해결:</b> for 루프 전체를 별도 메서드로 추출하고, 결과를 StockDeductionResult로
+     * 캡슐화하여 totalAmount, tierDiscountTotal, orderLines, inventorySnapshots를
+     * 한 번에 반환한다.</p>
+     */
+    private StockDeductionResult deductStockAndBuildOrderLines(
+            List<Cart> cartItems, BigDecimal tierDiscountRate) {
         BigDecimal totalAmount = BigDecimal.ZERO;
         BigDecimal tierDiscountTotal = BigDecimal.ZERO;
-        String orderNumber = generateOrderNumber();
         List<OrderLine> orderLines = new ArrayList<>();
 
         // [BUG FIX] 재고 이력을 Order save 이후에 저장하기 위해 임시 보관하는 리스트.
@@ -140,7 +219,6 @@ public class OrderCreationService {
         // Order가 저장된 후에 orderId를 포함하여 일괄 저장한다.
         List<InventorySnapshot> inventorySnapshots = new ArrayList<>();
 
-        // 1) 재고 차감 & 주문 금액 계산
         for (Cart cart : cartItems) {
             Product product = productRepository.findByIdWithLock(cart.getProduct().getProductId())
                     .orElseThrow(() -> new ResourceNotFoundException("상품", cart.getProduct().getProductId()));
@@ -178,80 +256,121 @@ public class OrderCreationService {
                     product.getProductId(), cart.getQuantity(), beforeStock, product.getStockQuantity()));
         }
 
-        // 2) 쿠폰 할인 적용 (상품 금액 기준)
-        BigDecimal couponDiscount = BigDecimal.ZERO;
-        UserCoupon userCoupon = null;
-        if (request.userCouponId() != null) {
-            userCoupon = userCouponRepository.findByIdWithLock(request.userCouponId())
-                    .orElseThrow(() -> new BusinessException("COUPON_NOT_FOUND", "쿠폰을 찾을 수 없습니다."));
+        return new StockDeductionResult(totalAmount, tierDiscountTotal, orderLines, inventorySnapshots);
+    }
 
-            if (!userCoupon.getUserId().equals(userId)) {
-                throw new BusinessException("COUPON_INVALID", "본인의 쿠폰만 사용할 수 있습니다.");
-            }
-            if (!userCoupon.isAvailable()) {
-                throw new BusinessException("COUPON_EXPIRED", "사용할 수 없는 쿠폰입니다.");
-            }
+    // ── 4단계: 쿠폰 할인 적용 ──────────────────────────────────
 
-            // 쿠폰 최소 주문 기준은 "상품 금액(등급 할인/쿠폰 할인 전)" 기준으로 적용한다.
-            couponDiscount = userCoupon.getCoupon().calculateDiscount(totalAmount);
-
-            // [P0 BUG FIX] 쿠폰 할인이 0원이면 쿠폰을 사용하지 않는다.
-            //
-            // 기존 문제: Coupon.calculateDiscount()는 totalAmount < minOrderAmount이면
-            // BigDecimal.ZERO를 반환하지만, 이후 로직에서 이 경우를 체크하지 않고
-            // markAsUsedIfUnused()를 실행하여 할인 0원인데 쿠폰이 소진되었다.
-            //
-            // 수정: 최소 주문 금액 미달로 할인이 0원이면 명시적 에러를 반환한다.
-            // 사용자가 의도적으로 쿠폰을 선택했으므로, 조용히 무시하는 것보다
-            // 명확한 피드백을 제공하는 것이 UX상 올바르다.
-            if (couponDiscount.compareTo(BigDecimal.ZERO) == 0) {
-                throw new BusinessException("COUPON_MIN_ORDER_NOT_MET",
-                        "쿠폰 최소 주문 금액(" +
-                        String.format("%,.0f", userCoupon.getCoupon().getMinOrderAmount()) +
-                        "원)에 미달하여 쿠폰을 적용할 수 없습니다.");
-            }
+    /**
+     * [Phase 3 코드 품질] 쿠폰 검증 + 할인 계산을 분리.
+     *
+     * <p><b>문제:</b> 쿠폰 소유 검증, 사용 가능 여부 확인, 최소 주문금액 미달 처리,
+     * 할인 금액 계산이 createOrder() 중간에 30줄 이상 산재하여,
+     * 쿠폰 관련 비즈니스 규칙의 전체 그림을 파악하기 어려웠다.</p>
+     *
+     * <p><b>해결:</b> 쿠폰 처리 전체를 별도 메서드로 추출하고, CouponResult record로
+     * 할인 금액과 UserCoupon 참조를 함께 반환한다.
+     * 쿠폰 미사용 시 CouponResult.NONE이 반환된다.</p>
+     */
+    private CouponResult applyCouponDiscount(OrderCreateRequest request,
+                                              BigDecimal totalAmount, Long userId) {
+        if (request.userCouponId() == null) {
+            return CouponResult.NONE;
         }
 
-        BigDecimal totalDiscount = tierDiscountTotal.add(couponDiscount);
+        UserCoupon userCoupon = userCouponRepository.findByIdWithLock(request.userCouponId())
+                .orElseThrow(() -> new BusinessException("COUPON_NOT_FOUND", "쿠폰을 찾을 수 없습니다."));
 
-        // 3) 포인트 사용 (1P = 1원)
+        if (!userCoupon.getUserId().equals(userId)) {
+            throw new BusinessException("COUPON_INVALID", "본인의 쿠폰만 사용할 수 있습니다.");
+        }
+        if (!userCoupon.isAvailable()) {
+            throw new BusinessException("COUPON_EXPIRED", "사용할 수 없는 쿠폰입니다.");
+        }
+
+        // 쿠폰 최소 주문 기준은 "상품 금액(등급 할인/쿠폰 할인 전)" 기준으로 적용한다.
+        BigDecimal couponDiscount = userCoupon.getCoupon().calculateDiscount(totalAmount);
+
+        // [P0 BUG FIX] 쿠폰 할인이 0원이면 쿠폰을 사용하지 않는다.
+        //
+        // 기존 문제: Coupon.calculateDiscount()는 totalAmount < minOrderAmount이면
+        // BigDecimal.ZERO를 반환하지만, 이후 로직에서 이 경우를 체크하지 않고
+        // markAsUsedIfUnused()를 실행하여 할인 0원인데 쿠폰이 소진되었다.
+        //
+        // 수정: 최소 주문 금액 미달로 할인이 0원이면 명시적 에러를 반환한다.
+        // 사용자가 의도적으로 쿠폰을 선택했으므로, 조용히 무시하는 것보다
+        // 명확한 피드백을 제공하는 것이 UX상 올바르다.
+        if (couponDiscount.compareTo(BigDecimal.ZERO) == 0) {
+            throw new BusinessException("COUPON_MIN_ORDER_NOT_MET",
+                    "쿠폰 최소 주문 금액(" +
+                    String.format("%,.0f", userCoupon.getCoupon().getMinOrderAmount()) +
+                    "원)에 미달하여 쿠폰을 적용할 수 없습니다.");
+        }
+
+        return new CouponResult(couponDiscount, userCoupon);
+    }
+
+    // ── 5단계: 포인트 사용 ──────────────────────────────────────
+
+    /**
+     * [Phase 3 코드 품질] 포인트 검증 + 사용 처리를 분리.
+     *
+     * <p><b>문제:</b> 포인트 보유량 확인, 사용 상한 클램핑, 잔액 차감 로직이
+     * 쿠폰 처리 바로 뒤에 이어져 경계가 불명확했다.</p>
+     *
+     * <p><b>해결:</b> 포인트 관련 로직 전체를 분리하고, 실제 사용된 포인트 수를 반환한다.
+     * 사용 상한 자동 조정(클램핑) 로직이 이 메서드 안에 캡슐화된다.</p>
+     *
+     * @return 실제 사용된 포인트 (클램핑 적용 후)
+     */
+    private int processPointsUsage(OrderCreateRequest request, User user,
+                                    BigDecimal totalAmount, BigDecimal totalDiscount) {
         int usePoints = request.usePoints();
-        if (usePoints > 0) {
-            if (usePoints > user.getPointBalance()) {
-                throw new BusinessException("INSUFFICIENT_POINTS",
-                        "보유 포인트가 부족합니다. (보유: " + user.getPointBalance() + "P, 요청: " + usePoints + "P)");
-            }
-            // 포인트 사용 상한: 상품금액 - 할인 (배송비 제외, 최종금액이 0 미만이 되지 않도록)
-            BigDecimal maxUsable = totalAmount.subtract(totalDiscount);
-            if (maxUsable.compareTo(BigDecimal.ZERO) < 0) {
-                maxUsable = BigDecimal.ZERO;
-            }
-            if (BigDecimal.valueOf(usePoints).compareTo(maxUsable) > 0) {
-                usePoints = maxUsable.intValue();
-            }
-            user.usePoints(usePoints);
+        if (usePoints <= 0) {
+            return 0;
         }
-        BigDecimal usedPointsAmount = BigDecimal.valueOf(usePoints);
 
-        // 4) 배송비 계산 (등급별 무료배송 기준)
-        BigDecimal shippingFee = shippingFeeCalculator.calculateShippingFee(tier, totalAmount);
+        if (usePoints > user.getPointBalance()) {
+            throw new BusinessException("INSUFFICIENT_POINTS",
+                    "보유 포인트가 부족합니다. (보유: " + user.getPointBalance() + "P, 요청: " + usePoints + "P)");
+        }
+        // 포인트 사용 상한: 상품금액 - 할인 (배송비 제외, 최종금액이 0 미만이 되지 않도록)
+        BigDecimal maxUsable = totalAmount.subtract(totalDiscount);
+        if (maxUsable.compareTo(BigDecimal.ZERO) < 0) {
+            maxUsable = BigDecimal.ZERO;
+        }
+        if (BigDecimal.valueOf(usePoints).compareTo(maxUsable) > 0) {
+            usePoints = maxUsable.intValue();
+        }
+        user.usePoints(usePoints);
 
-        // 5) 최종 금액 & 주문 생성
-        BigDecimal finalAmount = shippingFeeCalculator.calculateFinalAmount(totalAmount, totalDiscount.add(usedPointsAmount), shippingFee);
+        return usePoints;
+    }
 
-        BigDecimal pointRateSnapshot = tier.getPointEarnRate(); // e.g. 1.50 = 1.5%
+    // ── 7단계: 주문 빌드 & 저장 ────────────────────────────────
+
+    private Order buildAndSaveOrder(Long userId, PaymentMethod paymentMethod,
+                                     OrderCreateRequest request,
+                                     StockDeductionResult stockResult,
+                                     CouponResult couponResult,
+                                     int usePoints, BigDecimal shippingFee,
+                                     BigDecimal finalAmount, UserTier tier) {
+        String orderNumber = generateOrderNumber();
+        BigDecimal pointRateSnapshot = tier.getPointEarnRate();
         int earnedPointsSnapshot = finalAmount.multiply(pointRateSnapshot)
                 .divide(BigDecimal.valueOf(100), 0, java.math.RoundingMode.FLOOR).intValue();
+        BigDecimal tierDiscountRate = tier.getDiscountRate();
 
         // [P2-11] 등급 할인과 쿠폰 할인을 분리하여 저장
-        Order order = new Order(orderNumber, userId, totalAmount, totalDiscount,
-                tierDiscountTotal, couponDiscount,
+        Order order = new Order(orderNumber, userId, stockResult.totalAmount(),
+                stockResult.tierDiscountTotal().add(couponResult.discount()),
+                stockResult.tierDiscountTotal(), couponResult.discount(),
                 shippingFee, finalAmount, pointRateSnapshot, earnedPointsSnapshot,
                 usePoints,
                 paymentMethod.getCode(), request.shippingAddress(),
                 request.recipientName(), request.recipientPhone());
 
-        for (OrderLine orderLine : orderLines) {
+        for (OrderLine orderLine : stockResult.orderLines()) {
             OrderItem item = new OrderItem(orderLine.productId(), orderLine.productName(),
                     orderLine.quantity(), orderLine.unitPrice(), tierDiscountRate, orderLine.subtotal());
             order.addItem(item);
@@ -259,13 +378,30 @@ public class OrderCreationService {
 
         order.markPaid();
         orderInvariantValidator.validateBeforePersist(order);
-        Order savedOrder = orderRepository.save(order);
+        return orderRepository.save(order);
+    }
+
+    // ── 8단계: 후처리 ──────────────────────────────────────────
+
+    /**
+     * [Phase 3 코드 품질] 주문 저장 후 후처리 단계를 분리.
+     *
+     * <p><b>문제:</b> 재고 이력 저장, 쿠폰 사용 처리, 누적 구매 금액 반영,
+     * 등급 재계산, 장바구니 정리, Outbox 이벤트 발행이 createOrder() 하단에
+     * 70줄 이상 나열되어 있었다. 주문 "생성" 로직과 "후처리" 로직의 경계가 불명확했다.</p>
+     *
+     * <p><b>해결:</b> 모든 후처리를 하나의 메서드로 묶어 createOrder()의 마지막 단계로
+     * 명확히 구분한다.</p>
+     */
+    private void finalizeOrder(Order savedOrder, User user, UserTier tier,
+                                StockDeductionResult stockResult, CouponResult couponResult,
+                                CartSelection cartSelection, int usePoints) {
+        Long userId = savedOrder.getUserId();
 
         // [BUG FIX] 재고 이력에 orderId를 포함하여 저장.
         // 기존: Order save 전에 inventoryHistory를 저장 → reference_id = null
         // 수정: Order save 후 savedOrder.getOrderId()로 정확한 주문 ID를 기록.
-        // 이로써 주문 생성(OUT)과 취소(IN) 이력 모두 reference_id가 일관되게 채워진다.
-        for (InventorySnapshot snapshot : inventorySnapshots) {
+        for (InventorySnapshot snapshot : stockResult.inventorySnapshots()) {
             inventoryHistoryRepository.save(new ProductInventoryHistory(
                     snapshot.productId(), "OUT", snapshot.quantity(),
                     snapshot.beforeStock(), snapshot.afterStock(),
@@ -273,10 +409,10 @@ public class OrderCreationService {
             ));
         }
 
-        // 5) 쿠폰 사용 처리 (DB 레벨 원자적 전환 보장)
-        if (userCoupon != null) {
+        // 쿠폰 사용 처리 (DB 레벨 원자적 전환 보장)
+        if (couponResult.userCoupon() != null) {
             int updatedRows = userCouponRepository.markAsUsedIfUnused(
-                    userCoupon.getUserCouponId(),
+                    couponResult.userCoupon().getUserCouponId(),
                     savedOrder.getOrderId(),
                     LocalDateTime.now()
             );
@@ -285,23 +421,12 @@ public class OrderCreationService {
             }
         }
 
-        // 6) 누적 구매 금액(total_spent) 반영
-        // total_spent는 연간 실적이 아니라 취소 반영 누적 금액으로 유지한다.
-        user.addTotalSpent(finalAmount);
+        // 누적 구매 금액(total_spent) 반영
+        user.addTotalSpent(savedOrder.getFinalAmount());
 
         // [P0 FIX] 포인트 적립을 배송 완료(DELIVERED) 시점으로 이연.
-        //
-        // 기존 문제: 주문 생성 즉시 user.addPoints(earnedPointsSnapshot)을 호출하여
-        // 포인트가 즉시 적립되었다. 이 경우 적립된 포인트를 다른 주문에 사용한 뒤
-        // 첫 주문을 취소하면, 취소 시 addPoints(usedPoints - earnedPoints) 계산에서
-        // 음수 → 0 클램핑이 발생하여 포인트 부당 지급이 가능했다.
-        //
-        // 수정: earnedPointsSnapshot은 Order에 저장하되, 실제 적립은
+        // earnedPointsSnapshot은 Order에 저장하되, 실제 적립은
         // OrderService.settleEarnedPoints()에서 배송 완료 시에만 수행한다.
-        // 취소 가능 상태(PENDING, PAID)에서는 points_settled=false이므로
-        // 취소 시 사용 포인트 환불만 처리하면 된다.
-        //
-        // (기존 코드 제거: user.addPoints(earnedPointsSnapshot))
 
         // 포인트 사용 이력 기록
         if (usePoints > 0) {
@@ -312,34 +437,51 @@ public class OrderCreationService {
             ));
         }
 
-        // 7) 등급 재계산 (누적 구매 금액 기준)
+        // 등급 재계산 (누적 구매 금액 기준)
         userTierRepository.findFirstByMinSpentLessThanEqualOrderByTierLevelDesc(user.getTotalSpent())
                 .ifPresent(user::updateTier);
 
         // [P1-6] 선택 주문인 경우 주문한 장바구니 항목만 삭제, 나머지는 유지한다.
-        // 전체 주문인 경우 기존과 동일하게 장바구니를 통째로 삭제한다.
-        if (isPartialOrder) {
-            List<Long> orderedCartIds = cartItems.stream().map(Cart::getCartId).toList();
+        if (cartSelection.isPartialOrder()) {
+            List<Long> orderedCartIds = cartSelection.items().stream().map(Cart::getCartId).toList();
             cartRepository.deleteAllById(orderedCartIds);
         } else {
             cartRepository.deleteByUserId(userId);
         }
 
-        // 8) [Outbox] 재고 변경 이벤트를 Outbox 테이블에 기록한다.
-        // 기존: eventPublisher.publishEvent() → 인메모리 이벤트, 커밋 후 크래시 시 유실
-        // 변경: outbox_events INSERT → 비즈니스 데이터와 같은 트랜잭션에서 원자적 저장
-        // 폴러(OutboxEventPoller)가 5초 간격으로 PENDING 이벤트를 읽어 캐시를 무효화한다.
+        // [Outbox] 재고 변경 이벤트를 Outbox 테이블에 기록한다.
         outboxEventPublisher.publishStockChanged(
-                orderLines.stream().map(OrderLine::productId).toList()
+                stockResult.orderLines().stream().map(OrderLine::productId).toList()
         );
-
-        return savedOrder;
     }
 
     private String generateOrderNumber() {
         String datePart = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmssSSS"));
         String randomPart = UUID.randomUUID().toString().replace("-", "").substring(0, 12).toUpperCase();
         return datePart + "-" + randomPart;
+    }
+
+    // ── 내부 DTO ─────────────────────────────────────────────
+
+    /** 장바구니 선택 결과를 캡슐화하는 내부 DTO. */
+    private record CartSelection(List<Cart> items, boolean isPartialOrder) {
+    }
+
+    /**
+     * 재고 차감 단계의 결과를 캡슐화하는 내부 DTO.
+     * totalAmount, tierDiscountTotal, orderLines, inventorySnapshots를 한 번에 전달한다.
+     */
+    private record StockDeductionResult(BigDecimal totalAmount, BigDecimal tierDiscountTotal,
+                                         List<OrderLine> orderLines,
+                                         List<InventorySnapshot> inventorySnapshots) {
+    }
+
+    /**
+     * 쿠폰 할인 단계의 결과를 캡슐화하는 내부 DTO.
+     * 쿠폰 미사용 시 {@link #NONE}을 반환한다.
+     */
+    private record CouponResult(BigDecimal discount, UserCoupon userCoupon) {
+        private static final CouponResult NONE = new CouponResult(BigDecimal.ZERO, null);
     }
 
     // 주문 생성 중 계산된 상품별 스냅샷 데이터를 임시로 보관하는 내부 DTO

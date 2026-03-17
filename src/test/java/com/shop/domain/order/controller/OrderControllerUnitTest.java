@@ -1,19 +1,18 @@
 package com.shop.domain.order.controller;
 
 import com.shop.domain.cart.entity.Cart;
-import com.shop.domain.cart.service.CartService;
 import com.shop.domain.coupon.entity.Coupon;
 import com.shop.domain.coupon.entity.DiscountType;
 import com.shop.domain.coupon.entity.UserCoupon;
-import com.shop.domain.coupon.service.CouponService;
+import com.shop.domain.order.dto.CheckoutPreview;
 import com.shop.domain.order.dto.OrderCreateRequest;
 import com.shop.domain.order.entity.Order;
 import com.shop.domain.order.entity.PaymentMethod;
+import com.shop.domain.order.service.CheckoutPreviewService;
 import com.shop.domain.order.service.OrderService;
 import com.shop.domain.product.entity.Product;
 import com.shop.domain.user.entity.User;
 import com.shop.domain.user.entity.UserTier;
-import com.shop.domain.user.service.UserService;
 import com.shop.global.exception.BusinessException;
 import com.shop.global.security.CustomUserPrincipal;
 import org.junit.jupiter.api.AfterEach;
@@ -38,7 +37,9 @@ import org.springframework.validation.beanvalidation.LocalValidatorFactoryBean;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.Collections;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 import static org.hamcrest.Matchers.*;
 import static org.mockito.ArgumentMatchers.any;
@@ -68,11 +69,7 @@ class OrderControllerUnitTest {
     @Mock
     private OrderService orderService;
     @Mock
-    private CartService cartService;
-    @Mock
-    private UserService userService;
-    @Mock
-    private CouponService couponService;
+    private CheckoutPreviewService checkoutPreviewService;
     @Mock
     private com.shop.global.idempotency.IdempotencyService idempotencyService;
 
@@ -81,7 +78,7 @@ class OrderControllerUnitTest {
     @BeforeEach
     void setUp() {
         OrderController controller = new OrderController(
-                orderService, cartService, userService, couponService, idempotencyService);
+                orderService, checkoutPreviewService, idempotencyService);
 
         // PaymentMethodValidator가 @ValidPaymentMethod 어노테이션을 처리하려면
         // LocalValidatorFactoryBean이 standaloneSetup에 등록되어야 한다.
@@ -210,29 +207,69 @@ class OrderControllerUnitTest {
         return List.of(uc1, uc2);
     }
 
+    /**
+     * 기본 CheckoutPreview를 생성한다.
+     * 장바구니 2건, 사용자, 쿠폰 포함.
+     */
+    private CheckoutPreview createCheckoutPreview() {
+        List<Cart> items = List.of(createCartItem(1L), createCartItem(2L));
+        List<Long> cartItemIds = List.of(1L, 2L);
+        return createCheckoutPreview(items, cartItemIds);
+    }
+
+    /**
+     * 지정된 장바구니 항목으로 CheckoutPreview를 생성한다.
+     */
+    private CheckoutPreview createCheckoutPreview(List<Cart> items, List<Long> cartItemIds) {
+        User user = createUser();
+        BigDecimal totalPrice = new BigDecimal("60000");
+        BigDecimal shippingFee = new BigDecimal("3000");
+        BigDecimal finalAmount = new BigDecimal("63000");
+        List<UserCoupon> coupons = createAvailableCoupons();
+        Map<Long, String> couponDisplayNames = new LinkedHashMap<>();
+        couponDisplayNames.put(10L, "10% 할인 (10% 할인, 최소주문(상품금액 기준) 30,000원)");
+        couponDisplayNames.put(11L, "3,000원 할인 (3,000원 할인, 최소주문(상품금액 기준) 20,000원)");
+
+        return new CheckoutPreview(
+                items, cartItemIds, totalPrice, shippingFee, finalAmount,
+                user, user.getPointBalance(), coupons, couponDisplayNames);
+    }
+
+    /**
+     * 지정된 couponDisplayNames로 CheckoutPreview를 생성한다.
+     */
+    private CheckoutPreview createCheckoutPreviewWithCouponNames(Map<Long, String> couponDisplayNames) {
+        List<Cart> items = List.of(createCartItem(1L));
+        User user = createUser();
+        BigDecimal totalPrice = new BigDecimal("30000");
+        List<UserCoupon> coupons = couponDisplayNames.isEmpty()
+                ? Collections.emptyList() : createAvailableCoupons();
+
+        return new CheckoutPreview(
+                items, List.of(1L), totalPrice, BigDecimal.ZERO, totalPrice,
+                user, user.getPointBalance(), coupons, couponDisplayNames);
+    }
+
     // ── GET /orders/checkout ────────────────────────────────────
 
     @Nested
     @DisplayName("GET /orders/checkout — 주문/결제 페이지")
     class CheckoutPageTests {
 
+        /**
+         * [Phase 3 코드 품질] CheckoutPreviewService 도입에 따른 테스트 변경.
+         *
+         * 문제: 기존 테스트는 CartService, UserService, CouponService, OrderService를
+         * 개별적으로 mock하여 컨트롤러의 비즈니스 로직을 검증했다.
+         * 해결: 컨트롤러가 CheckoutPreviewService 하나만 호출하도록 변경되었으므로,
+         * CheckoutPreview DTO를 직접 생성하여 서비스 mock의 반환값으로 설정한다.
+         */
         @Test
         @DisplayName("장바구니에 상품이 있으면 checkout 뷰를 렌더링하고 필수 모델 속성을 모두 설정한다")
         void checkout_withItems_rendersCheckoutView() throws Exception {
-            // given: 장바구니에 상품 2건, 사용자 정보, 사용 가능 쿠폰 존재
-            List<Cart> items = List.of(createCartItem(1L), createCartItem(2L));
-            User user = createUser();
-            BigDecimal totalPrice = new BigDecimal("60000");
-            BigDecimal shippingFee = new BigDecimal("3000");
-            BigDecimal finalAmount = new BigDecimal("63000");
-            List<UserCoupon> coupons = createAvailableCoupons();
-
-            when(cartService.getSelectedCartItems(USER_ID, null)).thenReturn(items);
-            when(userService.findById(USER_ID)).thenReturn(user);
-            when(cartService.calculateTotal(items)).thenReturn(totalPrice);
-            when(orderService.calculateShippingFee(user.getTier(), totalPrice)).thenReturn(shippingFee);
-            when(orderService.calculateFinalAmount(totalPrice, BigDecimal.ZERO, shippingFee)).thenReturn(finalAmount);
-            when(couponService.getAvailableCoupons(USER_ID)).thenReturn(coupons);
+            // given: CheckoutPreviewService가 프리뷰 데이터를 반환
+            CheckoutPreview preview = createCheckoutPreview();
+            when(checkoutPreviewService.getPreview(USER_ID, null)).thenReturn(preview);
 
             // when & then: checkout 뷰와 주문에 필요한 모든 모델 속성이 존재하는지 검증
             mockMvc.perform(get("/orders/checkout"))
@@ -243,9 +280,9 @@ class OrderControllerUnitTest {
                             "estimatedShippingFee", "estimatedFinalAmount",
                             "user", "pointBalance", "availableCoupons",
                             "couponDisplayNames", "paymentMethods"))
-                    .andExpect(model().attribute("totalPrice", totalPrice))
-                    .andExpect(model().attribute("estimatedShippingFee", shippingFee))
-                    .andExpect(model().attribute("estimatedFinalAmount", finalAmount))
+                    .andExpect(model().attribute("totalPrice", preview.totalPrice()))
+                    .andExpect(model().attribute("estimatedShippingFee", preview.estimatedShippingFee()))
+                    .andExpect(model().attribute("estimatedFinalAmount", preview.estimatedFinalAmount()))
                     // paymentMethods에 PaymentMethod enum 전체가 포함되어야 한다
                     .andExpect(model().attribute("paymentMethods",
                             hasSize(PaymentMethod.values().length)));
@@ -256,16 +293,10 @@ class OrderControllerUnitTest {
         void checkout_withCartItemIds_filtersSelectedItems() throws Exception {
             // given: cartItemIds=[1,3]으로 특정 항목만 선택
             List<Long> selectedIds = List.of(1L, 3L);
-            List<Cart> items = List.of(createCartItem(1L), createCartItem(3L));
-            User user = createUser();
-            BigDecimal totalPrice = new BigDecimal("60000");
-
-            when(cartService.getSelectedCartItems(USER_ID, selectedIds)).thenReturn(items);
-            when(userService.findById(USER_ID)).thenReturn(user);
-            when(cartService.calculateTotal(items)).thenReturn(totalPrice);
-            when(orderService.calculateShippingFee(any(), any())).thenReturn(BigDecimal.ZERO);
-            when(orderService.calculateFinalAmount(any(), any(), any())).thenReturn(totalPrice);
-            when(couponService.getAvailableCoupons(USER_ID)).thenReturn(Collections.emptyList());
+            CheckoutPreview preview = createCheckoutPreview(
+                    List.of(createCartItem(1L), createCartItem(3L)),
+                    List.of(1L, 3L));
+            when(checkoutPreviewService.getPreview(USER_ID, selectedIds)).thenReturn(preview);
 
             // when & then: 선택된 항목의 cartId만 cartItemIds 모델 속성에 포함
             mockMvc.perform(get("/orders/checkout")
@@ -278,17 +309,13 @@ class OrderControllerUnitTest {
         @Test
         @DisplayName("장바구니가 비어있으면 /cart로 리다이렉트한다")
         void checkout_emptyCart_redirectsToCart() throws Exception {
-            // given: 빈 장바구니
-            when(cartService.getSelectedCartItems(eq(USER_ID), any())).thenReturn(Collections.emptyList());
+            // given: CheckoutPreviewService가 null 반환 (빈 장바구니)
+            when(checkoutPreviewService.getPreview(eq(USER_ID), any())).thenReturn(null);
 
             // when & then: 장바구니로 리다이렉트
             mockMvc.perform(get("/orders/checkout"))
                     .andExpect(status().is3xxRedirection())
                     .andExpect(redirectedUrl("/cart"));
-
-            // 빈 장바구니일 때는 사용자 조회나 금액 계산을 수행하지 않아야 한다
-            verify(userService, never()).findById(anyLong());
-            verify(orderService, never()).calculateShippingFee(any(), any());
         }
     }
 
@@ -572,38 +599,33 @@ class OrderControllerUnitTest {
         }
     }
 
-    // ── buildCouponDisplayNames 간접 검증 ───────────────────────
-
+    /**
+     * [Phase 3 코드 품질] 쿠폰 표시명 포맷 검증이 서비스 계층으로 이동.
+     *
+     * 문제: 기존에는 buildCouponDisplayNames가 컨트롤러에 있어서 컨트롤러 테스트에서
+     * 간접 검증했다. 이제 CheckoutPreviewService로 이동했으므로, 컨트롤러 테스트에서는
+     * CheckoutPreview DTO에 포함된 couponDisplayNames가 모델에 올바르게 바인딩되는지만 검증한다.
+     */
     @Nested
-    @DisplayName("buildCouponDisplayNames — 쿠폰 표시명 포맷 검증")
+    @DisplayName("couponDisplayNames — 모델 바인딩 검증")
     class CouponDisplayNameTests {
 
         @Test
-        @DisplayName("PERCENT 쿠폰과 FIXED 쿠폰의 표시명이 올바르게 포맷된다")
-        void checkout_couponDisplayNames_formatsCorrectly() throws Exception {
-            // given: PERCENT(10%) + FIXED(3,000원) 쿠폰
-            List<Cart> items = List.of(createCartItem(1L));
-            User user = createUser();
-            BigDecimal totalPrice = new BigDecimal("30000");
-            List<UserCoupon> coupons = createAvailableCoupons();
+        @DisplayName("CheckoutPreview의 couponDisplayNames가 모델에 올바르게 바인딩된다")
+        void checkout_couponDisplayNames_boundToModel() throws Exception {
+            // given: CheckoutPreviewService가 쿠폰 표시명을 포함한 프리뷰를 반환
+            Map<Long, String> displayNames = new LinkedHashMap<>();
+            displayNames.put(10L, "10% 할인 (10% 할인, 최소주문(상품금액 기준) 30,000원)");
+            displayNames.put(11L, "3,000원 할인 (3,000원 할인, 최소주문(상품금액 기준) 20,000원)");
 
-            when(cartService.getSelectedCartItems(USER_ID, null)).thenReturn(items);
-            when(userService.findById(USER_ID)).thenReturn(user);
-            when(cartService.calculateTotal(items)).thenReturn(totalPrice);
-            when(orderService.calculateShippingFee(any(), any())).thenReturn(BigDecimal.ZERO);
-            when(orderService.calculateFinalAmount(any(), any(), any())).thenReturn(totalPrice);
-            when(couponService.getAvailableCoupons(USER_ID)).thenReturn(coupons);
+            CheckoutPreview preview = createCheckoutPreviewWithCouponNames(displayNames);
+            when(checkoutPreviewService.getPreview(USER_ID, null)).thenReturn(preview);
 
-            // when & then: couponDisplayNames 맵에 정률/정액 포맷이 올바르게 포함
-            // 주의: hasEntry() 안에서 Mockito.eq()가 아니라 Hamcrest.equalTo()를 써야 한다.
-            // Mockito.eq()는 stubbing/verify 밖에서 호출하면 0L을 반환하고,
-            // 이후 테스트의 Mockito 내부 매처 상태까지 오염시킨다.
+            // when & then: couponDisplayNames 맵이 모델에 그대로 바인딩되는지 검증
             mockMvc.perform(get("/orders/checkout"))
                     .andExpect(status().isOk())
-                    // PERCENT 쿠폰: "10% 할인" 텍스트 포함
                     .andExpect(model().attribute("couponDisplayNames",
                             hasEntry(equalTo(10L), containsString("10%"))))
-                    // FIXED 쿠폰: "3,000원 할인" 텍스트 포함 (천 단위 콤마)
                     .andExpect(model().attribute("couponDisplayNames",
                             hasEntry(equalTo(11L), containsString("3,000원"))));
         }
@@ -611,17 +633,9 @@ class OrderControllerUnitTest {
         @Test
         @DisplayName("사용 가능 쿠폰이 없으면 빈 맵이 설정된다")
         void checkout_noCoupons_emptyDisplayNames() throws Exception {
-            // given: 사용 가능 쿠폰 없음
-            List<Cart> items = List.of(createCartItem(1L));
-            User user = createUser();
-            BigDecimal totalPrice = new BigDecimal("30000");
-
-            when(cartService.getSelectedCartItems(USER_ID, null)).thenReturn(items);
-            when(userService.findById(USER_ID)).thenReturn(user);
-            when(cartService.calculateTotal(items)).thenReturn(totalPrice);
-            when(orderService.calculateShippingFee(any(), any())).thenReturn(BigDecimal.ZERO);
-            when(orderService.calculateFinalAmount(any(), any(), any())).thenReturn(totalPrice);
-            when(couponService.getAvailableCoupons(USER_ID)).thenReturn(Collections.emptyList());
+            // given: 쿠폰 없는 프리뷰
+            CheckoutPreview preview = createCheckoutPreviewWithCouponNames(Collections.emptyMap());
+            when(checkoutPreviewService.getPreview(USER_ID, null)).thenReturn(preview);
 
             // when & then: 빈 맵
             mockMvc.perform(get("/orders/checkout"))

@@ -14,6 +14,9 @@ import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
+import java.util.List;
+import java.util.stream.Collectors;
+
 /**
  * [P1-6] REST API 전용 예외 핸들러.
  *
@@ -47,13 +50,26 @@ public class ApiExceptionHandler {
                 .body(ApiResponse.error(e.getCode(), e.getMessage()));
     }
 
+    /**
+     * [Phase 3 코드 품질] 모든 필드 에러를 응답에 포함하도록 개선.
+     *
+     * <p><b>문제:</b> 기존에는 {@code getFieldError()}로 첫 번째 에러만 추출하여
+     * 클라이언트에 반환했다. 폼에 여러 필드 오류가 있을 때 사용자가 한 번에 하나씩만
+     * 에러를 확인/수정해야 했고, API 클라이언트는 전체 유효성 검증 결과를 받을 수 없었다.</p>
+     *
+     * <p><b>해결:</b> {@code getFieldErrors()}로 모든 필드 에러를 수집하여
+     * "필드명: 에러메시지" 형식으로 결합하여 반환한다. API 클라이언트는 한 번의 요청으로
+     * 모든 검증 실패 항목을 확인하고 일괄 수정할 수 있다.</p>
+     */
     @ExceptionHandler({BindException.class, MethodArgumentNotValidException.class})
     public ResponseEntity<ApiResponse<Void>> handleValidation(Exception e) {
         String message = "입력값이 올바르지 않습니다.";
         if (e instanceof BindException bindException) {
-            FieldError fieldError = bindException.getBindingResult().getFieldError();
-            if (fieldError != null) {
-                message = fieldError.getDefaultMessage();
+            List<FieldError> fieldErrors = bindException.getBindingResult().getFieldErrors();
+            if (!fieldErrors.isEmpty()) {
+                message = fieldErrors.stream()
+                        .map(fe -> fe.getField() + ": " + fe.getDefaultMessage())
+                        .collect(Collectors.joining(", "));
             }
         }
         log.warn("API Validation error: {}", message);

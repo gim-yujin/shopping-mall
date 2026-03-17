@@ -1,17 +1,12 @@
 package com.shop.domain.order.controller;
 
-import com.shop.domain.cart.entity.Cart;
-import com.shop.domain.cart.service.CartService;
-import com.shop.domain.coupon.service.CouponService;
-import com.shop.domain.coupon.entity.Coupon;
-import com.shop.domain.coupon.entity.UserCoupon;
+import com.shop.domain.order.dto.CheckoutPreview;
 import com.shop.domain.order.dto.OrderCreateRequest;
 import com.shop.domain.order.entity.Order;
 import com.shop.domain.order.entity.OrderStatus;
 import com.shop.domain.order.entity.PaymentMethod;
+import com.shop.domain.order.service.CheckoutPreviewService;
 import com.shop.domain.order.service.OrderService;
-import com.shop.domain.user.entity.User;
-import com.shop.domain.user.service.UserService;
 import com.shop.global.common.PageDefaults;
 import com.shop.global.common.PagingParams;
 import com.shop.global.exception.BusinessException;
@@ -29,13 +24,8 @@ import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.servlet.mvc.support.RedirectAttributes;
 
-import java.math.BigDecimal;
-import java.text.NumberFormat;
 import java.util.Arrays;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
-import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -56,6 +46,17 @@ import java.util.UUID;
  *   <li>JS 비활성화 (disabled 속성) → UX 최적화, 즉각적인 피드백</li>
  *   <li>서버 멱등성 키 → 데이터 정합성 보장, JS 우회/실패 시에도 동작</li>
  * </ul>
+ *
+ * <h3>[Phase 3 코드 품질] 컨트롤러 비즈니스 로직 제거</h3>
+ *
+ * <p><b>문제:</b> checkoutPage()에서 CartService, UserService, CouponService,
+ * OrderService를 순차적으로 호출하며 배송비/최종금액 계산 및 쿠폰 표시명 생성 등
+ * 다단계 비즈니스 로직을 컨트롤러가 직접 수행했다. 컨트롤러가 4개 서비스에
+ * 의존하여 결합도가 높았다.</p>
+ *
+ * <p><b>해결:</b> 체크아웃 프리뷰 로직을 {@link CheckoutPreviewService}로 이동하고,
+ * 컨트롤러는 서비스 호출 + 모델 바인딩만 담당한다. 컨트롤러 의존성이
+ * 4개(OrderService, CartService, UserService, CouponService) → 2개(OrderService, CheckoutPreviewService)로 감소.</p>
  */
 @Controller
 @RequestMapping("/orders")
@@ -64,23 +65,24 @@ public class OrderController {
     private static final Logger log = LoggerFactory.getLogger(OrderController.class);
 
     private final OrderService orderService;
-    private final CartService cartService;
-    private final UserService userService;
-    private final CouponService couponService;
+    private final CheckoutPreviewService checkoutPreviewService;
     private final IdempotencyService idempotencyService;
 
-    public OrderController(OrderService orderService, CartService cartService,
-                           UserService userService, CouponService couponService,
+    public OrderController(OrderService orderService,
+                           CheckoutPreviewService checkoutPreviewService,
                            IdempotencyService idempotencyService) {
         this.orderService = orderService;
-        this.cartService = cartService;
-        this.userService = userService;
-        this.couponService = couponService;
+        this.checkoutPreviewService = checkoutPreviewService;
         this.idempotencyService = idempotencyService;
     }
 
     /**
      * 주문/결제 페이지.
+     *
+     * <p>[Phase 3 코드 품질] 비즈니스 로직을 CheckoutPreviewService로 위임.
+     * 기존에는 이 메서드에서 장바구니 조회, 사용자 조회, 배송비 계산, 최종금액 계산,
+     * 쿠폰 조회, 쿠폰 표시명 생성을 직접 수행했다 (6단계).
+     * 이제 CheckoutPreviewService.getPreview() 한 번 호출로 대체된다.</p>
      *
      * [P1-6] cartItemIds 파라미터 추가: 장바구니 선택 주문 지원.
      * 장바구니 페이지에서 체크된 항목의 ID가 전달되면 해당 항목만 표시한다.
@@ -89,25 +91,20 @@ public class OrderController {
     @GetMapping("/checkout")
     public String checkoutPage(@RequestParam(required = false) List<Long> cartItemIds, Model model) {
         Long userId = SecurityUtil.getCurrentUserId().orElseThrow();
-        List<Cart> items = cartService.getSelectedCartItems(userId, cartItemIds);
-        if (items.isEmpty()) {
+        CheckoutPreview preview = checkoutPreviewService.getPreview(userId, cartItemIds);
+        if (preview == null) {
             return "redirect:/cart";
         }
-        User user = userService.findById(userId);
-        BigDecimal totalPrice = cartService.calculateTotal(items);
-        BigDecimal estimatedShippingFee = orderService.calculateShippingFee(user.getTier(), totalPrice);
-        BigDecimal estimatedFinalAmount = orderService.calculateFinalAmount(totalPrice, BigDecimal.ZERO, estimatedShippingFee);
 
-        model.addAttribute("cartItems", items);
-        model.addAttribute("cartItemIds", items.stream().map(Cart::getCartId).toList());
-        model.addAttribute("totalPrice", totalPrice);
-        model.addAttribute("estimatedShippingFee", estimatedShippingFee);
-        model.addAttribute("estimatedFinalAmount", estimatedFinalAmount);
-        model.addAttribute("user", user);
-        model.addAttribute("pointBalance", user.getPointBalance());
-        List<UserCoupon> availableCoupons = couponService.getAvailableCoupons(userId);
-        model.addAttribute("availableCoupons", availableCoupons);
-        model.addAttribute("couponDisplayNames", buildCouponDisplayNames(availableCoupons));
+        model.addAttribute("cartItems", preview.cartItems());
+        model.addAttribute("cartItemIds", preview.cartItemIds());
+        model.addAttribute("totalPrice", preview.totalPrice());
+        model.addAttribute("estimatedShippingFee", preview.estimatedShippingFee());
+        model.addAttribute("estimatedFinalAmount", preview.estimatedFinalAmount());
+        model.addAttribute("user", preview.user());
+        model.addAttribute("pointBalance", preview.pointBalance());
+        model.addAttribute("availableCoupons", preview.availableCoupons());
+        model.addAttribute("couponDisplayNames", preview.couponDisplayNames());
         model.addAttribute("paymentMethods", Arrays.asList(PaymentMethod.values()));
 
         // [P0] 멱등성 키: 체크아웃 페이지 렌더링마다 새 UUID를 생성하여 hidden input에 포함한다.
@@ -288,27 +285,6 @@ public class OrderController {
             redirectAttributes.addFlashAttribute("errorMessage", e.getMessage());
         }
         return "redirect:/orders/" + orderId;
-    }
-
-    private Map<Long, String> buildCouponDisplayNames(List<UserCoupon> availableCoupons) {
-        Map<Long, String> displayNames = new LinkedHashMap<>();
-        NumberFormat numberFormat = NumberFormat.getInstance(Locale.KOREA);
-
-        for (UserCoupon userCoupon : availableCoupons) {
-            Coupon coupon = userCoupon.getCoupon();
-            // [P2-8] DiscountType enum으로 타입 안전 비교
-            String discountText = coupon.getDiscountType() == com.shop.domain.coupon.entity.DiscountType.PERCENT
-                    ? coupon.getDiscountValue().stripTrailingZeros().toPlainString() + "%"
-                    : numberFormat.format(coupon.getDiscountValue()) + "원";
-
-            String displayName = coupon.getCouponName()
-                    + " (" + discountText
-                    + " 할인, 최소주문(상품금액 기준) " + numberFormat.format(coupon.getMinOrderAmount()) + "원)";
-
-            displayNames.put(userCoupon.getUserCouponId(), displayName);
-        }
-
-        return displayNames;
     }
 
 }

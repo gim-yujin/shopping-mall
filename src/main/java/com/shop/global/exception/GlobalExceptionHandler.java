@@ -196,15 +196,29 @@ public class GlobalExceptionHandler {
                     && request.getHeader("Accept").contains("application/json"));
     }
 
+    /**
+     * [Phase 3 코드 품질] 모든 필드 에러 메시지를 추출하도록 개선.
+     *
+     * <p><b>문제:</b> 기존에는 {@code getFieldError()}로 첫 번째 에러만 추출했다.
+     * 여러 필드에 오류가 있으면 사용자가 에러를 하나씩만 확인할 수 있어
+     * 폼 수정 → 재제출을 반복해야 했다.</p>
+     *
+     * <p><b>해결:</b> 모든 필드 에러 메시지를 수집하여 쉼표로 결합한다.
+     * SSR 에러 페이지에서 사용자가 한 번에 모든 검증 실패 항목을 확인할 수 있다.
+     * (예: "배송지를 입력해주세요, 수령인 이름을 입력해주세요")</p>
+     *
+     * <p>참고: MethodArgumentNotValidException은 BindException의 하위 클래스이므로
+     * 하나의 instanceof 분기로 양쪽 모두 처리된다.</p>
+     */
     private Optional<String> extractValidationMessage(Exception e) {
         if (e instanceof BindException bindException) {
-            return Optional.ofNullable(bindException.getBindingResult().getFieldError())
-                    .map(FieldError::getDefaultMessage);
-        }
-
-        if (e instanceof MethodArgumentNotValidException methodArgumentNotValidException) {
-            return Optional.ofNullable(methodArgumentNotValidException.getBindingResult().getFieldError())
-                    .map(FieldError::getDefaultMessage);
+            List<FieldError> fieldErrors = bindException.getBindingResult().getFieldErrors();
+            if (!fieldErrors.isEmpty()) {
+                String combined = fieldErrors.stream()
+                        .map(FieldError::getDefaultMessage)
+                        .collect(java.util.stream.Collectors.joining(", "));
+                return Optional.of(combined);
+            }
         }
 
         return Optional.empty();
