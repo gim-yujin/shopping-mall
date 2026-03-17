@@ -3,12 +3,15 @@ spring:
     name: shopping-mall
 
   datasource:
-    url: ${TEST_DB_URL:jdbc:postgresql://localhost:5432/shopping_mall_db?stringtype=unspecified}
+    # [Phase 2 성능] 테스트 환경도 운영과 동일한 소켓 타임아웃 적용.
+    # 테스트에서 느린 쿼리가 무한 대기하여 CI 파이프라인이 중단되는 것을 방지한다.
+    url: ${TEST_DB_URL:jdbc:postgresql://localhost:5432/shopping_mall_db?stringtype=unspecified&socketTimeout=30}
     username: ${TEST_DB_USERNAME:postgres}
     password: ${TEST_DB_PASSWORD:4321}
     hikari:
       maximum-pool-size: 17
-      minimum-idle: 17
+      # [Phase 2 성능] 테스트 환경도 동적 풀로 전환하여 운영과 동일한 동작 검증.
+      minimum-idle: 7
       idle-timeout: 300000
       max-lifetime: 600000
       connection-timeout: 5000
@@ -25,7 +28,8 @@ spring:
         format_sql: false
         default_batch_fetch_size: 100
         jdbc:
-          batch_size: 50
+          # [Phase 2 성능] 운영과 동일하게 batch_size=100으로 정렬.
+          batch_size: 100
         order_inserts: true
         order_updates: true
 

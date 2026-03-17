@@ -10,12 +10,12 @@ import com.shop.domain.order.repository.OrderRepository;
 import com.shop.domain.user.entity.User;
 import com.shop.domain.user.repository.UserRepository;
 import com.shop.global.exception.ResourceNotFoundException;
-import org.hibernate.Hibernate;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.function.Function;
@@ -61,7 +61,7 @@ public class OrderQueryService {
 
     public Page<Order> getOrdersByUser(Long userId, Pageable pageable) {
         Page<Order> orders = orderRepository.findByUserId(userId, pageable);
-        initializeOrderItems(orders);
+        fetchOrderItems(orders);
         return orders;
     }
 
@@ -72,14 +72,14 @@ public class OrderQueryService {
 
     public Page<Order> getAllOrders(Pageable pageable) {
         Page<Order> orders = orderRepository.findAllByOrderByOrderDateDesc(pageable);
-        initializeOrderItems(orders);
+        fetchOrderItems(orders);
         return orders;
     }
 
     public Page<Order> getOrdersByStatus(String status, Pageable pageable) {
         OrderStatus orderStatus = OrderStatus.fromOrThrow(status);
         Page<Order> orders = orderRepository.findByStatus(orderStatus, pageable);
-        initializeOrderItems(orders);
+        fetchOrderItems(orders);
         return orders;
     }
 
@@ -141,18 +141,29 @@ public class OrderQueryService {
     // ── 내부 헬퍼 ────────────────────────────────────────────
 
     /**
-     * OSIV off 환경에서 Page<Order>의 Lazy 컬렉션(items)을 초기화한다.
-     * batch_fetch_size=100이 적용되어 있으므로, 페이지 크기가 100 이하인 한
-     * 추가 쿼리 1회로 모든 주문의 아이템이 일괄 로드된다.
+     * [Phase 2 성능] 2-쿼리 패턴으로 주문 아이템을 명시적으로 일괄 로드한다.
      *
-     * 참고: Page 쿼리에 JOIN FETCH를 사용하면 Hibernate가 전체 결과를 메모리에
-     * 로드한 뒤 페이징하므로(HHH000104 경고), batch fetch가 더 효율적이다.
+     * <p><b>문제:</b> OSIV off 환경에서 Page&lt;Order&gt;의 Lazy 컬렉션(items)에
+     * 트랜잭션 밖에서 접근하면 LazyInitializationException이 발생한다.
+     * 기존에는 {@code Hibernate.initialize()} + {@code batch_fetch_size=100}으로
+     * 해결했으나, 이 방식은 Hibernate 내부 배치 전략에 암묵적으로 의존하여
+     * 실제 발행되는 쿼리 수를 예측하기 어려웠다.</p>
      *
-     * [P1-4] 기존 .size() 호출은 "Lazy 컬렉션 강제 초기화" 의도가 불명확했다.
-     * Hibernate.initialize()로 교체하여 의도를 명시적으로 표현한다.
-     * 동작은 동일: 프록시 컬렉션에 대해 SELECT를 발행하여 데이터를 로드한다.
+     * <p><b>개선:</b> 페이지 내 주문 ID를 수집한 후
+     * {@link OrderRepository#findWithItemsByOrderIds(List)}로 명시적 JOIN FETCH를
+     * 수행한다. 이 쿼리는 고정된 IN 절이므로 HHH000104(메모리 페이징) 문제가 없고,
+     * 정확히 1회의 추가 쿼리로 모든 아이템이 로드됨을 보장한다.</p>
+     *
+     * <p><b>동작 원리:</b> 2차 쿼리로 로드된 Order 엔티티는 영속성 컨텍스트에서
+     * 1차 쿼리의 Order와 동일 식별자(orderId)로 병합된다. 따라서 반환된 Page의
+     * Order 객체에서 {@code getItems()}를 호출하면 추가 쿼리 없이 아이템에 접근된다.</p>
      */
-    private void initializeOrderItems(Page<Order> orders) {
-        orders.getContent().forEach(order -> Hibernate.initialize(order.getItems()));
+    private void fetchOrderItems(Page<Order> orders) {
+        List<Long> orderIds = orders.getContent().stream()
+                .map(Order::getOrderId)
+                .toList();
+        if (!orderIds.isEmpty()) {
+            orderRepository.findWithItemsByOrderIds(orderIds);
+        }
     }
 }

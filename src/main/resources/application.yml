@@ -3,15 +3,26 @@ spring:
     name: shopping-mall
 
   datasource:
-    url: jdbc:postgresql://localhost:5432/shopping_mall_db?stringtype=unspecified
+    # [Phase 2 성능] socketTimeout=30: DB 쿼리 실행 시 소켓 읽기 타임아웃(초).
+    # 문제: 기존 설정에 소켓 타임아웃이 없어, 느린 쿼리나 DB 장애 시
+    # JDBC 커넥션이 응답을 무한 대기하여 Tomcat 스레드가 고갈될 수 있었다.
+    # 해결: 30초 소켓 타임아웃을 설정하여 응답 없는 커넥션을 빠르게 해제한다.
+    url: jdbc:postgresql://localhost:5432/shopping_mall_db?stringtype=unspecified&socketTimeout=30
     username: postgres
     password: 4321
     hikari:
       maximum-pool-size: 17 # (8cores × 2) + 1 = 17 (HikariCP 권장 공식)
-      minimum-idle: 17 # fixed-size pool (minimum-idle = maximum-pool-size)
+      # [Phase 2 성능] fixed-size pool → dynamic pool 전환.
+      # 문제: minimum-idle=17(=maximum-pool-size)로 고정 크기 풀을 사용하면
+      # 유휴 시간에도 17개 커넥션이 항상 점유되어 DB 리소스를 낭비한다.
+      # PostgreSQL의 max_connections 기본값(100)에서 다수 애플리케이션이 접속하면
+      # 커넥션 부족이 발생할 수 있다.
+      # 해결: minimum-idle=7로 낮춰 유휴 시 10개 커넥션을 DB에 반환하고,
+      # 부하 증가 시 maximum-pool-size(17)까지 동적으로 확장한다.
+      minimum-idle: 7
       idle-timeout: 300000
       max-lifetime: 600000
-      connection-timeout: 5000 # 30000 → 5000 (빠른 실패) 
+      connection-timeout: 5000 # 30000 → 5000 (빠른 실패)
 
   jpa:
     hibernate:
@@ -24,7 +35,12 @@ spring:
         format_sql: false
         default_batch_fetch_size: 100
         jdbc:
-          batch_size: 50
+          # [Phase 2 성능] batch_size를 batch_fetch_size와 동일하게 정렬(50→100).
+          # 문제: batch_fetch_size=100인데 batch_size=50이면, IN 절로 100건을
+          # 일괄 조회한 엔티티를 flush 시 50건씩 2회에 나눠 INSERT/UPDATE한다.
+          # 이로 인해 불필요한 flush 왕복이 발생한다.
+          # 해결: batch_size=100으로 통일하여 조회-저장 배치 크기를 일치시킨다.
+          batch_size: 100
         order_inserts: true
         order_updates: true
 
@@ -46,6 +62,15 @@ spring:
 server:
   port: 8080
   shutdown: graceful  # 배포 시 진행 중인 요청 완료 후 종료
+  # [Phase 2 성능] Tomcat 커넥션/요청 타임아웃 설정.
+  # 문제: 기존에 Tomcat 레벨 타임아웃이 없어, 클라이언트가 연결만 열고
+  # 요청을 보내지 않거나 대용량 요청을 천천히 전송하면 Tomcat 스레드가
+  # 무한 대기하여 스레드 풀이 고갈될 수 있었다.
+  # 해결: connection-timeout=20s로 요청 헤더 수신 대기 시간을 제한하고,
+  # keep-alive-timeout=60s로 유휴 keep-alive 커넥션 회수 시간을 설정한다.
+  tomcat:
+    connection-timeout: 20000
+    keep-alive-timeout: 60000
   servlet:
     session:
       timeout: 30m
