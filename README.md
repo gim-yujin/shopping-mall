@@ -17,10 +17,10 @@
 
 ### 코드베이스 스냅샷
 
-- 메인 코드: `src/main/java` 기준 **153개 Java 파일**
-- 테스트 코드: `src/test/java` 기준 **97개 Java 파일**
+- 메인 코드: `src/main/java` 기준 **172개 Java 파일**
+- 테스트 코드: `src/test/java` 기준 **119개 Java 파일**
 - 템플릿: `src/main/resources/templates` 기준 **30개 HTML 파일**
-- DB 스키마: **19개 테이블**, **56개 인덱스** (일반 53 + UNIQUE 3)
+- DB 스키마: **19개 테이블**, **59개 인덱스** (일반 56 + UNIQUE 3)
 
 ---
 
