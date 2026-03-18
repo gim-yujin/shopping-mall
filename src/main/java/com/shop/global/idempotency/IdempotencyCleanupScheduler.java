@@ -1,5 +1,6 @@
 package com.shop.global.idempotency;
 
+import com.shop.global.metrics.IdempotencyMetrics;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -30,6 +31,8 @@ public class IdempotencyCleanupScheduler {
     private static final Logger log = LoggerFactory.getLogger(IdempotencyCleanupScheduler.class);
 
     private final IdempotencyCleanupExecutor cleanupExecutor;
+    private final IdempotencyService idempotencyService;
+    private final IdempotencyMetrics idempotencyMetrics;
 
     @Value("${app.idempotency.retention-hours:24}")
     private int retentionHours;
@@ -37,8 +40,42 @@ public class IdempotencyCleanupScheduler {
     @Value("${app.idempotency.cleanup-batch-size:5000}")
     private int batchSize;
 
-    public IdempotencyCleanupScheduler(IdempotencyCleanupExecutor cleanupExecutor) {
+    /**
+     * [Phase 14] PROCESSING 고착 레코드를 FAILED로 전환하기까지의 대기 시간 (분).
+     *
+     * <p>주문 생성 트랜잭션은 비관적 잠금 대기를 포함해도 통상 수 초 이내에 완료된다.
+     * 5분 이상 PROCESSING 상태가 유지되면 서버 크래시 등 비정상 종료로 간주한다.
+     * 이 값을 너무 짧게 설정하면 정상 처리 중인 요청이 FAILED로 전환될 수 있고,
+     * 너무 길게 설정하면 클라이언트가 오래 대기해야 한다.</p>
+     */
+    @Value("${app.idempotency.stale-timeout-minutes:5}")
+    private int staleTimeoutMinutes;
+
+    public IdempotencyCleanupScheduler(IdempotencyCleanupExecutor cleanupExecutor,
+                                        IdempotencyService idempotencyService,
+                                        IdempotencyMetrics idempotencyMetrics) {
         this.cleanupExecutor = cleanupExecutor;
+        this.idempotencyService = idempotencyService;
+        this.idempotencyMetrics = idempotencyMetrics;
+    }
+
+    /**
+     * [Phase 14] 매분 PROCESSING 고착 레코드를 FAILED로 전환한다.
+     *
+     * <p>서버 크래시 후 PROCESSING 레코드가 5분 이상 고착되면
+     * 클라이언트는 409 Conflict을 무한 수신하게 된다.
+     * 매분 실행하여 고착 레코드를 빠르게 감지하고 복구한다.
+     * 복구 대상이 없으면 즉시 종료되므로 부하는 미미하다.</p>
+     */
+    @Scheduled(cron = "0 * * * * *")
+    public void recoverStaleProcessingRecords() {
+        LocalDateTime cutoffTime = LocalDateTime.now().minusMinutes(staleTimeoutMinutes);
+        int recovered = idempotencyService.recoverStaleProcessing(cutoffTime);
+        if (recovered > 0) {
+            // [Phase 14] Prometheus에서 stale 복구 빈도를 모니터링하여
+            // 배포 실패나 OOM 빈도를 정량적으로 파악할 수 있다
+            idempotencyMetrics.recordStaleRecovered(recovered);
+        }
     }
 
     /**

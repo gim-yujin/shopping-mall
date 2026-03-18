@@ -3,6 +3,7 @@ package com.shop.domain.order.controller.api;
 import com.shop.domain.order.dto.OrderCreateRequest;
 import com.shop.domain.order.entity.Order;
 import com.shop.domain.order.service.OrderService;
+import com.shop.global.metrics.IdempotencyMetrics;
 import com.shop.global.security.CustomUserPrincipal;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -61,6 +62,9 @@ class OrderApiControllerUnitTest {
     @Mock
     private com.shop.global.idempotency.IdempotencyService idempotencyService;
 
+    @Mock
+    private IdempotencyMetrics idempotencyMetrics;
+
     private final com.fasterxml.jackson.databind.ObjectMapper objectMapper = new com.fasterxml.jackson.databind.ObjectMapper();
 
     private MockMvc mockMvc;
@@ -71,7 +75,7 @@ class OrderApiControllerUnitTest {
         objectMapper.findAndRegisterModules();
 
         OrderApiController controller = new OrderApiController(
-                orderService, idempotencyService, objectMapper);
+                orderService, idempotencyService, idempotencyMetrics, objectMapper);
 
         // @Valid + @RequestBody 조합에서 Bean Validation이 동작하려면
         // LocalValidatorFactoryBean을 standaloneSetup에 등록해야 한다.

@@ -186,6 +186,37 @@
         {"expr": "shop_async_active_threads{application=\"shopping-mall\"}", "refId": "B", "legendFormat": "Active Threads"},
         {"expr": "increase(shop_async_rejected_total{application=\"shopping-mall\"}[1m])", "refId": "C", "legendFormat": "Rejected/min"}
       ]
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": {"unit": "reqps", "custom": {"fillOpacity": 15, "stacking": {"mode": "normal"}}},
+        "overrides": [
+          {"matcher": {"id": "byName", "options": "duplicate_completed"}, "properties": [{"id": "color", "value": {"mode": "fixed", "fixedColor": "yellow"}}]},
+          {"matcher": {"id": "byName", "options": "duplicate_processing"}, "properties": [{"id": "color", "value": {"mode": "fixed", "fixedColor": "orange"}}]},
+          {"matcher": {"id": "byName", "options": "conflict"}, "properties": [{"id": "color", "value": {"mode": "fixed", "fixedColor": "red"}}]},
+          {"matcher": {"id": "byName", "options": "new"}, "properties": [{"id": "color", "value": {"mode": "fixed", "fixedColor": "green"}}]}
+        ]
+      },
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 48},
+      "id": 15,
+      "title": "Idempotency Key Results",
+      "type": "timeseries",
+      "targets": [{"expr": "shopping_mall:idempotency_rps:rate1m", "refId": "A", "legendFormat": "{{result}}"}]
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": {"unit": "short", "custom": {"fillOpacity": 20}},
+        "overrides": [
+          {"matcher": {"id": "byName", "options": "Stale Recovered"}, "properties": [{"id": "color", "value": {"mode": "fixed", "fixedColor": "red"}}]}
+        ]
+      },
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 48},
+      "id": 16,
+      "title": "Idempotency Stale PROCESSING Recovery",
+      "type": "timeseries",
+      "targets": [{"expr": "increase(shop_idempotency_stale_recovered_total{application=\"shopping-mall\"}[5m])", "refId": "A", "legendFormat": "Stale Recovered"}]
     }
   ],
   "schemaVersion": 39,

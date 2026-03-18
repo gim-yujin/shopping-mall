@@ -15,6 +15,7 @@ import com.shop.global.dto.ApiResponse;
 import com.shop.global.dto.PageResponse;
 import com.shop.global.idempotency.IdempotencyRecord;
 import com.shop.global.idempotency.IdempotencyService;
+import com.shop.global.metrics.IdempotencyMetrics;
 import com.shop.global.security.SecurityUtil;
 import jakarta.validation.Valid;
 import org.slf4j.Logger;
@@ -62,13 +63,16 @@ public class OrderApiController {
 
     private final OrderService orderService;
     private final IdempotencyService idempotencyService;
+    private final IdempotencyMetrics idempotencyMetrics;
     private final ObjectMapper objectMapper;
 
     public OrderApiController(OrderService orderService,
                               IdempotencyService idempotencyService,
+                              IdempotencyMetrics idempotencyMetrics,
                               ObjectMapper objectMapper) {
         this.orderService = orderService;
         this.idempotencyService = idempotencyService;
+        this.idempotencyMetrics = idempotencyMetrics;
         this.objectMapper = objectMapper;
     }
 
@@ -120,6 +124,8 @@ public class OrderApiController {
 
             if (prev.isCompleted()) {
                 // 이전 성공 결과를 캐시에서 반환 — 주문 서비스를 재호출하지 않음
+                // [Phase 14] 중복 감지 메트릭 기록
+                idempotencyMetrics.recordDuplicateCompleted();
                 log.info("멱등성 키 중복 요청 (COMPLETED) - userId={}, key={}, orderId={}",
                         userId, idempotencyKey, prev.getResourceId());
                 return deserializeCachedResponse(prev);
@@ -127,6 +133,8 @@ public class OrderApiController {
 
             if (prev.isProcessing()) {
                 // 이전 요청이 아직 처리 중 — 클라이언트에게 재시도 유도
+                // [Phase 14] PROCESSING 중복 메트릭 기록
+                idempotencyMetrics.recordDuplicateProcessing();
                 log.warn("멱등성 키 중복 요청 (PROCESSING) - userId={}, key={}", userId, idempotencyKey);
                 return ResponseEntity.status(HttpStatus.CONFLICT)
                         .body(ApiResponse.error("IDEMPOTENCY_PROCESSING",
@@ -134,6 +142,8 @@ public class OrderApiController {
             }
 
             // FAILED — 이전 실패 레코드를 삭제하고 재처리 허용 (아래 initRecord로 진행)
+            // [Phase 14] 재시도 메트릭 기록
+            idempotencyMetrics.recordRetry();
             log.info("멱등성 키 재시도 (FAILED) - userId={}, key={}", userId, idempotencyKey);
         }
 
@@ -148,11 +158,16 @@ public class OrderApiController {
                     : idempotencyService.initRecord(userId, idempotencyKey, "ORDER");
         } catch (DataIntegrityViolationException e) {
             // 동시에 같은 키로 INSERT를 시도한 경우 — UNIQUE 위반이 최종 방어선
+            // [Phase 14] UNIQUE 충돌 메트릭 기록
+            idempotencyMetrics.recordConflict();
             log.info("멱등성 키 동시 삽입 충돌 - userId={}, key={}", userId, idempotencyKey);
             return ResponseEntity.status(HttpStatus.CONFLICT)
                     .body(ApiResponse.error("IDEMPOTENCY_CONFLICT",
                             "동일한 요청이 처리 중입니다. 잠시 후 다시 시도해주세요."));
         }
+
+        // [Phase 14] 최초 요청 메트릭 기록 — PROCESSING 레코드 생성 성공
+        idempotencyMetrics.recordNew();
 
         // 3단계: 주문 생성 실행
         try {
@@ -247,21 +262,136 @@ public class OrderApiController {
     }
 
     /**
-     * 주문 취소.
+     * 주문 취소 (멱등성 보장).
+     *
+     * <p>[Phase 14] 취소 요청에도 멱등성 키를 적용한다.
+     * 네트워크 타임아웃으로 클라이언트가 취소 결과를 모르는 상태에서
+     * 재시도하면 이미 취소된 주문에 대해 CANCEL_FAIL 에러가 발생한다.
+     * 멱등성 키가 있으면 첫 번째 취소 성공 후 재시도 시 동일 응답을 반환한다.</p>
+     *
+     * <p>취소는 주문 생성과 달리 응답 본문이 없으므로(Void),
+     * COMPLETED 레코드에 resourceId(orderId)만 저장하고 responseBody는 null이다.</p>
      */
     @PostMapping("/{orderId}/cancel")
-    public ApiResponse<Void> cancelOrder(@PathVariable Long orderId) {
+    public ResponseEntity<ApiResponse<Void>> cancelOrder(
+            @PathVariable Long orderId,
+            @RequestHeader(name = "X-Idempotency-Key", required = false) String idempotencyKey) {
+
         Long userId = SecurityUtil.getCurrentUserId().orElseThrow();
-        orderService.cancelOrder(orderId, userId);
-        return ApiResponse.ok();
+
+        // 멱등성 키가 없으면 기존 비멱등 동작으로 폴백
+        if (idempotencyKey == null || idempotencyKey.isBlank()) {
+            orderService.cancelOrder(orderId, userId);
+            return ResponseEntity.ok(ApiResponse.ok());
+        }
+
+        // [Phase 14] 멱등성 키 패턴 적용 — 취소 요청 중복 방지
+        idempotencyService.validateKey(idempotencyKey);
+
+        Optional<IdempotencyRecord> existing = idempotencyService.findExisting(userId, idempotencyKey);
+        if (existing.isPresent()) {
+            IdempotencyRecord prev = existing.get();
+            if (prev.isCompleted()) {
+                idempotencyMetrics.recordDuplicateCompleted();
+                return ResponseEntity.ok(ApiResponse.ok());
+            }
+            if (prev.isProcessing()) {
+                idempotencyMetrics.recordDuplicateProcessing();
+                return ResponseEntity.status(HttpStatus.CONFLICT)
+                        .body(ApiResponse.error("IDEMPOTENCY_PROCESSING",
+                                "이전 취소 요청이 처리 중입니다. 잠시 후 다시 시도해주세요."));
+            }
+            idempotencyMetrics.recordRetry();
+        }
+
+        IdempotencyRecord record;
+        boolean isRetry = existing.isPresent();
+        try {
+            record = isRetry
+                    ? idempotencyService.retryAfterFailure(userId, idempotencyKey, "ORDER_CANCEL")
+                    : idempotencyService.initRecord(userId, idempotencyKey, "ORDER_CANCEL");
+        } catch (DataIntegrityViolationException e) {
+            idempotencyMetrics.recordConflict();
+            return ResponseEntity.status(HttpStatus.CONFLICT)
+                    .body(ApiResponse.error("IDEMPOTENCY_CONFLICT",
+                            "동일한 요청이 처리 중입니다. 잠시 후 다시 시도해주세요."));
+        }
+
+        idempotencyMetrics.recordNew();
+
+        try {
+            orderService.cancelOrder(orderId, userId);
+            idempotencyService.markCompletedForSsr(record.getRecordId(), orderId);
+            return ResponseEntity.ok(ApiResponse.ok());
+        } catch (Exception e) {
+            idempotencyService.markFailed(record.getRecordId());
+            throw e;
+        }
     }
 
+    /**
+     * 부분 취소 (멱등성 보장).
+     *
+     * <p>[Phase 14] 부분 취소에도 멱등성 키를 적용한다.
+     * 부분 취소는 특정 주문항목의 수량을 차감하는 비가역적 연산이므로,
+     * 중복 실행 시 과다 취소가 발생할 수 있다. 멱등성 키로 이를 방지한다.</p>
+     */
     @PostMapping("/{orderId}/partial-cancel")
-    public ApiResponse<Void> partialCancel(@PathVariable Long orderId,
-                                           @Valid @RequestBody PartialCancelRequest request) {
+    public ResponseEntity<ApiResponse<Void>> partialCancel(
+            @PathVariable Long orderId,
+            @Valid @RequestBody PartialCancelRequest request,
+            @RequestHeader(name = "X-Idempotency-Key", required = false) String idempotencyKey) {
+
         Long userId = SecurityUtil.getCurrentUserId().orElseThrow();
-        orderService.partialCancel(orderId, userId, request.orderItemId(), request.quantity());
-        return ApiResponse.ok();
+
+        // 멱등성 키가 없으면 기존 비멱등 동작으로 폴백
+        if (idempotencyKey == null || idempotencyKey.isBlank()) {
+            orderService.partialCancel(orderId, userId, request.orderItemId(), request.quantity());
+            return ResponseEntity.ok(ApiResponse.ok());
+        }
+
+        // [Phase 14] 멱등성 키 패턴 적용 — 부분 취소 중복 방지
+        idempotencyService.validateKey(idempotencyKey);
+
+        Optional<IdempotencyRecord> existing = idempotencyService.findExisting(userId, idempotencyKey);
+        if (existing.isPresent()) {
+            IdempotencyRecord prev = existing.get();
+            if (prev.isCompleted()) {
+                idempotencyMetrics.recordDuplicateCompleted();
+                return ResponseEntity.ok(ApiResponse.ok());
+            }
+            if (prev.isProcessing()) {
+                idempotencyMetrics.recordDuplicateProcessing();
+                return ResponseEntity.status(HttpStatus.CONFLICT)
+                        .body(ApiResponse.error("IDEMPOTENCY_PROCESSING",
+                                "이전 부분 취소 요청이 처리 중입니다. 잠시 후 다시 시도해주세요."));
+            }
+            idempotencyMetrics.recordRetry();
+        }
+
+        IdempotencyRecord record;
+        boolean isRetry = existing.isPresent();
+        try {
+            record = isRetry
+                    ? idempotencyService.retryAfterFailure(userId, idempotencyKey, "ORDER_PARTIAL_CANCEL")
+                    : idempotencyService.initRecord(userId, idempotencyKey, "ORDER_PARTIAL_CANCEL");
+        } catch (DataIntegrityViolationException e) {
+            idempotencyMetrics.recordConflict();
+            return ResponseEntity.status(HttpStatus.CONFLICT)
+                    .body(ApiResponse.error("IDEMPOTENCY_CONFLICT",
+                            "동일한 요청이 처리 중입니다. 잠시 후 다시 시도해주세요."));
+        }
+
+        idempotencyMetrics.recordNew();
+
+        try {
+            orderService.partialCancel(orderId, userId, request.orderItemId(), request.quantity());
+            idempotencyService.markCompletedForSsr(record.getRecordId(), orderId);
+            return ResponseEntity.ok(ApiResponse.ok());
+        } catch (Exception e) {
+            idempotencyService.markFailed(record.getRecordId());
+            throw e;
+        }
     }
 
     @PostMapping("/{orderId}/return")

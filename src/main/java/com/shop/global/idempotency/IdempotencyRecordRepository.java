@@ -42,6 +42,22 @@ public interface IdempotencyRecordRepository extends JpaRepository<IdempotencyRe
     int deleteFailedRecord(@Param("userId") Long userId, @Param("key") String key);
 
     /**
+     * [Phase 14] PROCESSING 상태에서 지정 시간 이상 고착된 레코드를 FAILED로 일괄 전환한다.
+     *
+     * <p>서버 크래시, JVM OOM 등으로 markCompleted()/markFailed()가 호출되지 못하면
+     * PROCESSING 레코드가 영구 고착되어 클라이언트는 409 Conflict을 무한 수신한다.
+     * 이 쿼리는 cutoffTime 이전에 생성된 PROCESSING 레코드를 FAILED로 전환하여
+     * 클라이언트가 같은 키로 재시도할 수 있도록 복구한다.</p>
+     *
+     * @param cutoffTime 이 시점 이전에 생성된 PROCESSING 레코드를 대상으로 한다
+     * @return 전환된 행 수
+     */
+    @Modifying
+    @Query("UPDATE IdempotencyRecord r SET r.status = 'FAILED', r.completedAt = CURRENT_TIMESTAMP "
+            + "WHERE r.status = 'PROCESSING' AND r.createdAt < :cutoffTime")
+    int recoverStaleProcessingRecords(@Param("cutoffTime") LocalDateTime cutoffTime);
+
+    /**
      * 보존 기간이 지난 레코드를 배치 단위로 삭제한다.
      *
      * <p>{@link IdempotencyCleanupScheduler}에서 호출하며,

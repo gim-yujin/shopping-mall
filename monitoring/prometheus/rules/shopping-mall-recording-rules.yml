@@ -76,3 +76,11 @@ groups:
       # ── [Phase 13] Rate Limit 플랜별 거부 RPS ──
       - record: shopping_mall:ratelimit_rejected_rps:rate1m
         expr: sum by (plan) (rate(shop_ratelimit_requests_total{application="shopping-mall",result="rejected"}[1m]))
+
+      # ── [Phase 14] 멱등성 키 결과별 RPS ──
+      - record: shopping_mall:idempotency_rps:rate1m
+        expr: sum by (result) (rate(shop_idempotency_requests_total{application="shopping-mall"}[1m]))
+
+      # ── [Phase 14] 멱등성 PROCESSING 고착 복구 RPS ──
+      - record: shopping_mall:idempotency_stale_recovered:rate1m
+        expr: rate(shop_idempotency_stale_recovered_total{application="shopping-mall"}[1m])

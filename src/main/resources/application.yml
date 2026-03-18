@@ -138,6 +138,9 @@ app:
   idempotency:
     retention-hours: 24      # COMPLETED/FAILED 레코드 보존 기간 (시간)
     cleanup-batch-size: 5000 # 정리 스케줄러 1회당 삭제 배치 크기
+    # [Phase 14] PROCESSING 타임아웃: 서버 크래시 등으로 PROCESSING 상태에서 고착된 레코드를
+    # 이 시간이 경과하면 FAILED로 자동 전환하여 클라이언트 재시도를 허용한다.
+    stale-timeout-minutes: 5
   # Transactional Outbox 설정
   outbox:
     max-retries: 5           # 이벤트 처리 최대 재시도 횟수 (초과 시 FAILED)

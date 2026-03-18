@@ -6,6 +6,7 @@ import com.shop.domain.order.service.OrderService;
 import com.shop.global.exception.BusinessException;
 import com.shop.global.idempotency.IdempotencyRecord;
 import com.shop.global.idempotency.IdempotencyService;
+import com.shop.global.metrics.IdempotencyMetrics;
 import com.shop.global.security.CustomUserPrincipal;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -62,6 +63,9 @@ class OrderApiControllerIdempotencyTest {
     @Mock
     private IdempotencyService idempotencyService;
 
+    @Mock
+    private IdempotencyMetrics idempotencyMetrics;
+
     private final ObjectMapper objectMapper = new ObjectMapper();
     private MockMvc mockMvc;
 
@@ -71,7 +75,7 @@ class OrderApiControllerIdempotencyTest {
         objectMapper.findAndRegisterModules();
 
         OrderApiController controller = new OrderApiController(
-                orderService, idempotencyService, objectMapper);
+                orderService, idempotencyService, idempotencyMetrics, objectMapper);
 
         LocalValidatorFactoryBean validator = new LocalValidatorFactoryBean();
         validator.afterPropertiesSet();

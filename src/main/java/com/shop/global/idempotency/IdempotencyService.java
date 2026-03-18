@@ -8,6 +8,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.Optional;
 
 /**
@@ -145,6 +146,33 @@ public class IdempotencyService {
                     "요청이 이미 처리 중입니다. 잠시 후 다시 시도해주세요.");
         }
         return repository.save(new IdempotencyRecord(userId, idempotencyKey, resourceType));
+    }
+
+    /**
+     * [Phase 14] PROCESSING 상태에서 고착된 레코드를 FAILED로 자동 복구한다.
+     *
+     * <p>서버 크래시, JVM OOM, 네트워크 단절 등으로 주문 생성 트랜잭션이 완료되지 못하면
+     * PROCESSING 레코드가 영구적으로 남아 클라이언트는 같은 키로 재시도할 수 없다.
+     * 이 메서드는 cutoffTime 이전에 생성된 PROCESSING 레코드를 FAILED로 전환하여
+     * 클라이언트가 동일한 멱등성 키로 재시도할 수 있도록 복구한다.</p>
+     *
+     * <p><b>왜 COMPLETED가 아닌 FAILED로 전환하는가?</b>
+     * PROCESSING 상태에서 실제로 주문이 생성되었는지 확인할 수 없다.
+     * DB 트랜잭션이 커밋되었지만 markCompleted()가 호출되기 전에 서버가 크래시된 경우,
+     * 주문은 이미 생성되었으므로 FAILED로 전환하면 재시도 시 EMPTY_CART(장바구니 이미 비워짐) 또는
+     * advisory lock에 의해 이중 주문이 안전하게 차단된다.</p>
+     *
+     * @param cutoffTime 이 시점 이전에 생성된 PROCESSING 레코드를 대상으로 한다
+     * @return 복구된 레코드 수
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public int recoverStaleProcessing(LocalDateTime cutoffTime) {
+        int recovered = repository.recoverStaleProcessingRecords(cutoffTime);
+        if (recovered > 0) {
+            log.warn("[Phase 14] PROCESSING 고착 레코드 복구 - cutoffTime={}, recoveredCount={}",
+                    cutoffTime, recovered);
+        }
+        return recovered;
     }
 
     /**
