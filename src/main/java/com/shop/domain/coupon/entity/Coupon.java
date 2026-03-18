@@ -55,6 +55,23 @@ public class Coupon {
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
 
+    /**
+     * [Phase 4] 낙관적 잠금(Optimistic Locking) 버전 필드.
+     *
+     * <p><b>문제:</b> 관리자 쿠폰 수정(할인율, 유효기간, 수량 변경 등)에 동시성 제어가 없었다.
+     * 두 관리자가 동시에 같은 쿠폰을 편집하면 Lost Update가 발생한다.</p>
+     *
+     * <p><b>해결:</b> JPA @Version으로 낙관적 잠금을 적용한다.
+     * 관리자 수정은 빈도가 낮아 충돌이 드물므로, 비관적 잠금 대신 낙관적 잠금이 적합하다.</p>
+     *
+     * <p><b>쿠폰 발급과의 관계:</b> 발급 시 수량 차감은
+     * {@code incrementUsedQuantityIfAvailable()} — @Modifying 네이티브 UPDATE로 수행되어
+     * @Version을 우회한다. 따라서 발급 경합과 관리자 수정 충돌이 분리된다.</p>
+     */
+    @Version
+    @Column(name = "version", nullable = false)
+    private Integer version;
+
     protected Coupon() {}
 
     /**
@@ -160,5 +177,6 @@ public class Coupon {
     public LocalDateTime getValidFrom() { return validFrom; }
     public LocalDateTime getValidUntil() { return validUntil; }
     public Boolean getIsActive() { return isActive; }
+    public Integer getVersion() { return version; }
     public LocalDateTime getCreatedAt() { return createdAt; }
 }

@@ -220,12 +220,21 @@ public class OrderCreationService {
         List<InventorySnapshot> inventorySnapshots = new ArrayList<>();
 
         for (Cart cart : cartItems) {
-            Product product = productRepository.findByIdWithLock(cart.getProduct().getProductId())
-                    .orElseThrow(() -> new ResourceNotFoundException("상품", cart.getProduct().getProductId()));
+            // [Phase 4] @Version 도입에 따른 L1 캐시 정합성 보장.
+            //
+            // 문제: Cart 조회 시 Product가 L1 캐시에 로드된다(version=N).
+            // 이후 findByIdWithLock()이 PESSIMISTIC_WRITE 락을 획득하지만,
+            // Hibernate는 L1 캐시의 기존 엔티티를 반환한다(DB 결과를 버림).
+            // entityManager.refresh()가 필드 값은 갱신하지만, Hibernate 내부의
+            // 스냅샷(dirty-checking 기준)이 갱신되지 않아 @Version 충돌이 발생한다.
+            //
+            // 해결: detach로 L1 캐시에서 제거한 뒤 findByIdWithLock()으로 재조회하면,
+            // Hibernate가 DB 결과로 새 엔티티를 생성하여 올바른 version 스냅샷을 갖게 된다.
+            Long productId = cart.getProduct().getProductId();
+            entityManager.detach(cart.getProduct());
 
-            // JOIN FETCH로 L1 캐시에 로드된 낡은 상태를 DB 최신값으로 갱신
-            // PESSIMISTIC_WRITE 락을 잡은 상태이므로 다른 트랜잭션이 변경할 수 없음
-            entityManager.refresh(product);
+            Product product = productRepository.findByIdWithLock(productId)
+                    .orElseThrow(() -> new ResourceNotFoundException("상품", productId));
 
             if (product.getStockQuantity() < cart.getQuantity()) {
                 throw new InsufficientStockException(product.getProductName(),

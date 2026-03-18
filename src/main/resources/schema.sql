@@ -137,8 +137,9 @@ CREATE TABLE products (
     is_active BOOLEAN DEFAULT TRUE NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    
-    CONSTRAINT fk_product_category FOREIGN KEY (category_id) 
+    version INT DEFAULT 0 NOT NULL,
+
+    CONSTRAINT fk_product_category FOREIGN KEY (category_id)
         REFERENCES categories(category_id),
     CONSTRAINT chk_price CHECK (price >= 0),
     CONSTRAINT chk_stock CHECK (stock_quantity >= 0),
@@ -331,7 +332,8 @@ CREATE TABLE coupons (
     valid_until TIMESTAMP NOT NULL,
     is_active BOOLEAN DEFAULT TRUE NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    
+    version INT DEFAULT 0 NOT NULL,
+
     CONSTRAINT chk_discount_type CHECK (discount_type IN ('FIXED', 'PERCENT')),
     CONSTRAINT chk_discount_value CHECK (discount_value > 0),
     CONSTRAINT chk_used_quantity CHECK (used_quantity >= 0),

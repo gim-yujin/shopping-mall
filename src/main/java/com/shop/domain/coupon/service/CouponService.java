@@ -8,11 +8,14 @@ import com.shop.domain.coupon.repository.CouponRepository;
 import com.shop.domain.coupon.repository.UserCouponRepository;
 import com.shop.global.exception.BusinessException;
 import com.shop.global.exception.ResourceNotFoundException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
@@ -20,6 +23,8 @@ import java.util.List;
 @Service
 @Transactional(readOnly = true)
 public class CouponService {
+
+    private static final Logger log = LoggerFactory.getLogger(CouponService.class);
 
     private final CouponRepository couponRepository;
     private final UserCouponRepository userCouponRepository;
@@ -146,20 +151,33 @@ public class CouponService {
      *
      * 수정 불가 필드: couponCode(배포된 코드 변경 시 혼란), usedQuantity(트랜잭션에 의해서만 증가).
      * 활성 캐시를 무효화하여 사용자 쿠폰 목록에 변경 사항이 즉시 반영되도록 한다.
+     *
+     * [Phase 4] 낙관적 잠금 충돌 감지.
+     *
+     * 문제: 두 관리자가 동시에 같은 쿠폰을 수정하면 Lost Update가 발생한다.
+     * 해결: Coupon 엔티티의 @Version으로 충돌을 감지하고 의미 있는 에러 메시지를 반환한다.
      */
     @Transactional
     @CacheEvict(value = "activeCoupons", allEntries = true)
     public Coupon updateCoupon(Integer couponId, AdminCouponRequest request) {
         validateCouponDates(request);
-        Coupon coupon = couponRepository.findById(couponId)
-                .orElseThrow(() -> new ResourceNotFoundException("쿠폰", couponId));
-        coupon.update(
-                request.getCouponName(), request.getDiscountType(),
-                request.getDiscountValue(), request.getMinOrderAmount(), request.getMaxDiscount(),
-                request.getTotalQuantity(),
-                request.getValidFrom(), request.getValidUntil()
-        );
-        return coupon;
+        try {
+            Coupon coupon = couponRepository.findById(couponId)
+                    .orElseThrow(() -> new ResourceNotFoundException("쿠폰", couponId));
+            coupon.update(
+                    request.getCouponName(), request.getDiscountType(),
+                    request.getDiscountValue(), request.getMinOrderAmount(), request.getMaxDiscount(),
+                    request.getTotalQuantity(),
+                    request.getValidFrom(), request.getValidUntil()
+            );
+            // [Phase 4] 커밋 전 버전 충돌 감지를 위한 명시적 flush
+            couponRepository.flush();
+            return coupon;
+        } catch (ObjectOptimisticLockingFailureException e) {
+            log.warn("쿠폰 수정 중 낙관적 잠금 충돌 - couponId={}", couponId);
+            throw new BusinessException("CONCURRENT_MODIFICATION",
+                    "다른 관리자에 의해 쿠폰 정보가 변경되었습니다. 페이지를 새로고침 후 다시 시도해주세요.");
+        }
     }
 
     /**
@@ -168,13 +186,23 @@ public class CouponService {
      * 비활성화해도 이미 발급된 UserCoupon에는 영향을 주지 않는다.
      * 단, 비활성 쿠폰은 신규 발급이 불가하고, 주문 시 사용 가능 쿠폰 목록에서 제외된다.
      * (UserCouponRepository.findAvailableCoupons 쿼리의 c.isActive = true 조건)
+     *
+     * [Phase 4] 낙관적 잠금으로 동시 토글 충돌 감지.
      */
     @Transactional
     @CacheEvict(value = "activeCoupons", allEntries = true)
     public void toggleCouponActive(Integer couponId) {
-        Coupon coupon = couponRepository.findById(couponId)
-                .orElseThrow(() -> new ResourceNotFoundException("쿠폰", couponId));
-        coupon.toggleActive();
+        try {
+            Coupon coupon = couponRepository.findById(couponId)
+                    .orElseThrow(() -> new ResourceNotFoundException("쿠폰", couponId));
+            coupon.toggleActive();
+            // [Phase 4] 커밋 전 버전 충돌 감지를 위한 명시적 flush
+            couponRepository.flush();
+        } catch (ObjectOptimisticLockingFailureException e) {
+            log.warn("쿠폰 활성/비활성 토글 중 낙관적 잠금 충돌 - couponId={}", couponId);
+            throw new BusinessException("CONCURRENT_MODIFICATION",
+                    "다른 작업에 의해 쿠폰 정보가 변경되었습니다. 페이지를 새로고침 후 다시 시도해주세요.");
+        }
     }
 
     private void validateCouponDates(AdminCouponRequest request) {
