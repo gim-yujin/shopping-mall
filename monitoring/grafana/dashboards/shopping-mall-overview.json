@@ -255,6 +255,57 @@
         {"expr": "shopping_mall:outbox_retry_rps:rate1m", "refId": "B", "legendFormat": "Retry"},
         {"expr": "shopping_mall:outbox_dead_letter_rps:rate1m", "refId": "C", "legendFormat": "Dead Letter"}
       ]
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": {"unit": "percentunit", "decimals": 1, "min": 0, "max": 1, "custom": {"fillOpacity": 10}},
+        "overrides": []
+      },
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 64},
+      "id": 19,
+      "title": "[Phase 16] Cache Hit Rate by Name",
+      "type": "timeseries",
+      "targets": [{"expr": "shopping_mall:cache_custom_hit_rate", "refId": "A", "legendFormat": "{{cache}}"}]
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": {"unit": "ops", "custom": {"fillOpacity": 15, "stacking": {"mode": "normal"}}},
+        "overrides": []
+      },
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 64},
+      "id": 20,
+      "title": "[Phase 16] Cache Miss Rate & Eviction Rate",
+      "type": "timeseries",
+      "targets": [
+        {"expr": "shopping_mall:cache_miss_rate:rate1m", "refId": "A", "legendFormat": "miss {{cache}}"},
+        {"expr": "shopping_mall:cache_eviction_rate:rate1m", "refId": "B", "legendFormat": "evict {{cache}}"}
+      ]
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": {"unit": "short", "custom": {"fillOpacity": 10}},
+        "overrides": []
+      },
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 72},
+      "id": 21,
+      "title": "[Phase 16] Cache Size (Entries)",
+      "type": "timeseries",
+      "targets": [{"expr": "shop_cache_size{application=\"shopping-mall\"}", "refId": "A", "legendFormat": "{{cache}}"}]
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": {"unit": "short", "custom": {"fillOpacity": 10}},
+        "overrides": []
+      },
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 72},
+      "id": 22,
+      "title": "[Phase 16] PER Applied Caches",
+      "type": "timeseries",
+      "targets": [{"expr": "shop_cache_per_applied{application=\"shopping-mall\"}", "refId": "A", "legendFormat": "{{cache}}"}]
     }
   ],
   "schemaVersion": 39,

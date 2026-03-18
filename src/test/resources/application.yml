@@ -67,6 +67,11 @@ server:
     enabled: true
     mime-types: text/html,text/css,application/javascript,application/json
 
+# [Phase 16] 캐시 워밍 비활성화 — 테스트 데이터 삽입 전에 캐시가 채워지는 것을 방지
+shop:
+  cache:
+    warm-on-startup: false
+
 logging:
   level:
     root: INFO

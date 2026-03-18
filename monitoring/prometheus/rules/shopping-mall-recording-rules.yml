@@ -96,3 +96,15 @@ groups:
       # ── [Phase 15] Outbox 재시도 RPS ──
       - record: shopping_mall:outbox_retry_rps:rate1m
         expr: rate(shop_outbox_retry_total{application="shopping-mall"}[1m])
+
+      # ── [Phase 16] 캐시별 히트율 (커스텀 Gauge 기반) ──
+      - record: shopping_mall:cache_custom_hit_rate
+        expr: shop_cache_hit_rate{application="shopping-mall"}
+
+      # ── [Phase 16] 캐시별 미스 수 증가율 — PER 적용 전후 미스율 비교용 ──
+      - record: shopping_mall:cache_miss_rate:rate1m
+        expr: rate(shop_cache_miss_count{application="shopping-mall"}[1m])
+
+      # ── [Phase 16] 캐시별 퇴거 증가율 — TTL/사이즈 기반 퇴거 트렌드 ──
+      - record: shopping_mall:cache_eviction_rate:rate1m
+        expr: rate(shop_cache_eviction_count{application="shopping-mall"}[1m])
