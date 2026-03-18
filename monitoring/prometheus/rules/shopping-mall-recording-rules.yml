@@ -84,3 +84,15 @@ groups:
       # ── [Phase 14] 멱등성 PROCESSING 고착 복구 RPS ──
       - record: shopping_mall:idempotency_stale_recovered:rate1m
         expr: rate(shop_idempotency_stale_recovered_total{application="shopping-mall"}[1m])
+
+      # ── [Phase 15] Outbox 이벤트 처리 RPS ──
+      - record: shopping_mall:outbox_processed_rps:rate1m
+        expr: rate(shop_outbox_processed_total{application="shopping-mall"}[1m])
+
+      # ── [Phase 15] Outbox Dead Letter 전이 RPS ──
+      - record: shopping_mall:outbox_dead_letter_rps:rate1m
+        expr: rate(shop_outbox_dead_letter_total{application="shopping-mall"}[1m])
+
+      # ── [Phase 15] Outbox 재시도 RPS ──
+      - record: shopping_mall:outbox_retry_rps:rate1m
+        expr: rate(shop_outbox_retry_total{application="shopping-mall"}[1m])

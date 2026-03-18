@@ -538,8 +538,12 @@ CREATE TABLE outbox_events (
     created_at      TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
     processed_at    TIMESTAMP,
     retry_count     INT          NOT NULL DEFAULT 0,
+    -- [Phase 15] 지수 백오프 재시도 시각: 폴러가 이 시각 이후에만 이벤트를 조회한다.
+    next_retry_at   TIMESTAMP,
+    -- [Phase 15] 마지막 실패 원인: DEAD_LETTER 이벤트 진단에 사용.
+    last_error      TEXT,
 
-    CONSTRAINT chk_outbox_status CHECK (status IN ('PENDING', 'PROCESSED', 'FAILED'))
+    CONSTRAINT chk_outbox_status CHECK (status IN ('PENDING', 'PROCESSED', 'FAILED', 'DEAD_LETTER'))
 );
 
 COMMENT ON TABLE outbox_events IS 'Transactional Outbox 이벤트 레코드';
@@ -690,6 +694,8 @@ CREATE INDEX idx_idempotency_created ON idempotency_records(created_at);
 -- Outbox_Events 인덱스
 CREATE INDEX idx_outbox_pending ON outbox_events(status, created_at) WHERE status = 'PENDING';
 CREATE INDEX idx_outbox_processed_at ON outbox_events(processed_at) WHERE status = 'PROCESSED';
+-- [Phase 15] Dead Letter 이벤트 조회용 부분 인덱스
+CREATE INDEX idx_outbox_dead_letter ON outbox_events(processed_at) WHERE status = 'DEAD_LETTER';
 
 -- ============================================================================
 -- 스키마 생성 완료

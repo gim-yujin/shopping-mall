@@ -143,8 +143,12 @@ app:
     stale-timeout-minutes: 5
   # Transactional Outbox 설정
   outbox:
-    max-retries: 5           # 이벤트 처리 최대 재시도 횟수 (초과 시 FAILED)
+    max-retries: 5           # 이벤트 처리 최대 재시도 횟수 (초과 시 DEAD_LETTER)
     batch-size: 100          # 폴러 1회당 처리할 최대 이벤트 수
     retention-days: 7        # PROCESSED 이벤트 보존 기간 (일)
     cleanup-batch-size: 5000 # 정리 스케줄러 1회당 삭제 배치 크기
+    # [Phase 15] 지수 백오프 기본 지연: 10s → 20s → 40s → 80s → 160s (cap=300s)
+    retry-base-delay-sec: 10
+    # [Phase 15] Dead Letter 보존 기간: 원인 분석을 위해 PROCESSED보다 긴 30일 보존
+    dead-letter-retention-days: 30
 

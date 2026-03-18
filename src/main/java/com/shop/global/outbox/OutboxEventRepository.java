@@ -43,15 +43,51 @@ public interface OutboxEventRepository extends JpaRepository<OutboxEvent, Long> 
      * 다른 폴러가 건너뛰도록 한다. 단일 인스턴스에서도 폴링 주기 겹침에 의한
      * 중복 처리를 방지할 수 있다.</p>
      *
-     * <p><b>SKIP LOCKED vs NOWAIT:</b> NOWAIT는 잠금 실패 시 즉시 에러를 반환하지만,
-     * SKIP LOCKED는 잠긴 행을 건너뛰고 잠금 가능한 행만 반환한다.
-     * 폴러는 "가능한 만큼 처리"하는 것이 목적이므로 SKIP LOCKED가 적합하다.</p>
+     * <p>[Phase 15] next_retry_at 조건 추가: 지수 백오프 대기 중인 이벤트를
+     * 건너뛰고, 즉시 처리 가능한 이벤트만 조회한다.
+     * next_retry_at이 NULL이면 최초 시도이므로 즉시 처리한다.</p>
      */
     @Query(value = "SELECT * FROM outbox_events WHERE status = 'PENDING' "
+            + "AND (next_retry_at IS NULL OR next_retry_at <= NOW()) "
             + "ORDER BY created_at ASC LIMIT :batchSize "
             + "FOR UPDATE SKIP LOCKED",
             nativeQuery = true)
     List<OutboxEvent> findPendingEventsForUpdate(@Param("batchSize") int batchSize);
+
+    /**
+     * [Phase 15] DEAD_LETTER 상태의 이벤트를 최신순으로 조회한다.
+     *
+     * <p>관리자가 실패 원인(lastError)을 확인하고, 장애 해소 후
+     * requeueFromDeadLetter()로 PENDING 상태로 되돌릴 이벤트를 선택하기 위해 사용한다.</p>
+     */
+    @Query(value = "SELECT * FROM outbox_events WHERE status = 'DEAD_LETTER' "
+            + "ORDER BY processed_at DESC LIMIT :limit",
+            nativeQuery = true)
+    List<OutboxEvent> findDeadLetterEvents(@Param("limit") int limit);
+
+    /**
+     * [Phase 15] 특정 상태의 이벤트 수를 조회한다.
+     *
+     * <p>OutboxMetrics에서 PENDING/DEAD_LETTER 큐 깊이를 Gauge로 노출하기 위해 사용한다.
+     * Prometheus가 15초 간격으로 스크래핑할 때마다 호출되므로,
+     * 단순 COUNT 쿼리로 부하를 최소화한다.</p>
+     */
+    long countByStatus(String status);
+
+    /**
+     * [Phase 15] 보존 기간을 초과한 DEAD_LETTER 이벤트를 배치 삭제한다.
+     *
+     * <p>DEAD_LETTER 이벤트는 PROCESSED보다 긴 보존 기간(기본 30일)을 적용한다.
+     * 장기간 미처리된 Dead Letter는 원인 분석 후 삭제 대상이 된다.</p>
+     */
+    @Modifying
+    @Query(value = "DELETE FROM outbox_events WHERE event_id IN ("
+            + "SELECT event_id FROM outbox_events "
+            + "WHERE status = 'DEAD_LETTER' AND processed_at < :cutoffDate "
+            + "LIMIT :batchSize"
+            + ")", nativeQuery = true)
+    int deleteBatchDeadLetterBefore(@Param("cutoffDate") LocalDateTime cutoffDate,
+                                     @Param("batchSize") int batchSize);
 
     /**
      * 처리 완료된 오래된 이벤트를 배치 삭제한다.

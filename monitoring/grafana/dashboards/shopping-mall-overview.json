@@ -217,6 +217,44 @@
       "title": "Idempotency Stale PROCESSING Recovery",
       "type": "timeseries",
       "targets": [{"expr": "increase(shop_idempotency_stale_recovered_total{application=\"shopping-mall\"}[5m])", "refId": "A", "legendFormat": "Stale Recovered"}]
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": {"unit": "short", "custom": {"fillOpacity": 10}},
+        "overrides": [
+          {"matcher": {"id": "byName", "options": "Dead Letter"}, "properties": [{"id": "color", "value": {"mode": "fixed", "fixedColor": "red"}}]},
+          {"matcher": {"id": "byName", "options": "Pending"}, "properties": [{"id": "color", "value": {"mode": "fixed", "fixedColor": "orange"}}]}
+        ]
+      },
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 56},
+      "id": 17,
+      "title": "Outbox Queue Depth (Pending & Dead Letter)",
+      "type": "timeseries",
+      "targets": [
+        {"expr": "shop_outbox_pending_count{application=\"shopping-mall\"}", "refId": "A", "legendFormat": "Pending"},
+        {"expr": "shop_outbox_dead_letter_count{application=\"shopping-mall\"}", "refId": "B", "legendFormat": "Dead Letter"}
+      ]
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": {"unit": "reqps", "custom": {"fillOpacity": 15, "stacking": {"mode": "normal"}}},
+        "overrides": [
+          {"matcher": {"id": "byName", "options": "Processed"}, "properties": [{"id": "color", "value": {"mode": "fixed", "fixedColor": "green"}}]},
+          {"matcher": {"id": "byName", "options": "Retry"}, "properties": [{"id": "color", "value": {"mode": "fixed", "fixedColor": "yellow"}}]},
+          {"matcher": {"id": "byName", "options": "Dead Letter"}, "properties": [{"id": "color", "value": {"mode": "fixed", "fixedColor": "red"}}]}
+        ]
+      },
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 56},
+      "id": 18,
+      "title": "Outbox Event Processing Rate",
+      "type": "timeseries",
+      "targets": [
+        {"expr": "shopping_mall:outbox_processed_rps:rate1m", "refId": "A", "legendFormat": "Processed"},
+        {"expr": "shopping_mall:outbox_retry_rps:rate1m", "refId": "B", "legendFormat": "Retry"},
+        {"expr": "shopping_mall:outbox_dead_letter_rps:rate1m", "refId": "C", "legendFormat": "Dead Letter"}
+      ]
     }
   ],
   "schemaVersion": 39,

@@ -3,6 +3,7 @@ package com.shop.global.outbox;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.shop.domain.order.service.OrderNotificationService;
 import com.shop.domain.product.service.ProductCacheEvictHelper;
+import com.shop.global.metrics.OutboxMetrics;
 import com.shop.global.outbox.handler.OrderCancelledEventHandler;
 import com.shop.global.outbox.handler.OrderCreatedEventHandler;
 import com.shop.global.outbox.handler.StockChangedEventHandler;
@@ -26,6 +27,8 @@ import static org.mockito.Mockito.*;
  * <p>[Phase 6] Strategy 패턴 적용 후 핸들러 기반 테스트로 변경.
  * 실제 핸들러(StockChangedEventHandler 등)를 생성하여
  * 폴러의 라우팅과 상태 전이를 검증한다.</p>
+ *
+ * <p>[Phase 15] 지수 백오프 재시도 및 Dead Letter 전이 테스트 추가.</p>
  */
 @ExtendWith(MockitoExtension.class)
 class OutboxEventPollerTest {
@@ -33,18 +36,19 @@ class OutboxEventPollerTest {
     private final OutboxEventRepository repository = mock(OutboxEventRepository.class);
     private final ProductCacheEvictHelper cacheEvictHelper = mock(ProductCacheEvictHelper.class);
     private final OrderNotificationService notificationService = mock(OrderNotificationService.class);
+    private final OutboxMetrics outboxMetrics = mock(OutboxMetrics.class);
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     /**
      * 실제 핸들러들을 생성하여 폴러에 주입한다.
-     * Strategy 패턴의 eventType → Handler 매핑이 올바르게 구성되는지 검증한다.
+     * [Phase 15] OutboxMetrics 및 retryBaseDelaySec 파라미터 추가.
      */
     private OutboxEventPoller createPoller(int maxRetries) {
         List<OutboxEventHandler> handlers = List.of(
                 new StockChangedEventHandler(cacheEvictHelper, objectMapper),
                 new OrderCreatedEventHandler(notificationService, objectMapper),
                 new OrderCancelledEventHandler(notificationService, objectMapper));
-        return new OutboxEventPoller(repository, handlers, maxRetries, 100);
+        return new OutboxEventPoller(repository, handlers, outboxMetrics, maxRetries, 100, 10);
     }
 
     private OutboxEvent createStockEvent(Long eventId, String payload) {
@@ -83,6 +87,7 @@ class OutboxEventPollerTest {
             verify(cacheEvictHelper).evictProductDetailCaches(List.of(10L, 20L));
             assertThat(event.getStatus()).isEqualTo(OutboxEvent.STATUS_PROCESSED);
             assertThat(event.getProcessedAt()).isNotNull();
+            verify(outboxMetrics).recordProcessed();
         }
 
         @Test
@@ -94,6 +99,7 @@ class OutboxEventPollerTest {
             poller.pollAndProcess();
 
             verifyNoInteractions(cacheEvictHelper);
+            verifyNoInteractions(outboxMetrics);
         }
 
         @Test
@@ -110,6 +116,7 @@ class OutboxEventPollerTest {
             verify(cacheEvictHelper).evictProductDetailCaches(List.of(20L, 30L));
             assertThat(event1.getStatus()).isEqualTo(OutboxEvent.STATUS_PROCESSED);
             assertThat(event2.getStatus()).isEqualTo(OutboxEvent.STATUS_PROCESSED);
+            verify(outboxMetrics, times(2)).recordProcessed();
         }
 
         /**
@@ -166,12 +173,16 @@ class OutboxEventPollerTest {
     }
 
     @Nested
-    @DisplayName("재시도 및 영구 실패")
-    class RetryAndFailure {
+    @DisplayName("[Phase 15] 지수 백오프 재시도 및 Dead Letter")
+    class RetryAndDeadLetter {
 
+        /**
+         * [Phase 15] 처리 실패 시 지수 백오프로 재시도를 예약하고 PENDING을 유지한다.
+         * nextRetryAt이 설정되어 다음 폴링에서 즉시 재시도하지 않는다.
+         */
         @Test
-        @DisplayName("처리 실패 시 retry_count를 증가시키고 PENDING을 유지한다")
-        void incrementsRetryOnFailure() {
+        @DisplayName("처리 실패 시 지수 백오프로 재시도를 예약하고 PENDING을 유지한다")
+        void schedulesRetryWithExponentialBackoff() {
             OutboxEvent event = createStockEvent(1L, "{\"productIds\":[10]}");
             doThrow(new RuntimeException("캐시 서버 다운"))
                     .when(cacheEvictHelper).evictProductDetailCaches(any());
@@ -182,11 +193,17 @@ class OutboxEventPollerTest {
 
             assertThat(event.getRetryCount()).isEqualTo(1);
             assertThat(event.getStatus()).isEqualTo(OutboxEvent.STATUS_PENDING);
+            assertThat(event.getNextRetryAt()).isNotNull();
+            assertThat(event.getLastError()).isEqualTo("캐시 서버 다운");
+            verify(outboxMetrics).recordRetry();
         }
 
+        /**
+         * [Phase 15] MAX_RETRIES 초과 시 DEAD_LETTER로 전이하고 lastError를 기록한다.
+         */
         @Test
-        @DisplayName("MAX_RETRIES 초과 시 FAILED로 전이한다")
-        void marksFailedAfterMaxRetries() {
+        @DisplayName("MAX_RETRIES 초과 시 DEAD_LETTER로 전이한다")
+        void movesToDeadLetterAfterMaxRetries() {
             OutboxEvent event = createStockEvent(1L, "{\"productIds\":[10]}");
             ReflectionTestUtils.setField(event, "retryCount", 4);
             doThrow(new RuntimeException("영구 실패"))
@@ -197,7 +214,10 @@ class OutboxEventPollerTest {
             poller.pollAndProcess();
 
             assertThat(event.getRetryCount()).isEqualTo(5);
-            assertThat(event.getStatus()).isEqualTo(OutboxEvent.STATUS_FAILED);
+            assertThat(event.getStatus()).isEqualTo(OutboxEvent.STATUS_DEAD_LETTER);
+            assertThat(event.getProcessedAt()).isNotNull();
+            assertThat(event.getLastError()).isEqualTo("영구 실패");
+            verify(outboxMetrics).recordDeadLetter();
         }
 
         @Test
@@ -217,6 +237,29 @@ class OutboxEventPollerTest {
             assertThat(failEvent.getRetryCount()).isEqualTo(1);
             assertThat(failEvent.getStatus()).isEqualTo(OutboxEvent.STATUS_PENDING);
             assertThat(okEvent.getStatus()).isEqualTo(OutboxEvent.STATUS_PROCESSED);
+        }
+
+        /**
+         * [Phase 15] 2회 연속 실패 시 지수 백오프 간격이 증가하는지 검증한다.
+         */
+        @Test
+        @DisplayName("연속 실패 시 지수 백오프 간격이 점진적으로 증가한다")
+        void backoffIntervalIncreasesExponentially() {
+            OutboxEvent event = new OutboxEvent(OutboxEvent.TYPE_PRODUCT_STOCK_CHANGED, "{}");
+            ReflectionTestUtils.setField(event, "eventId", 1L);
+
+            // 1차 실패: baseDelay=10 × 2^0 = 10초
+            event.scheduleRetry("error1", 10);
+            java.time.LocalDateTime firstRetryAt = event.getNextRetryAt();
+
+            // 2차 실패: baseDelay=10 × 2^1 = 20초
+            event.scheduleRetry("error2", 10);
+            java.time.LocalDateTime secondRetryAt = event.getNextRetryAt();
+
+            // 2차 재시도 시각이 1차보다 더 뒤여야 한다 (지수 증가 확인)
+            assertThat(secondRetryAt).isAfter(firstRetryAt);
+            assertThat(event.getRetryCount()).isEqualTo(2);
+            assertThat(event.getLastError()).isEqualTo("error2");
         }
     }
 
