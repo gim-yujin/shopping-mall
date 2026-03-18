@@ -16,11 +16,13 @@ import com.shop.domain.product.repository.ProductRepository;
 import com.shop.domain.user.entity.User;
 import com.shop.domain.user.repository.UserRepository;
 import com.shop.domain.user.repository.UserTierRepository;
+import com.shop.global.event.OrderCancelledEvent;
 import com.shop.global.exception.BusinessException;
 import com.shop.global.exception.ResourceNotFoundException;
 import jakarta.persistence.EntityManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -49,6 +51,7 @@ public class OrderCancellationService {
     private final EntityManager entityManager;
     private final OutboxEventPublisher outboxEventPublisher;
     private final OrderInvariantValidator orderInvariantValidator;
+    private final ApplicationEventPublisher applicationEventPublisher;
 
     public OrderCancellationService(OrderRepository orderRepository,
                                      ProductRepository productRepository,
@@ -59,7 +62,8 @@ public class OrderCancellationService {
                                      PointHistoryRepository pointHistoryRepository,
                                      EntityManager entityManager,
                                      OutboxEventPublisher outboxEventPublisher,
-                                     OrderInvariantValidator orderInvariantValidator) {
+                                     OrderInvariantValidator orderInvariantValidator,
+                                     ApplicationEventPublisher applicationEventPublisher) {
         this.orderRepository = orderRepository;
         this.productRepository = productRepository;
         this.userRepository = userRepository;
@@ -70,6 +74,7 @@ public class OrderCancellationService {
         this.entityManager = entityManager;
         this.outboxEventPublisher = outboxEventPublisher;
         this.orderInvariantValidator = orderInvariantValidator;
+        this.applicationEventPublisher = applicationEventPublisher;
     }
 
     /**
@@ -170,9 +175,12 @@ public class OrderCancellationService {
             ));
         }
 
-        // 등급 산정 기준은 total_spent(누적 구매 금액)로 통일한다.
-        userTierRepository.findFirstByMinSpentLessThanEqualOrderByTierLevelDesc(user.getTotalSpent())
-                .ifPresent(user::updateTier);
+        // [Phase 6] 등급 재계산을 비동기 이벤트로 분리.
+        // 취소 트랜잭션에서 totalSpent 차감은 이미 완료된 상태이므로,
+        // AFTER_COMMIT 비동기 핸들러가 최신 totalSpent로 정확한 등급을 계산한다.
+        applicationEventPublisher.publishEvent(new OrderCancelledEvent(
+                orderId, userId, remainingRefundAmount,
+                sortedItems.stream().map(OrderItem::getProductId).toList()));
 
         // 3) 쿠폰 복원
         userCouponRepository.findByOrderId(orderId).ifPresent(UserCoupon::cancelUse);
@@ -185,5 +193,8 @@ public class OrderCancellationService {
         outboxEventPublisher.publishStockChanged(
                 sortedItems.stream().map(OrderItem::getProductId).toList()
         );
+
+        // [Phase 6] 주문 취소 이벤트를 Outbox에 기록하여 at-least-once 알림 발송을 보장한다.
+        outboxEventPublisher.publishOrderCancelled(orderId, userId, remainingRefundAmount);
     }
 }

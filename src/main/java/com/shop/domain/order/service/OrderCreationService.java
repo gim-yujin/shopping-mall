@@ -21,10 +21,12 @@ import com.shop.domain.user.entity.User;
 import com.shop.domain.user.entity.UserTier;
 import com.shop.domain.user.repository.UserRepository;
 import com.shop.domain.user.repository.UserTierRepository;
+import com.shop.global.event.OrderCompletedEvent;
 import com.shop.global.exception.BusinessException;
 import com.shop.global.exception.InsufficientStockException;
 import com.shop.global.exception.ResourceNotFoundException;
 import jakarta.persistence.EntityManager;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -72,6 +74,7 @@ public class OrderCreationService {
     private final OutboxEventPublisher outboxEventPublisher;
     private final ShippingFeeCalculator shippingFeeCalculator;
     private final OrderInvariantValidator orderInvariantValidator;
+    private final ApplicationEventPublisher applicationEventPublisher;
 
     public OrderCreationService(OrderRepository orderRepository, CartRepository cartRepository,
                                 ProductRepository productRepository, UserRepository userRepository,
@@ -82,7 +85,8 @@ public class OrderCreationService {
                                 EntityManager entityManager,
                                 OutboxEventPublisher outboxEventPublisher,
                                 ShippingFeeCalculator shippingFeeCalculator,
-                                OrderInvariantValidator orderInvariantValidator) {
+                                OrderInvariantValidator orderInvariantValidator,
+                                ApplicationEventPublisher applicationEventPublisher) {
         this.orderRepository = orderRepository;
         this.cartRepository = cartRepository;
         this.productRepository = productRepository;
@@ -95,6 +99,7 @@ public class OrderCreationService {
         this.outboxEventPublisher = outboxEventPublisher;
         this.shippingFeeCalculator = shippingFeeCalculator;
         this.orderInvariantValidator = orderInvariantValidator;
+        this.applicationEventPublisher = applicationEventPublisher;
     }
 
     /**
@@ -446,9 +451,19 @@ public class OrderCreationService {
             ));
         }
 
-        // 등급 재계산 (누적 구매 금액 기준)
-        userTierRepository.findFirstByMinSpentLessThanEqualOrderByTierLevelDesc(user.getTotalSpent())
-                .ifPresent(user::updateTier);
+        // [Phase 6] 등급 재계산을 비동기 이벤트로 분리.
+        //
+        // 문제: 등급 재계산(UserTier 조회 + User 갱신)이 주문 트랜잭션 안에서 동기 실행되면,
+        // User 행에 대한 PESSIMISTIC_WRITE 락 보유 시간이 등급 조회만큼 늘어난다.
+        // 동시 주문 100건 시 이 추가 시간이 직렬화 병목이 된다.
+        //
+        // 해결: ApplicationEventPublisher로 OrderCompletedEvent를 발행하면,
+        // @TransactionalEventListener(AFTER_COMMIT) + @Async가 커밋 후 별도 스레드에서
+        // 등급을 재계산한다. 주문 트랜잭션은 totalSpent 갱신 후 즉시 커밋된다.
+        List<Long> productIds = stockResult.orderLines().stream()
+                .map(OrderLine::productId).toList();
+        applicationEventPublisher.publishEvent(new OrderCompletedEvent(
+                savedOrder.getOrderId(), userId, savedOrder.getFinalAmount(), productIds));
 
         // [P1-6] 선택 주문인 경우 주문한 장바구니 항목만 삭제, 나머지는 유지한다.
         if (cartSelection.isPartialOrder()) {
@@ -459,9 +474,13 @@ public class OrderCreationService {
         }
 
         // [Outbox] 재고 변경 이벤트를 Outbox 테이블에 기록한다.
-        outboxEventPublisher.publishStockChanged(
-                stockResult.orderLines().stream().map(OrderLine::productId).toList()
-        );
+        outboxEventPublisher.publishStockChanged(productIds);
+
+        // [Phase 6] 주문 생성 이벤트를 Outbox에 기록하여 at-least-once 알림 발송을 보장한다.
+        // ApplicationEvent(best-effort)와 Outbox(at-least-once)의 이중 경로 전략:
+        // 등급 재계산은 ApplicationEvent로 빠르게, 알림은 Outbox로 신뢰성 있게 처리한다.
+        outboxEventPublisher.publishOrderCreated(
+                savedOrder.getOrderId(), userId, savedOrder.getFinalAmount());
     }
 
     private String generateOrderNumber() {

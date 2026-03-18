@@ -14,7 +14,6 @@ import com.shop.domain.point.repository.PointHistoryRepository;
 import com.shop.domain.product.entity.Product;
 import com.shop.domain.product.repository.ProductRepository;
 import com.shop.domain.user.entity.User;
-import com.shop.domain.user.entity.UserTier;
 import com.shop.domain.user.repository.UserRepository;
 import com.shop.domain.user.repository.UserTierRepository;
 import com.shop.global.exception.BusinessException;
@@ -73,6 +72,7 @@ class PartialCancellationServiceUnitTest {
     @Mock private EntityManager entityManager;
     @Mock private OutboxEventPublisher outboxEventPublisher;
     @Mock private OrderInvariantValidator orderInvariantValidator;
+    @Mock private org.springframework.context.ApplicationEventPublisher applicationEventPublisher;
 
     private PartialCancellationService service;
 
@@ -82,7 +82,8 @@ class PartialCancellationServiceUnitTest {
                 orderRepository, productRepository, inventoryHistoryRepository,
                 userRepository, userTierRepository, pointHistoryRepository,
                 userCouponRepository,
-                entityManager, outboxEventPublisher, orderInvariantValidator);
+                entityManager, outboxEventPublisher, orderInvariantValidator,
+                applicationEventPublisher);
     }
 
     // ── 테스트 픽스처 빌더 ──────────────────────────────────
@@ -250,23 +251,21 @@ class PartialCancellationServiceUnitTest {
         }
 
         @Test
-        @DisplayName("[P0-3] 부분 취소 후 등급이 재계산된다")
-        void tier_isRecalculated() {
+        @DisplayName("[Phase 6] 부분 취소 후 OrderCancelledEvent가 발행된다")
+        void tier_isRecalculatedViaEvent() {
             Order order = createTestOrder(OrderStatus.PAID);
             Product product = createMockProduct(10L, 50);
             User user = createMockUser(101L, 500, new BigDecimal("100000"));
-            UserTier lowerTier = mock(UserTier.class);
 
             when(orderRepository.findByIdAndUserIdWithLock(1L, 101L)).thenReturn(Optional.of(order));
             when(productRepository.findByIdWithLock(10L)).thenReturn(Optional.of(product));
             when(userRepository.findByIdWithLockAndTier(101L)).thenReturn(Optional.of(user));
-            when(userTierRepository.findFirstByMinSpentLessThanEqualOrderByTierLevelDesc(any()))
-                    .thenReturn(Optional.of(lowerTier));
 
             service.partialCancel(101L, 1L, 100L, 1);
 
-            verify(userTierRepository).findFirstByMinSpentLessThanEqualOrderByTierLevelDesc(any());
-            verify(user).updateTier(lowerTier);
+            // 등급 재계산은 비동기 이벤트로 분리됨
+            verify(applicationEventPublisher).publishEvent(
+                    any(com.shop.global.event.OrderCancelledEvent.class));
         }
 
         @Test
@@ -777,8 +776,8 @@ class PartialCancellationServiceUnitTest {
         }
 
         @Test
-        @DisplayName("승인 시 등급이 재계산된다")
-        void approveReturn_recalculatesTier() {
+        @DisplayName("[Phase 6] 승인 시 OrderCancelledEvent가 발행된다")
+        void approveReturn_publishesCancelledEvent() {
             Order order = createTestOrder(OrderStatus.DELIVERED);
             OrderItem itemA = order.getItems().get(0);
             when(itemA.getStatus()).thenReturn(OrderItemStatus.RETURN_REQUESTED);
@@ -786,18 +785,16 @@ class PartialCancellationServiceUnitTest {
 
             Product product = createMockProduct(10L, 50);
             User user = createMockUser(101L, 500, new BigDecimal("100000"));
-            UserTier lowerTier = mock(UserTier.class);
 
             when(orderRepository.findByIdWithLock(1L)).thenReturn(Optional.of(order));
             when(productRepository.findByIdWithLock(10L)).thenReturn(Optional.of(product));
             when(userRepository.findByIdWithLockAndTier(101L)).thenReturn(Optional.of(user));
-            when(userTierRepository.findFirstByMinSpentLessThanEqualOrderByTierLevelDesc(any()))
-                    .thenReturn(Optional.of(lowerTier));
 
             service.approveReturn(1L, 100L);
 
-            verify(userTierRepository).findFirstByMinSpentLessThanEqualOrderByTierLevelDesc(any());
-            verify(user).updateTier(lowerTier);
+            // 등급 재계산은 비동기 이벤트로 분리됨
+            verify(applicationEventPublisher).publishEvent(
+                    any(com.shop.global.event.OrderCancelledEvent.class));
         }
 
         @Test

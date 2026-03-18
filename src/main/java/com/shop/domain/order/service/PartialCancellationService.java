@@ -18,11 +18,13 @@ import com.shop.domain.product.repository.ProductRepository;
 import com.shop.domain.user.entity.User;
 import com.shop.domain.user.repository.UserRepository;
 import com.shop.domain.user.repository.UserTierRepository;
+import com.shop.global.event.OrderCancelledEvent;
 import com.shop.global.exception.BusinessException;
 import com.shop.global.exception.ResourceNotFoundException;
 import jakarta.persistence.EntityManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -100,6 +102,7 @@ public class PartialCancellationService {
     private final EntityManager entityManager;
     private final OutboxEventPublisher outboxEventPublisher;
     private final OrderInvariantValidator orderInvariantValidator;
+    private final ApplicationEventPublisher applicationEventPublisher;
 
     public PartialCancellationService(OrderRepository orderRepository,
                                       ProductRepository productRepository,
@@ -110,7 +113,8 @@ public class PartialCancellationService {
                                       UserCouponRepository userCouponRepository,
                                       EntityManager entityManager,
                                       OutboxEventPublisher outboxEventPublisher,
-                                      OrderInvariantValidator orderInvariantValidator) {
+                                      OrderInvariantValidator orderInvariantValidator,
+                                      ApplicationEventPublisher applicationEventPublisher) {
         this.orderRepository = orderRepository;
         this.productRepository = productRepository;
         this.inventoryHistoryRepository = inventoryHistoryRepository;
@@ -121,6 +125,7 @@ public class PartialCancellationService {
         this.entityManager = entityManager;
         this.outboxEventPublisher = outboxEventPublisher;
         this.orderInvariantValidator = orderInvariantValidator;
+        this.applicationEventPublisher = applicationEventPublisher;
     }
 
     /**
@@ -340,9 +345,12 @@ public class PartialCancellationService {
                     reason, order.getOrderId(), description));
         }
 
-        // [P0-3] 등급 재계산 — 전체 취소(OrderCancellationService)와 동일
-        userTierRepository.findFirstByMinSpentLessThanEqualOrderByTierLevelDesc(user.getTotalSpent())
-                .ifPresent(user::updateTier);
+        // [Phase 6] 등급 재계산을 비동기 이벤트로 분리.
+        // 부분 취소/반품에서도 totalSpent 차감 후 커밋 시점에 이벤트가 전달되어
+        // 비동기로 등급이 재계산된다. 전체 취소(OrderCancellationService)와 동일한 패턴.
+        applicationEventPublisher.publishEvent(new OrderCancelledEvent(
+                order.getOrderId(), userId, refundAmount,
+                List.of(item.getProductId())));
 
         // ③ OrderItem 및 Order 금액 갱신
         //    [Step 2] RETURN 사유일 때는 approveReturn() 호출부에서 별도 처리하므로 건너뛴다.

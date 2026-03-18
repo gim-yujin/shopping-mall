@@ -69,6 +69,7 @@ class OrderCreationServiceUnitTest {
     @Mock private OutboxEventPublisher outboxEventPublisher;
     @Mock private ShippingFeeCalculator shippingFeeCalculator;
     @Mock private OrderInvariantValidator orderInvariantValidator;
+    @Mock private org.springframework.context.ApplicationEventPublisher applicationEventPublisher;
 
     private OrderCreationService creationService;
 
@@ -86,7 +87,7 @@ class OrderCreationServiceUnitTest {
                 orderRepository, cartRepository, productRepository, userRepository,
                 inventoryHistoryRepository, userCouponRepository, userTierRepository,
                 pointHistoryRepository, entityManager, outboxEventPublisher,
-                shippingFeeCalculator, orderInvariantValidator
+                shippingFeeCalculator, orderInvariantValidator, applicationEventPublisher
         );
     }
 
@@ -314,9 +315,14 @@ class OrderCreationServiceUnitTest {
             ));
         }
 
+        /**
+         * [Phase 6] 등급 재계산이 비동기 이벤트로 분리됨.
+         * OrderCreationService가 직접 userTierRepository를 호출하는 대신
+         * OrderCompletedEvent를 발행하여 비동기 리스너에서 등급을 재계산한다.
+         */
         @Test
-        @DisplayName("등급 재계산이 트리거된다")
-        void createOrder_tierRecalculation_triggered() {
+        @DisplayName("주문 생성 후 OrderCompletedEvent가 발행된다")
+        void createOrder_publishesOrderCompletedEvent() {
             // given
             UserTier tier = defaultTier();
             User user = createUser(tier, 0);
@@ -324,14 +330,13 @@ class OrderCreationServiceUnitTest {
             Cart cartA = createCart(1L, productA, 1);
 
             stubCommonPath(user, List.of(cartA));
-            when(userTierRepository.findFirstByMinSpentLessThanEqualOrderByTierLevelDesc(any()))
-                    .thenReturn(Optional.of(tier));
 
             // when
             creationService.createOrder(USER_ID, defaultRequest());
 
-            // then: 누적 구매 금액 기준으로 등급 재계산이 실행됨
-            verify(userTierRepository).findFirstByMinSpentLessThanEqualOrderByTierLevelDesc(any(BigDecimal.class));
+            // then: OrderCompletedEvent가 발행됨
+            verify(applicationEventPublisher).publishEvent(
+                    any(com.shop.global.event.OrderCompletedEvent.class));
         }
     }
 

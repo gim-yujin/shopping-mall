@@ -43,8 +43,14 @@ public class OutboxEvent {
     public static final String STATUS_PROCESSED = "PROCESSED";
     public static final String STATUS_FAILED = "FAILED";
 
-    /** 현재 지원하는 이벤트 유형: 상품 재고 변경 (캐시 무효화 트리거) */
+    /** 상품 재고 변경 (캐시 무효화 트리거) */
     public static final String TYPE_PRODUCT_STOCK_CHANGED = "PRODUCT_STOCK_CHANGED";
+
+    /** [Phase 6] 주문 생성 완료 (외부 알림 발송 트리거) */
+    public static final String TYPE_ORDER_CREATED = "ORDER_CREATED";
+
+    /** [Phase 6] 주문 취소 완료 (외부 알림 발송 트리거) */
+    public static final String TYPE_ORDER_CANCELLED = "ORDER_CANCELLED";
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

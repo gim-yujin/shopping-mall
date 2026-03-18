@@ -10,6 +10,7 @@ import org.mockito.Mock;
 import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.math.BigDecimal;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -66,5 +67,44 @@ class OutboxEventPublisherTest {
 
         OutboxEvent saved = captor.getValue();
         assertThat(saved.getPayload()).contains("\"productIds\":[]");
+    }
+
+    /**
+     * [Phase 6] publishOrderCreated가 ORDER_CREATED 이벤트를 저장하는지 검증.
+     */
+    @Test
+    @DisplayName("publishOrderCreated: ORDER_CREATED 이벤트를 PENDING 상태로 저장한다")
+    void publishOrderCreatedSavesEvent() {
+        publisher.publishOrderCreated(1L, 100L, new BigDecimal("50000"));
+
+        ArgumentCaptor<OutboxEvent> captor = ArgumentCaptor.forClass(OutboxEvent.class);
+        verify(outboxEventRepository).save(captor.capture());
+
+        OutboxEvent saved = captor.getValue();
+        assertThat(saved.getEventType()).isEqualTo(OutboxEvent.TYPE_ORDER_CREATED);
+        assertThat(saved.getStatus()).isEqualTo(OutboxEvent.STATUS_PENDING);
+        assertThat(saved.getPayload()).contains("\"orderId\"");
+        assertThat(saved.getPayload()).contains("\"userId\"");
+        assertThat(saved.getPayload()).contains("\"finalAmount\"");
+        assertThat(saved.getRetryCount()).isZero();
+    }
+
+    /**
+     * [Phase 6] publishOrderCancelled가 ORDER_CANCELLED 이벤트를 저장하는지 검증.
+     */
+    @Test
+    @DisplayName("publishOrderCancelled: ORDER_CANCELLED 이벤트를 PENDING 상태로 저장한다")
+    void publishOrderCancelledSavesEvent() {
+        publisher.publishOrderCancelled(2L, 200L, new BigDecimal("30000"));
+
+        ArgumentCaptor<OutboxEvent> captor = ArgumentCaptor.forClass(OutboxEvent.class);
+        verify(outboxEventRepository).save(captor.capture());
+
+        OutboxEvent saved = captor.getValue();
+        assertThat(saved.getEventType()).isEqualTo(OutboxEvent.TYPE_ORDER_CANCELLED);
+        assertThat(saved.getStatus()).isEqualTo(OutboxEvent.STATUS_PENDING);
+        assertThat(saved.getPayload()).contains("\"orderId\"");
+        assertThat(saved.getPayload()).contains("\"refundedAmount\"");
+        assertThat(saved.getRetryCount()).isZero();
     }
 }

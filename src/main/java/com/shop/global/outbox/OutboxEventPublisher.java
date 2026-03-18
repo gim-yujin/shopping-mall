@@ -68,6 +68,44 @@ public class OutboxEventPublisher {
     }
 
     /**
+     * [Phase 6] 주문 생성 이벤트를 Outbox에 기록한다.
+     *
+     * <p><b>이중 경로 전략:</b> ApplicationEvent(@Async)는 내부 후처리(등급 재계산)를 담당하고,
+     * Outbox는 외부 연동(알림 발송)을 담당한다.
+     * 내부 후처리는 실패 시 TierScheduler가 보정하므로 best-effort로 충분하지만,
+     * 외부 알림은 유실되면 사용자 경험에 직접 영향을 미치므로
+     * Outbox의 at-least-once 보장이 필요하다.</p>
+     *
+     * @param orderId     주문 ID
+     * @param userId      사용자 ID
+     * @param finalAmount 최종 결제 금액
+     */
+    public void publishOrderCreated(Long orderId, Long userId, java.math.BigDecimal finalAmount) {
+        String payload = serializePayload(Map.of(
+                "orderId", orderId,
+                "userId", userId,
+                "finalAmount", finalAmount));
+        OutboxEvent event = new OutboxEvent(OutboxEvent.TYPE_ORDER_CREATED, payload);
+        outboxEventRepository.save(event);
+    }
+
+    /**
+     * [Phase 6] 주문 취소 이벤트를 Outbox에 기록한다.
+     *
+     * @param orderId        주문 ID
+     * @param userId         사용자 ID
+     * @param refundedAmount 환불 금액
+     */
+    public void publishOrderCancelled(Long orderId, Long userId, java.math.BigDecimal refundedAmount) {
+        String payload = serializePayload(Map.of(
+                "orderId", orderId,
+                "userId", userId,
+                "refundedAmount", refundedAmount));
+        OutboxEvent event = new OutboxEvent(OutboxEvent.TYPE_ORDER_CANCELLED, payload);
+        outboxEventRepository.save(event);
+    }
+
+    /**
      * 페이로드를 JSON으로 직렬화한다.
      *
      * <p>직렬화 실패는 프로그래밍 오류(잘못된 데이터 타입 등)이므로

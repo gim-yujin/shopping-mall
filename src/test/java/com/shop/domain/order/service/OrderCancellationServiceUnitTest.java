@@ -52,6 +52,7 @@ class OrderCancellationServiceUnitTest {
     @Mock private EntityManager entityManager;
     @Mock private OutboxEventPublisher outboxEventPublisher;
     @Mock private OrderInvariantValidator orderInvariantValidator;
+    @Mock private org.springframework.context.ApplicationEventPublisher applicationEventPublisher;
 
     private OrderCancellationService cancellationService;
 
@@ -60,7 +61,8 @@ class OrderCancellationServiceUnitTest {
         cancellationService = new OrderCancellationService(
                 orderRepository, productRepository, userRepository,
                 inventoryHistoryRepository, userCouponRepository,
-                userTierRepository, pointHistoryRepository, entityManager, outboxEventPublisher, orderInvariantValidator);
+                userTierRepository, pointHistoryRepository, entityManager,
+                outboxEventPublisher, orderInvariantValidator, applicationEventPublisher);
     }
 
     @Test
@@ -91,10 +93,6 @@ class OrderCancellationServiceUnitTest {
 
         when(userRepository.findByIdWithLockAndTier(userId)).thenReturn(Optional.of(user));
         when(userCouponRepository.findByOrderId(orderId)).thenReturn(Optional.of(userCoupon));
-        when(user.getTotalSpent()).thenReturn(BigDecimal.ZERO);
-        when(userTierRepository.findFirstByMinSpentLessThanEqualOrderByTierLevelDesc(any()))
-                .thenReturn(Optional.empty());
-
         cancellationService.cancelOrderInternal(order, userId);
 
         verify(product).increaseStockAndRollbackSales(2);
@@ -104,6 +102,10 @@ class OrderCancellationServiceUnitTest {
         verify(userCoupon).cancelUse();
         verify(order).cancel();
         verify(outboxEventPublisher).publishStockChanged(List.of(7L));
+        // [Phase 6] 등급 재계산은 비동기 이벤트로 분리되었으므로
+        // applicationEventPublisher.publishEvent(OrderCancelledEvent)가 호출되는지 검증
+        verify(applicationEventPublisher).publishEvent(
+                any(com.shop.global.event.OrderCancelledEvent.class));
     }
 
     @Test

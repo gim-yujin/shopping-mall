@@ -1,9 +1,5 @@
 package com.shop.global.outbox;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.shop.domain.product.service.ProductCacheEvictHelper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -13,6 +9,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 /**
  * Outbox 이벤트 폴러.
@@ -31,6 +29,16 @@ import java.util.Map;
  *   <li>폴링은 구현이 단순하고 디버깅이 쉬우며, 모니터링(Grafana)도 용이하다.</li>
  * </ul>
  *
+ * <h3>[Phase 6] Strategy 패턴 적용</h3>
+ * <p>기존 switch 문 기반 이벤트 라우팅을 {@link OutboxEventHandler} 전략 패턴으로 교체했다.
+ * Spring이 모든 {@code OutboxEventHandler} 구현체를 자동 주입하고,
+ * eventType → Handler 매핑을 생성자에서 구축한다.
+ * 새 이벤트 유형 추가 시 핸들러 빈만 등록하면 폴러 코드 수정이 불필요하다(OCP).</p>
+ *
+ * <h3>[Phase 6] FOR UPDATE SKIP LOCKED</h3>
+ * <p>다중 인스턴스 배포 시 두 폴러가 동일한 이벤트를 동시에 읽어
+ * 중복 처리하는 것을 방지한다. 한 폴러가 잠근 이벤트를 다른 폴러가 건너뛴다.</p>
+ *
  * <h3>재시도 전략</h3>
  * <p>처리 실패 시 retry_count를 증가시키고 PENDING 상태를 유지하여
  * 다음 폴링 주기에 자동 재시도한다. MAX_RETRIES(기본 5회) 초과 시
@@ -39,9 +47,7 @@ import java.util.Map;
  *
  * <h3>at-least-once 보장</h3>
  * <p>이벤트 처리 후 PROCESSED로 전이하기 전에 크래시하면 다음 폴링에서
- * 동일 이벤트가 재처리된다. 따라서 핸들러는 멱등(idempotent)해야 한다.
- * 캐시 무효화({@link ProductCacheEvictHelper})는 본질적으로 멱등하다 —
- * 이미 제거된 캐시를 다시 제거해도 부작용이 없다.</p>
+ * 동일 이벤트가 재처리된다. 따라서 핸들러는 멱등(idempotent)해야 한다.</p>
  *
  * <h3>폴링 간격과 배치 크기</h3>
  * <p>fixedDelay=5000ms: 이전 실행 완료 후 5초 대기. fixedRate와 달리
@@ -55,21 +61,30 @@ public class OutboxEventPoller {
     private static final Logger log = LoggerFactory.getLogger(OutboxEventPoller.class);
 
     private final OutboxEventRepository outboxEventRepository;
-    private final ProductCacheEvictHelper productCacheEvictHelper;
-    private final ObjectMapper objectMapper;
+    private final Map<String, OutboxEventHandler> handlerMap;
     private final int maxRetries;
     private final int batchSize;
 
+    /**
+     * [Phase 6] Strategy 패턴: Spring이 주입한 모든 OutboxEventHandler를
+     * eventType → Handler 매핑으로 변환한다.
+     *
+     * <p>같은 eventType에 대해 여러 핸들러가 등록되면 마지막 것이 사용된다.
+     * 중복 등록은 설정 오류이므로, 프로덕션에서는 @PostConstruct에서
+     * 중복 검증을 추가할 수 있다.</p>
+     */
     public OutboxEventPoller(OutboxEventRepository outboxEventRepository,
-                              ProductCacheEvictHelper productCacheEvictHelper,
-                              ObjectMapper objectMapper,
+                              List<OutboxEventHandler> handlers,
                               @Value("${app.outbox.max-retries:5}") int maxRetries,
                               @Value("${app.outbox.batch-size:100}") int batchSize) {
         this.outboxEventRepository = outboxEventRepository;
-        this.productCacheEvictHelper = productCacheEvictHelper;
-        this.objectMapper = objectMapper;
+        this.handlerMap = handlers.stream()
+                .collect(Collectors.toMap(
+                        OutboxEventHandler::supportedEventType,
+                        Function.identity()));
         this.maxRetries = maxRetries;
         this.batchSize = batchSize;
+        log.info("Outbox 폴러 초기화 - 등록된 핸들러: {}", handlerMap.keySet());
     }
 
     /**
@@ -79,11 +94,14 @@ public class OutboxEventPoller {
      * 중단하지 않도록 이벤트 단위로 예외를 catch한다.
      * 전체 메서드가 하나의 트랜잭션으로 실행되어, 모든 상태 전이가
      * 원자적으로 커밋된다.</p>
+     *
+     * <p>[Phase 6] findPendingEventsForUpdate(FOR UPDATE SKIP LOCKED)를 사용하여
+     * 다중 폴러 간 이벤트 중복 처리를 방지한다.</p>
      */
     @Scheduled(fixedDelay = 5000)
     @Transactional
     public void pollAndProcess() {
-        List<OutboxEvent> events = outboxEventRepository.findPendingEvents(batchSize);
+        List<OutboxEvent> events = outboxEventRepository.findPendingEventsForUpdate(batchSize);
         if (events.isEmpty()) {
             return;
         }
@@ -118,44 +136,18 @@ public class OutboxEventPoller {
     }
 
     /**
-     * 이벤트 유형에 따라 적절한 핸들러를 실행한다.
+     * [Phase 6] Strategy 패턴으로 이벤트를 라우팅한다.
      *
-     * <p>현재는 PRODUCT_STOCK_CHANGED만 처리하지만, 이벤트 유형이 추가되면
-     * switch 분기를 확장한다. 향후 이벤트 유형이 많아지면
-     * Strategy 패턴으로 핸들러를 분리할 수 있다.</p>
+     * <p>기존 switch 문 대신 handlerMap에서 핸들러를 조회하여 실행한다.
+     * 알 수 없는 이벤트 유형은 경고 로그를 남기고 정상 종료한다
+     * (PROCESSED로 전이하여 다음 폴링에서 재처리되지 않도록 한다).</p>
      */
     private void processEvent(OutboxEvent event) {
-        switch (event.getEventType()) {
-            case OutboxEvent.TYPE_PRODUCT_STOCK_CHANGED -> handleStockChanged(event);
-            default -> log.warn("알 수 없는 Outbox 이벤트 유형: {}", event.getEventType());
+        OutboxEventHandler handler = handlerMap.get(event.getEventType());
+        if (handler == null) {
+            log.warn("알 수 없는 Outbox 이벤트 유형: {} - eventId={}", event.getEventType(), event.getEventId());
+            return;
         }
-    }
-
-    /**
-     * 상품 재고 변경 이벤트를 처리한다 — 상품 상세 캐시 무효화.
-     *
-     * <p>기존 {@link com.shop.domain.product.service.ProductStockChangedEventListener}가
-     * 수행하던 동일한 캐시 무효화 로직을 실행한다.
-     * {@link ProductCacheEvictHelper}는 멱등하므로 at-least-once 재처리에 안전하다.</p>
-     *
-     * @param event payload 형식: {"productIds":[1,2,3]}
-     */
-    private void handleStockChanged(OutboxEvent event) {
-        try {
-            Map<String, Object> payload = objectMapper.readValue(
-                    event.getPayload(), new TypeReference<>() {});
-            @SuppressWarnings("unchecked")
-            List<Number> rawIds = (List<Number>) payload.get("productIds");
-            if (rawIds == null || rawIds.isEmpty()) {
-                log.warn("PRODUCT_STOCK_CHANGED 이벤트에 productIds가 없음 - eventId={}",
-                        event.getEventId());
-                return;
-            }
-            List<Long> productIds = rawIds.stream().map(Number::longValue).toList();
-            productCacheEvictHelper.evictProductDetailCaches(productIds);
-        } catch (JsonProcessingException e) {
-            throw new IllegalStateException(
-                    "Outbox 이벤트 페이로드 파싱 실패 - eventId=" + event.getEventId(), e);
-        }
+        handler.handle(event);
     }
 }
