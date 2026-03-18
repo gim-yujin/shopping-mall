@@ -95,14 +95,24 @@ public class CouponService {
 
     /**
      * [3.11] 대시보드용 쿠폰 통계 집계.
-     * 전체 쿠폰 수, 활성 쿠폰 수, 발급·사용 수를 한 번에 조회하여 반환한다.
+     *
+     * [Phase 8] 4개 개별 COUNT 쿼리 → 단일 네이티브 집계 쿼리로 통합.
+     *
+     * <p><b>문제:</b> 기존 구현은 count(), countActiveCoupons(), count(), countUsedCoupons()를
+     * 순차 호출하여 4번의 DB 왕복이 발생했다. 관리자 대시보드는 페이지 로딩마다 이 메서드를
+     * 호출하므로, 불필요한 네트워크 왕복이 응답 시간에 직접 영향을 준다.</p>
+     *
+     * <p><b>해결:</b> CouponRepository.getCouponStatsRaw()가 단일 쿼리에서
+     * 4개 집계값을 서브쿼리로 한 번에 계산한다. DB 왕복 4→1회 감소.</p>
      */
     public CouponStats getCouponStats() {
-        long totalCoupons = couponRepository.count();
-        long activeCoupons = couponRepository.countActiveCoupons();
-        long totalIssued = userCouponRepository.count();
-        long totalUsed = userCouponRepository.countUsedCoupons();
-        return new CouponStats(totalCoupons, activeCoupons, totalIssued, totalUsed);
+        Object[] row = couponRepository.getCouponStatsRaw();
+        return new CouponStats(
+                ((Number) row[0]).longValue(),
+                ((Number) row[1]).longValue(),
+                ((Number) row[2]).longValue(),
+                ((Number) row[3]).longValue()
+        );
     }
 
     /**

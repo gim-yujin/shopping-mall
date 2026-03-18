@@ -16,6 +16,20 @@ import java.util.Optional;
 public interface OrderItemRepository extends JpaRepository<OrderItem, Long> {
     List<OrderItem> findByOrder_OrderId(Long orderId);
 
+    // [Phase 8] 주문 항목 + 주문 헤더 즉시 로딩 조회 (리뷰 작성 시 N+1 해결).
+    //
+    // 문제: ReviewService.validateOrderItemForReview()에서 orderItemRepository.findById()로
+    // OrderItem을 조회한 후, orderItem.getOrder().getUserId()와
+    // orderItem.getOrder().getOrderStatus()에 접근한다.
+    // OrderItem.order는 FetchType.LAZY이므로, getOrder() 호출 시점에
+    // 별도의 SELECT 쿼리가 발행된다 (N+1 문제).
+    //
+    // 해결: JOIN FETCH oi.order로 OrderItem과 Order를 한 번의 쿼리로 조회한다.
+    // 리뷰 작성 검증에서 항상 Order의 userId, orderStatus를 확인하므로,
+    // 즉시 로딩이 적절하다.
+    @Query("SELECT oi FROM OrderItem oi JOIN FETCH oi.order WHERE oi.orderItemId = :orderItemId")
+    Optional<OrderItem> findByIdWithOrder(@Param("orderItemId") Long orderItemId);
+
     @Query("""
             SELECT oi FROM OrderItem oi
             JOIN FETCH oi.order o

@@ -277,14 +277,16 @@ class CouponServiceSupplementaryUnitTest {
     @DisplayName("Admin 조회")
     class AdminQueryTests {
 
+        /**
+         * [Phase 8] 4개 개별 COUNT → 단일 네이티브 집계 쿼리로 통합됨에 따라
+         * getCouponStatsRaw()가 Object[]를 반환하는 방식으로 테스트 변경.
+         */
         @Test
         @DisplayName("getCouponStats — 쿠폰 통계를 집계하여 반환한다")
         void getCouponStats() {
-            // given
-            when(couponRepository.count()).thenReturn(50L);
-            when(couponRepository.countActiveCoupons()).thenReturn(30L);
-            when(userCouponRepository.count()).thenReturn(200L);
-            when(userCouponRepository.countUsedCoupons()).thenReturn(80L);
+            // given: getCouponStatsRaw()가 단일 쿼리로 [totalCoupons, activeCoupons, totalIssued, totalUsed] 반환
+            Object[] rawStats = new Object[]{50L, 30L, 200L, 80L};
+            when(couponRepository.getCouponStatsRaw()).thenReturn(rawStats);
 
             // when
             CouponStats stats = couponService.getCouponStats();

@@ -187,8 +187,11 @@ class OrderCreationServiceUnitTest {
     }
 
     /**
-     * 공통 스텁 설정: 사용자 조회, 장바구니 조회(전체), 상품 락 조회.
+     * 공통 스텁 설정: 사용자 조회, 장바구니 조회(전체), 상품 일괄 잠금 조회.
      * 대부분의 테스트에서 필요한 기본 경로를 세팅한다.
+     *
+     * [Phase 8] findByIdWithLock() 개별 호출 → findAllByIdInWithLock() 일괄 호출로 변경됨에 따라
+     * 스텁도 일괄 잠금 쿼리를 모킹하도록 수정.
      */
     private void stubCommonPath(User user, List<Cart> cartItems) {
         when(userRepository.findByIdWithLockAndTier(USER_ID)).thenReturn(Optional.of(user));
@@ -197,12 +200,13 @@ class OrderCreationServiceUnitTest {
         // ArrayList로 감싸서 가변 리스트를 전달해야 정렬이 정상 동작한다.
         when(cartRepository.findByUserIdWithProduct(USER_ID)).thenReturn(new ArrayList<>(cartItems));
 
-        // 장바구니 내 각 상품에 대해 findByIdWithLock 스텁 설정
-        for (Cart cart : cartItems) {
-            Product product = cart.getProduct();
-            when(productRepository.findByIdWithLock(product.getProductId()))
-                    .thenReturn(Optional.of(product));
-        }
+        // [Phase 8] 장바구니 내 모든 상품을 일괄 잠금 조회하는 스텁 설정.
+        // anyList()로 매칭하여, 어떤 productId 리스트가 전달되든 해당 상품들을 반환한다.
+        List<Product> products = cartItems.stream()
+                .map(Cart::getProduct)
+                .toList();
+        lenient().when(productRepository.findAllByIdInWithLock(anyList()))
+                .thenReturn(new ArrayList<>(products));
 
         // 배송비/최종금액 계산은 기본적으로 실제 값 근사치를 반환
         lenient().when(shippingFeeCalculator.calculateShippingFee(any(), any()))
@@ -308,10 +312,10 @@ class OrderCreationServiceUnitTest {
             // when
             creationService.createOrder(USER_ID, defaultRequest());
 
-            // then: inventoryHistory 저장 시 referenceId(=orderId)가 100L(stub 값)
-            verify(inventoryHistoryRepository).save(argThat(history ->
-                    // ReflectionTestUtils로 주입한 orderId = 100L이 전달되어야 함
-                    history != null
+            // then: [Phase 8] 개별 save() → saveAll() 일괄 저장으로 변경됨.
+            // inventoryHistory가 saveAll()로 저장되고, referenceId(=orderId)가 100L(stub 값)인지 확인
+            verify(inventoryHistoryRepository).saveAll(argThat(histories ->
+                    histories != null && histories.iterator().hasNext()
             ));
         }
 
@@ -397,8 +401,9 @@ class OrderCreationServiceUnitTest {
             // 부분 주문이므로 findByUserIdAndCartIdIn 호출
             when(cartRepository.findByUserIdAndCartIdIn(eq(USER_ID), anyList()))
                     .thenReturn(new ArrayList<>(List.of(cartA)));
-            when(productRepository.findByIdWithLock(PRODUCT_ID_A))
-                    .thenReturn(Optional.of(productA));
+            // [Phase 8] 일괄 잠금 조회로 변경
+            when(productRepository.findAllByIdInWithLock(anyList()))
+                    .thenReturn(new ArrayList<>(List.of(productA)));
 
             lenient().when(shippingFeeCalculator.calculateShippingFee(any(), any()))
                     .thenReturn(BigDecimal.ZERO);
@@ -465,7 +470,9 @@ class OrderCreationServiceUnitTest {
         // ArrayList로 감싸서 가변 리스트를 전달해야 정렬이 정상 동작한다.
         when(userRepository.findByIdWithLockAndTier(USER_ID)).thenReturn(Optional.of(user));
         when(cartRepository.findByUserIdWithProduct(USER_ID)).thenReturn(new ArrayList<>(List.of(cartA)));
-        when(productRepository.findByIdWithLock(PRODUCT_ID_A)).thenReturn(Optional.of(productA));
+        // [Phase 8] 일괄 잠금 조회로 변경
+        when(productRepository.findAllByIdInWithLock(anyList()))
+                .thenReturn(new ArrayList<>(List.of(productA)));
 
         // when & then
         assertThatThrownBy(() -> creationService.createOrder(USER_ID, defaultRequest()))
@@ -847,8 +854,8 @@ class OrderCreationServiceUnitTest {
         when(userRepository.findByIdWithLockAndTier(USER_ID)).thenReturn(Optional.of(user));
         // List.of()는 불변 리스트 → sort()에서 UnsupportedOperationException 발생 방지
         when(cartRepository.findByUserIdWithProduct(USER_ID)).thenReturn(new ArrayList<>(List.of(cartA)));
-        // 상품 조회 시 빈 Optional 반환
-        when(productRepository.findByIdWithLock(PRODUCT_ID_A)).thenReturn(Optional.empty());
+        // [Phase 8] 일괄 잠금 조회에서 해당 상품이 없는 경우 — 빈 리스트 반환
+        when(productRepository.findAllByIdInWithLock(anyList())).thenReturn(List.of());
 
         // when & then
         assertThatThrownBy(() -> creationService.createOrder(USER_ID, defaultRequest()))

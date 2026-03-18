@@ -625,6 +625,20 @@ CREATE INDEX idx_coupon_valid ON coupons(valid_from, valid_until, is_active);
 CREATE INDEX idx_user_coupon_user ON user_coupons(user_id, is_used, expires_at);
 CREATE INDEX idx_user_coupon_coupon ON user_coupons(coupon_id);
 
+-- [Phase 8] user_coupons.order_id 부분 인덱스 (주문 취소 시 쿠폰 복원 쿼리 최적화).
+--
+-- 문제: OrderCancellationService.cancelOrderInternal()과 PartialCancellationService가
+-- userCouponRepository.findByOrderId(orderId)를 호출하여 주문에 사용된 쿠폰을 복원한다.
+-- user_coupons 테이블은 5천만 건 규모인데, order_id 컬럼에 인덱스가 없어
+-- findByOrderId()가 Full Table Scan을 수행한다.
+--
+-- 해결: order_id IS NOT NULL 조건의 부분 인덱스를 생성한다.
+-- 전체 user_coupons 중 쿠폰을 사용한(order_id가 있는) 행만 인덱싱하므로,
+-- 미사용 쿠폰(order_id IS NULL, 약 70~80%)을 제외하여 인덱스 크기를 대폭 줄인다.
+-- B-tree 탐색으로 O(log N) 조회가 가능해진다.
+CREATE INDEX idx_user_coupon_order ON user_coupons(order_id)
+    WHERE order_id IS NOT NULL;
+
 -- Reviews 인덱스 ⭐️
 CREATE INDEX idx_review_product ON reviews(product_id, created_at DESC);
 CREATE INDEX idx_review_user ON reviews(user_id, created_at DESC);
@@ -647,6 +661,27 @@ CREATE INDEX idx_search_date ON search_logs(searched_at DESC);
 -- Point_History 인덱스
 CREATE INDEX idx_point_history_user ON point_history(user_id, created_at DESC);
 CREATE INDEX idx_point_history_reference ON point_history(reference_type, reference_id);
+
+-- [Phase 8] point_history 복합 인덱스 (change_type별 최신순 조회 최적화).
+--
+-- 문제: 포인트 이력 조회 시 change_type으로 필터링 후 created_at DESC로 정렬하는 패턴이 빈번하다.
+-- 예: "최근 적립 이력", "최근 사용 이력" 등 관리자/사용자 페이지에서 타입별 필터링 조회.
+-- 기존 idx_point_history_user는 (user_id, created_at DESC)만 커버하여,
+-- change_type 필터가 추가되면 인덱스 스캔 후 다시 필터링(Filter)이 발생한다.
+--
+-- 해결: (change_type, created_at DESC) 복합 인덱스로 타입별 최신순 조회를
+-- 인덱스 범위 스캔(Index Range Scan)만으로 처리한다.
+CREATE INDEX idx_point_history_type_created ON point_history(change_type, created_at DESC);
+
+-- [Phase 8] point_history 단독 created_at 인덱스 (전체 이력 최신순 조회 최적화).
+--
+-- 문제: 관리자 대시보드에서 전체 포인트 변동을 최신순으로 페이징 조회할 때,
+-- 기존 (user_id, created_at DESC) 인덱스는 user_id 조건 없이는 활용되지 않는다.
+-- (복합 인덱스의 선행 컬럼이 WHERE 조건에 없으면 인덱스 스캔 불가)
+--
+-- 해결: created_at DESC 단독 인덱스로 전체 이력 최신순 조회 시
+-- Index Scan Backward가 가능하게 한다.
+CREATE INDEX idx_point_history_created ON point_history(created_at DESC);
 
 -- Idempotency_Records 인덱스
 CREATE UNIQUE INDEX uk_idempotency_user_key ON idempotency_records(user_id, idempotency_key);

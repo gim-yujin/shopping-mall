@@ -210,6 +210,19 @@ public class OrderCreationService {
      * 캡슐화하여 totalAmount, tierDiscountTotal, orderLines, inventorySnapshots를
      * 한 번에 반환한다.</p>
      */
+    /**
+     * [Phase 8] 재고 차감 + 주문 라인 생성 — 개별 잠금 쿼리를 일괄 잠금 쿼리로 최적화.
+     *
+     * <p><b>문제:</b> 기존 구현은 장바구니 상품 N개에 대해 findByIdWithLock()을
+     * N번 호출했다. 각 호출마다 SELECT ... FOR UPDATE 쿼리가 발행되어,
+     * 상품 5개 주문 시 5개의 개별 SELECT + LOCK 쿼리가 실행되었다.
+     * DB 왕복(round-trip) 횟수가 상품 수에 비례하여 증가한다.</p>
+     *
+     * <p><b>해결:</b> findAllByIdInWithLock()으로 N개 상품을 한 번의
+     * SELECT ... WHERE product_id IN (...) FOR UPDATE 쿼리로 일괄 조회+잠금한다.
+     * DB 왕복 N→1회로 감소. cartItems는 이미 productId 오름차순으로 정렬되어 있으므로
+     * 데드락 방지를 위한 잠금 순서도 보장된다.</p>
+     */
     private StockDeductionResult deductStockAndBuildOrderLines(
             List<Cart> cartItems, BigDecimal tierDiscountRate) {
         BigDecimal totalAmount = BigDecimal.ZERO;
@@ -224,22 +237,35 @@ public class OrderCreationService {
         // Order가 저장된 후에 orderId를 포함하여 일괄 저장한다.
         List<InventorySnapshot> inventorySnapshots = new ArrayList<>();
 
+        // [Phase 8] L1 캐시에서 Cart가 참조하는 Product를 모두 분리(detach)한 후,
+        // 일괄 잠금 쿼리로 최신 상태를 재조회한다.
+        // [Phase 4] @Version 도입에 따른 L1 캐시 정합성 보장:
+        // Cart 조회 시 Product가 L1 캐시에 로드(version=N)되었으나,
+        // 다른 트랜잭션이 재고를 변경하여 version=N+1이 되었을 수 있다.
+        // detach 없이 잠금 쿼리를 실행하면 Hibernate가 L1 캐시의 구 엔티티를 반환하여
+        // @Version 충돌이 발생한다.
+        List<Long> productIds = new ArrayList<>(cartItems.size());
         for (Cart cart : cartItems) {
-            // [Phase 4] @Version 도입에 따른 L1 캐시 정합성 보장.
-            //
-            // 문제: Cart 조회 시 Product가 L1 캐시에 로드된다(version=N).
-            // 이후 findByIdWithLock()이 PESSIMISTIC_WRITE 락을 획득하지만,
-            // Hibernate는 L1 캐시의 기존 엔티티를 반환한다(DB 결과를 버림).
-            // entityManager.refresh()가 필드 값은 갱신하지만, Hibernate 내부의
-            // 스냅샷(dirty-checking 기준)이 갱신되지 않아 @Version 충돌이 발생한다.
-            //
-            // 해결: detach로 L1 캐시에서 제거한 뒤 findByIdWithLock()으로 재조회하면,
-            // Hibernate가 DB 결과로 새 엔티티를 생성하여 올바른 version 스냅샷을 갖게 된다.
-            Long productId = cart.getProduct().getProductId();
+            productIds.add(cart.getProduct().getProductId());
             entityManager.detach(cart.getProduct());
+        }
 
-            Product product = productRepository.findByIdWithLock(productId)
-                    .orElseThrow(() -> new ResourceNotFoundException("상품", productId));
+        // 단일 SELECT ... WHERE product_id IN (...) FOR UPDATE 쿼리로
+        // N개 상품을 한 번에 조회+잠금 (기존: N번의 개별 findByIdWithLock)
+        List<Product> lockedProducts = productRepository.findAllByIdInWithLock(productIds);
+
+        // 조회된 상품을 Map으로 변환하여 O(1) 접근 (productId → Product)
+        java.util.Map<Long, Product> productMap = new java.util.LinkedHashMap<>(lockedProducts.size());
+        for (Product p : lockedProducts) {
+            productMap.put(p.getProductId(), p);
+        }
+
+        for (Cart cart : cartItems) {
+            Long productId = cart.getProduct().getProductId();
+            Product product = productMap.get(productId);
+            if (product == null) {
+                throw new ResourceNotFoundException("상품", productId);
+            }
 
             if (product.getStockQuantity() < cart.getQuantity()) {
                 throw new InsufficientStockException(product.getProductName(),
@@ -415,13 +441,25 @@ public class OrderCreationService {
         // [BUG FIX] 재고 이력에 orderId를 포함하여 저장.
         // 기존: Order save 전에 inventoryHistory를 저장 → reference_id = null
         // 수정: Order save 후 savedOrder.getOrderId()로 정확한 주문 ID를 기록.
+        //
+        // [Phase 8] 개별 save() → saveAll() 일괄 저장으로 최적화.
+        //
+        // 문제: 기존 코드는 for 루프에서 상품 N개에 대해 inventoryHistoryRepository.save()를
+        // N번 호출했다. JPA save()는 호출마다 persist → 즉시 INSERT를 실행하므로,
+        // 상품 5개 주문 시 5번의 개별 INSERT가 순차 발행되었다.
+        //
+        // 해결: saveAll()로 일괄 저장하면 Hibernate가 JDBC 배치 삽입을 활용할 수 있다.
+        // (spring.jpa.properties.hibernate.jdbc.batch_size 설정에 따라)
+        // 개별 save() 호출의 EntityManager.merge() 오버헤드도 제거된다.
+        List<ProductInventoryHistory> historyEntities = new ArrayList<>(stockResult.inventorySnapshots().size());
         for (InventorySnapshot snapshot : stockResult.inventorySnapshots()) {
-            inventoryHistoryRepository.save(new ProductInventoryHistory(
+            historyEntities.add(new ProductInventoryHistory(
                     snapshot.productId(), "OUT", snapshot.quantity(),
                     snapshot.beforeStock(), snapshot.afterStock(),
                     "ORDER", savedOrder.getOrderId(), userId
             ));
         }
+        inventoryHistoryRepository.saveAll(historyEntities);
 
         // 쿠폰 사용 처리 (DB 레벨 원자적 전환 보장)
         if (couponResult.userCoupon() != null) {

@@ -101,8 +101,19 @@ public class ReviewService {
         }
     }
 
+    /**
+     * [Phase 8] 리뷰 작성 시 주문 항목 검증 — N+1 해결.
+     *
+     * <p><b>문제:</b> 기존 findById()는 OrderItem만 조회하고, Order는 Lazy 프록시로 남겨둔다.
+     * 이후 orderItem.getOrder().getUserId()와 getOrderStatus() 접근 시
+     * 추가 SELECT가 발생하여 총 2개 쿼리가 실행되었다.
+     * (1: OrderItem 조회, 2: Order Lazy 초기화)</p>
+     *
+     * <p><b>해결:</b> findByIdWithOrder()가 JOIN FETCH oi.order로
+     * OrderItem과 Order를 한 번의 쿼리로 즉시 로딩한다. 쿼리 수 2→1 감소.</p>
+     */
     private void validateOrderItemForReview(Long userId, ReviewCreateRequest request) {
-        OrderItem orderItem = orderItemRepository.findById(request.orderItemId())
+        OrderItem orderItem = orderItemRepository.findByIdWithOrder(request.orderItemId())
                 .orElseThrow(() -> new BusinessException(
                         "REVIEW_ORDER_ITEM_NOT_FOUND",
                         "리뷰 대상 주문 항목을 찾을 수 없습니다."

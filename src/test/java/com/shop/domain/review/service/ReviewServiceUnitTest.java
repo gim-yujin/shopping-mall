@@ -72,7 +72,7 @@ class ReviewServiceUnitTest {
         Order order = mock(Order.class);
         OrderItem orderItem = mock(OrderItem.class);
 
-        when(orderItemRepository.findById(orderItemId)).thenReturn(Optional.of(orderItem));
+        when(orderItemRepository.findByIdWithOrder(orderItemId)).thenReturn(Optional.of(orderItem));
         when(orderItem.getOrder()).thenReturn(order);
         when(order.getUserId()).thenReturn(userId);
         when(orderItem.getProductId()).thenReturn(productId);
@@ -131,7 +131,7 @@ class ReviewServiceUnitTest {
         Order order = mock(Order.class);
         OrderItem orderItem = mock(OrderItem.class);
 
-        when(orderItemRepository.findById(orderItemId)).thenReturn(Optional.of(orderItem));
+        when(orderItemRepository.findByIdWithOrder(orderItemId)).thenReturn(Optional.of(orderItem));
         when(orderItem.getOrder()).thenReturn(order);
         when(order.getUserId()).thenReturn(999L);
 
@@ -152,7 +152,7 @@ class ReviewServiceUnitTest {
         Order order = mock(Order.class);
         OrderItem orderItem = mock(OrderItem.class);
 
-        when(orderItemRepository.findById(orderItemId)).thenReturn(Optional.of(orderItem));
+        when(orderItemRepository.findByIdWithOrder(orderItemId)).thenReturn(Optional.of(orderItem));
         when(orderItem.getOrder()).thenReturn(order);
         when(order.getUserId()).thenReturn(userId);
         when(orderItem.getProductId()).thenReturn(202L);
@@ -174,7 +174,7 @@ class ReviewServiceUnitTest {
         Order order = mock(Order.class);
         OrderItem orderItem = mock(OrderItem.class);
 
-        when(orderItemRepository.findById(orderItemId)).thenReturn(Optional.of(orderItem));
+        when(orderItemRepository.findByIdWithOrder(orderItemId)).thenReturn(Optional.of(orderItem));
         when(orderItem.getOrder()).thenReturn(order);
         when(order.getUserId()).thenReturn(userId);
         when(orderItem.getProductId()).thenReturn(productId);
