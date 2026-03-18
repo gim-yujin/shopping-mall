@@ -23,6 +23,16 @@ spring:
       idle-timeout: 300000
       max-lifetime: 600000
       connection-timeout: 5000 # 30000 → 5000 (빠른 실패)
+      # [Phase 11] 커넥션 누수 탐지: 30초 이상 반환되지 않은 커넥션에 대해
+      # 경고 로그와 스택 트레이스를 출력한다. 장기 트랜잭션이나 닫히지 않은
+      # 커넥션으로 인한 풀 고갈을 조기에 감지하는 안전망 역할.
+      leak-detection-threshold: 30000
+      # [Phase 11] 비관적 잠금 타임아웃: 모든 커넥션에 PostgreSQL lock_timeout을 설정한다.
+      # SELECT ... FOR UPDATE나 pg_advisory_xact_lock이 5초 내에 잠금을 획득하지 못하면
+      # 즉시 실패하여 커넥션 풀 고갈을 방지한다.
+      # PostgreSQL의 기본값은 0(무한 대기)이므로, 타임아웃 없이는 장기 잠금 대기가
+      # 커넥션을 점유하여 다른 요청이 커넥션을 얻지 못하는 연쇄 장애를 유발할 수 있다.
+      connection-init-sql: "SET lock_timeout = '5s'"
 
   jpa:
     hibernate:

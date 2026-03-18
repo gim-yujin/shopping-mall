@@ -15,6 +15,11 @@ spring:
       idle-timeout: 300000
       max-lifetime: 600000
       connection-timeout: 5000
+      # [Phase 11] 운영과 동일한 커넥션 누수 탐지 활성화.
+      leak-detection-threshold: 30000
+      # [Phase 11] 잠금 타임아웃 — 테스트 환경은 동시성 테스트에서 다수 스레드가
+      # 직렬 실행되므로 운영(5s)보다 여유 있는 10초로 설정한다.
+      connection-init-sql: "SET lock_timeout = '10s'"
 
   jpa:
     defer-datasource-initialization: false
