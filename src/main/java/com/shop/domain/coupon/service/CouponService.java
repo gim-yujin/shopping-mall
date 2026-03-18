@@ -33,7 +33,8 @@ public class CouponService {
         this.userCouponRepository = userCouponRepository;
     }
 
-    @Cacheable(value = "activeCoupons", key = "T(com.shop.global.cache.CacheKeyGenerator).pageable(#pageable)")
+    // [Phase 10] sync = true: 스탬피드 방지 — 10초 TTL로 만료가 빈번하여 스탬피드 위험이 높은 캐시
+    @Cacheable(value = "activeCoupons", key = "T(com.shop.global.cache.CacheKeyGenerator).pageable(#pageable)", sync = true)
     public Page<Coupon> getActiveCoupons(Pageable pageable) {
         return couponRepository.findActiveCoupons(pageable);
     }

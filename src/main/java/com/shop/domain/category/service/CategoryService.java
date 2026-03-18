@@ -26,7 +26,8 @@ public class CategoryService {
         this.categoryRepository = categoryRepository;
     }
 
-    @Cacheable(value = "topCategories", key = "'all'")
+    // [Phase 10] sync = true: 스탬피드 방지 — 상세 설명은 ProductService.findByIdCached() 참조
+    @Cacheable(value = "topCategories", key = "'all'", sync = true)
     public List<Category> getTopLevelCategories() {
         return categoryRepository.findTopLevelCategories();
     }
@@ -38,13 +39,13 @@ public class CategoryService {
         return categoryRepository.findAllActiveOrderByLevelAndDisplayOrder();
     }
 
-    @Cacheable(value = "categoryById", key = "#categoryId")
+    @Cacheable(value = "categoryById", key = "#categoryId", sync = true)
     public Category findById(Integer categoryId) {
         return categoryRepository.findById(categoryId)
                 .orElseThrow(() -> new ResourceNotFoundException("카테고리", categoryId));
     }
 
-    @Cacheable(value = "subCategories", key = "#parentId")
+    @Cacheable(value = "subCategories", key = "#parentId", sync = true)
     public List<Category> getSubCategories(Integer parentId) {
         return categoryRepository.findByParentId(parentId);
     }
@@ -55,7 +56,7 @@ public class CategoryService {
      * 이전: 매 요청마다 재귀 쿼리 N+1회
      * 이후: 캐시 히트 시 DB 접근 0회
      */
-    @Cacheable(value = "categoryDescendants", key = "#categoryId")
+    @Cacheable(value = "categoryDescendants", key = "#categoryId", sync = true)
     public List<Integer> getAllDescendantIds(Integer categoryId) {
         List<Integer> ids = new ArrayList<>();
         Set<Integer> visited = new HashSet<>();
@@ -83,7 +84,7 @@ public class CategoryService {
      * 이전: 매 요청마다 부모 순회 N회 쿼리
      * 이후: 캐시 히트 시 DB 접근 0회
      */
-    @Cacheable(value = "categoryBreadcrumb", key = "#categoryId")
+    @Cacheable(value = "categoryBreadcrumb", key = "#categoryId", sync = true)
     public List<Category> getBreadcrumb(Integer categoryId) {
         List<Category> breadcrumb = new ArrayList<>();
         Set<Integer> visited = new HashSet<>();

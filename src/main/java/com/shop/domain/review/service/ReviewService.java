@@ -57,7 +57,8 @@ public class ReviewService {
         this.cacheManager = cacheManager;
     }
 
-    @Cacheable(value = PRODUCT_REVIEW_CACHE, key = "#root.target.productReviewCacheKey(#productId, #pageable)")
+    // [Phase 10] sync = true: 스탬피드 방지 — 인기 상품 리뷰 페이지에서 동시 조회 시 DB 쿼리 1회로 제한
+    @Cacheable(value = PRODUCT_REVIEW_CACHE, key = "#root.target.productReviewCacheKey(#productId, #pageable)", sync = true)
     public Page<Review> getProductReviews(Long productId, Pageable pageable) {
         return reviewRepository.findByProductIdOrderByCreatedAtDesc(productId, pageable);
     }

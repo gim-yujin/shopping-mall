@@ -77,8 +77,15 @@ public class ProductService {
      * 데이터 오염 가능성을 근본적으로 차단한다. 자세한 설명은 CachedProductDetail Javadoc 참조.
      *
      * @see CachedProductDetail — 캐시 저장 DTO, 변경 불가
+     *
+     * [Phase 10] sync = true: 캐시 스탬피드(Thundering Herd) 방지.
+     * 캐시 만료 직후 동시 N개 요청이 같은 productId를 조회하면,
+     * sync 없이는 N개 모두 DB를 조회하여 순간 부하를 일으킨다.
+     * sync=true는 Caffeine의 Cache.get(key, loader)를 사용하여
+     * 1개 스레드만 DB를 조회하고 나머지는 로딩 완료를 대기한다.
+     * 이하 모든 @Cacheable 메서드에 동일한 이유로 sync=true를 적용한다.
      */
-    @Cacheable(value = "productDetail", key = "#productId")
+    @Cacheable(value = "productDetail", key = "#productId", sync = true)
     public CachedProductDetail findByIdCached(Long productId) {
         Product product = productRepository.findByIdWithCategory(productId)
                 .orElseThrow(() -> new ResourceNotFoundException("상품", productId));
@@ -107,7 +114,7 @@ public class ProductService {
         return productRepository.findByCategoryId(categoryId, pageable);
     }
 
-    @Cacheable(value = "categoryProducts",
+    @Cacheable(value = "categoryProducts", sync = true,
                key = "#categoryIds.toString() + ':' + #pageable.pageNumber + ':' + #pageable.pageSize + ':' + #pageable.sort.toString()")
     public Page<Product> findByCategoryIds(List<Integer> categoryIds, Pageable pageable) {
         return productRepository.findByCategoryIds(categoryIds, pageable);
@@ -117,14 +124,14 @@ public class ProductService {
      * 카테고리별 상품 목록 조회 (정렬 포함).
      * 입력 파라미터는 컨트롤러에서 정규화된 상태로 전달된다.
      */
-    @Cacheable(value = "categoryProducts",
+    @Cacheable(value = "categoryProducts", sync = true,
                key = "#categoryIds.toString() + ':' + #page + ':' + #size + ':' + #sort")
     public Page<Product> findByCategoryIdsSorted(List<Integer> categoryIds, int page, int size, String sort) {
         return productRepository.findByCategoryIds(categoryIds,
                 PageRequest.of(page, size, PagingParams.toProductSort(sort)));
     }
 
-    @Cacheable(value = "searchResults",
+    @Cacheable(value = "searchResults", sync = true,
                key = "#root.target.searchCacheKey(#keyword, #pageable)")
     public Page<Product> search(String keyword, Pageable pageable) {
         String normalizedKeyword = normalizeSearchKeyword(keyword);
@@ -156,17 +163,17 @@ public class ProductService {
         return CacheKeyGenerator.pageableWithPrefix(normalizeSearchKeyword(keyword), pageable);
     }
 
-    @Cacheable(value = "bestSellers", key = "T(com.shop.global.cache.CacheKeyGenerator).pageable(#pageable)")
+    @Cacheable(value = "bestSellers", key = "T(com.shop.global.cache.CacheKeyGenerator).pageable(#pageable)", sync = true)
     public Page<Product> getBestSellers(Pageable pageable) {
         return productRepository.findBestSellers(pageable);
     }
 
-    @Cacheable(value = "newArrivals", key = "T(com.shop.global.cache.CacheKeyGenerator).pageable(#pageable)")
+    @Cacheable(value = "newArrivals", key = "T(com.shop.global.cache.CacheKeyGenerator).pageable(#pageable)", sync = true)
     public Page<Product> getNewArrivals(Pageable pageable) {
         return productRepository.findNewArrivals(pageable);
     }
 
-    @Cacheable(value = "deals", key = "T(com.shop.global.cache.CacheKeyGenerator).pageable(#pageable)")
+    @Cacheable(value = "deals", key = "T(com.shop.global.cache.CacheKeyGenerator).pageable(#pageable)", sync = true)
     public Page<Product> getDeals(Pageable pageable) {
         return productRepository.findDeals(pageable);
     }
@@ -179,7 +186,7 @@ public class ProductService {
      * 상품 전체 목록 조회 (정렬 포함).
      * 입력 파라미터는 컨트롤러에서 정규화된 상태로 전달된다.
      */
-    @Cacheable(value = "productList", key = "#page + ':' + #size + ':' + #sort")
+    @Cacheable(value = "productList", key = "#page + ':' + #size + ':' + #sort", sync = true)
     public Page<Product> findAllSorted(int page, int size, String sort) {
         return productRepository.findByIsActiveTrue(
                 PageRequest.of(page, size, PagingParams.toProductSort(sort)));

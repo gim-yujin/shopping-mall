@@ -38,7 +38,8 @@ public class SearchService {
         }
     }
 
-    @Cacheable(value = "popularKeywords", key = "'top10'")
+    // [Phase 10] sync = true: 스탬피드 방지 — 검색 페이지 진입 시 모든 사용자가 동일 키 조회
+    @Cacheable(value = "popularKeywords", key = "'top10'", sync = true)
     public List<String> getPopularKeywords() {
         return searchLogRepository.findPopularKeywords().stream()
                 .map(row -> (String) row[0])

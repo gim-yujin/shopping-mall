@@ -29,7 +29,8 @@ public class CustomUserDetailsService implements UserDetailsService {
      * TTL 1분 (CacheConfig userDetails) → 비밀번호 변경 시 최대 1분 내 반영.
      */
     @Override
-    @Cacheable(value = "userDetails", key = "(#username == null ? '' : #username.trim().toLowerCase())")
+    // [Phase 10] sync = true: 스탬피드 방지 — 동일 사용자의 인증 요청이 동시 다발 시 DB 쿼리 1회로 제한
+    @Cacheable(value = "userDetails", key = "(#username == null ? '' : #username.trim().toLowerCase())", sync = true)
     @Transactional(readOnly = true)
     public UserDetails loadUserByUsername(String username) throws UsernameNotFoundException {
         String normalizedUsername = normalizeUsername(username);
