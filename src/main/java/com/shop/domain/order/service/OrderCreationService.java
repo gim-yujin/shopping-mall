@@ -25,6 +25,7 @@ import com.shop.global.event.OrderCompletedEvent;
 import com.shop.global.exception.BusinessException;
 import com.shop.global.exception.InsufficientStockException;
 import com.shop.global.exception.ResourceNotFoundException;
+import com.shop.global.metrics.OrderMetrics;
 import jakarta.persistence.EntityManager;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
@@ -75,6 +76,7 @@ public class OrderCreationService {
     private final ShippingFeeCalculator shippingFeeCalculator;
     private final OrderInvariantValidator orderInvariantValidator;
     private final ApplicationEventPublisher applicationEventPublisher;
+    private final OrderMetrics orderMetrics;
 
     public OrderCreationService(OrderRepository orderRepository, CartRepository cartRepository,
                                 ProductRepository productRepository, UserRepository userRepository,
@@ -86,7 +88,8 @@ public class OrderCreationService {
                                 OutboxEventPublisher outboxEventPublisher,
                                 ShippingFeeCalculator shippingFeeCalculator,
                                 OrderInvariantValidator orderInvariantValidator,
-                                ApplicationEventPublisher applicationEventPublisher) {
+                                ApplicationEventPublisher applicationEventPublisher,
+                                OrderMetrics orderMetrics) {
         this.orderRepository = orderRepository;
         this.cartRepository = cartRepository;
         this.productRepository = productRepository;
@@ -100,6 +103,7 @@ public class OrderCreationService {
         this.shippingFeeCalculator = shippingFeeCalculator;
         this.orderInvariantValidator = orderInvariantValidator;
         this.applicationEventPublisher = applicationEventPublisher;
+        this.orderMetrics = orderMetrics;
     }
 
     /**
@@ -110,6 +114,30 @@ public class OrderCreationService {
      */
     @Transactional
     public Order createOrder(Long userId, OrderCreateRequest request) {
+        // [Phase 13] 주문 생성 전체 소요 시간을 측정한다.
+        // 비관적 잠금 대기, 쿠폰/포인트 처리, Outbox 이벤트 발행을 모두 포함하여
+        // 동시성 병목 구간을 Grafana에서 시각적으로 식별할 수 있다.
+        io.micrometer.core.instrument.Timer.Sample timerSample = orderMetrics.startTimer();
+        try {
+            Order order = executeCreateOrder(userId, request);
+            orderMetrics.recordSuccess(timerSample);
+            return order;
+        } catch (Exception e) {
+            orderMetrics.recordFailure(timerSample);
+            throw e;
+        }
+    }
+
+    /**
+     * 주문 생성 내부 실행 로직.
+     *
+     * <p>[Phase 3 코드 품질] 고수준 오케스트레이터로 재구성.
+     * 각 단계가 명확한 이름의 메서드로 분리되어 전체 흐름을 한눈에 파악할 수 있다.</p>
+     *
+     * <p>[Phase 13] 메트릭 수집을 위해 createOrder()에서 분리.
+     * createOrder()가 타이머 래퍼 역할을 하고, 비즈니스 로직은 이 메서드에 캡슐화된다.</p>
+     */
+    private Order executeCreateOrder(Long userId, OrderCreateRequest request) {
         PaymentMethod paymentMethod = PaymentMethod.fromCode(request.paymentMethod())
                 .orElseThrow(() -> new BusinessException("UNSUPPORTED_PAYMENT_METHOD", "지원하지 않는 결제수단"));
 

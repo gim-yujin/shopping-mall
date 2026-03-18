@@ -21,6 +21,7 @@ import com.shop.domain.user.repository.UserRepository;
 import com.shop.domain.user.repository.UserTierRepository;
 import com.shop.global.exception.BusinessException;
 import com.shop.global.exception.InsufficientStockException;
+import com.shop.global.metrics.OrderMetrics;
 import com.shop.global.outbox.OutboxEventPublisher;
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.BeforeEach;
@@ -70,6 +71,7 @@ class OrderCreationServiceUnitTest {
     @Mock private ShippingFeeCalculator shippingFeeCalculator;
     @Mock private OrderInvariantValidator orderInvariantValidator;
     @Mock private org.springframework.context.ApplicationEventPublisher applicationEventPublisher;
+    @Mock private OrderMetrics orderMetrics;
 
     private OrderCreationService creationService;
 
@@ -87,7 +89,8 @@ class OrderCreationServiceUnitTest {
                 orderRepository, cartRepository, productRepository, userRepository,
                 inventoryHistoryRepository, userCouponRepository, userTierRepository,
                 pointHistoryRepository, entityManager, outboxEventPublisher,
-                shippingFeeCalculator, orderInvariantValidator, applicationEventPublisher
+                shippingFeeCalculator, orderInvariantValidator, applicationEventPublisher,
+                orderMetrics
         );
     }
 

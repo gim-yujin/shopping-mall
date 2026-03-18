@@ -1,5 +1,6 @@
 package com.shop.global.ratelimit;
 
+import com.shop.global.metrics.RateLimitMetrics;
 import com.shop.global.security.ClientIpResolver;
 import com.shop.global.security.CustomUserPrincipal;
 import jakarta.servlet.FilterChain;
@@ -47,10 +48,13 @@ public class RateLimitFilter extends OncePerRequestFilter {
 
     private final RateLimitService rateLimitService;
     private final ClientIpResolver clientIpResolver;
+    private final RateLimitMetrics rateLimitMetrics;
 
-    public RateLimitFilter(RateLimitService rateLimitService, ClientIpResolver clientIpResolver) {
+    public RateLimitFilter(RateLimitService rateLimitService, ClientIpResolver clientIpResolver,
+                           RateLimitMetrics rateLimitMetrics) {
         this.rateLimitService = rateLimitService;
         this.clientIpResolver = clientIpResolver;
+        this.rateLimitMetrics = rateLimitMetrics;
     }
 
     @Override
@@ -71,12 +75,16 @@ public class RateLimitFilter extends OncePerRequestFilter {
 
         // 성공: rate limit 헤더를 추가하고 요청 진행
         if (result.allowed()) {
+            // [Phase 13] 허용된 요청을 플랜별로 카운팅 — Prometheus에서 플랜별 트래픽 분포 확인 가능
+            rateLimitMetrics.recordAllowed(plan);
             addRateLimitHeaders(response, plan, result);
             filterChain.doFilter(request, response);
             return;
         }
 
         // 실패: 429 Too Many Requests 반환
+        // [Phase 13] 거부된 요청을 플랜별로 카운팅 — ORDER 거부 급증 시 봇 공격 의심 가능
+        rateLimitMetrics.recordRejected(plan);
         handleRateLimitExceeded(request, response, plan, result);
     }
 

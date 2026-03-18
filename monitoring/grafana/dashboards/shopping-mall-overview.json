@@ -116,6 +116,76 @@
       "title": "Caffeine Cache Hit Rate",
       "type": "timeseries",
       "targets": [{"expr": "shopping_mall:cache_hit_ratio:rate1m", "refId": "A", "legendFormat": "{{cache}}"}]
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": {"unit": "percentunit", "decimals": 1, "min": 0, "max": 1, "custom": {"fillOpacity": 15}},
+        "overrides": []
+      },
+      "gridPos": {"h": 8, "w": 8, "x": 0, "y": 32},
+      "id": 10,
+      "title": "Async Queue Fill Ratio & Backpressure Level",
+      "type": "timeseries",
+      "targets": [
+        {"expr": "shopping_mall:async_queue_fill_ratio", "refId": "A", "legendFormat": "Queue Fill Ratio"},
+        {"expr": "shopping_mall:backpressure_level / 2", "refId": "B", "legendFormat": "Pressure Level (0~1)"}
+      ]
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": {"unit": "s", "custom": {"fillOpacity": 10}},
+        "overrides": []
+      },
+      "gridPos": {"h": 8, "w": 8, "x": 8, "y": 32},
+      "id": 11,
+      "title": "Order Creation p95 Latency",
+      "type": "timeseries",
+      "targets": [{"expr": "shopping_mall:order_creation_p95_seconds", "refId": "A", "legendFormat": "p95"}]
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": {"unit": "reqps", "custom": {"fillOpacity": 15, "stacking": {"mode": "normal"}}},
+        "overrides": [
+          {"matcher": {"id": "byName", "options": "failure"}, "properties": [{"id": "color", "value": {"mode": "fixed", "fixedColor": "red"}}]},
+          {"matcher": {"id": "byName", "options": "success"}, "properties": [{"id": "color", "value": {"mode": "fixed", "fixedColor": "green"}}]}
+        ]
+      },
+      "gridPos": {"h": 8, "w": 8, "x": 16, "y": 32},
+      "id": 12,
+      "title": "Order Creation RPS (Success vs Failure)",
+      "type": "timeseries",
+      "targets": [{"expr": "shopping_mall:order_creation_rps:rate1m", "refId": "A", "legendFormat": "{{result}}"}]
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": {"unit": "reqps", "custom": {"fillOpacity": 15, "stacking": {"mode": "normal"}}},
+        "overrides": []
+      },
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 40},
+      "id": 13,
+      "title": "Rate Limit Rejected RPS by Plan",
+      "type": "timeseries",
+      "targets": [{"expr": "shopping_mall:ratelimit_rejected_rps:rate1m", "refId": "A", "legendFormat": "{{plan}}"}]
+    },
+    {
+      "datasource": "Prometheus",
+      "fieldConfig": {
+        "defaults": {"unit": "short", "custom": {"fillOpacity": 10}},
+        "overrides": []
+      },
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 40},
+      "id": 14,
+      "title": "Async Executor Status",
+      "type": "timeseries",
+      "targets": [
+        {"expr": "shop_async_queue_size{application=\"shopping-mall\"}", "refId": "A", "legendFormat": "Queue Size"},
+        {"expr": "shop_async_active_threads{application=\"shopping-mall\"}", "refId": "B", "legendFormat": "Active Threads"},
+        {"expr": "increase(shop_async_rejected_total{application=\"shopping-mall\"}[1m])", "refId": "C", "legendFormat": "Rejected/min"}
+      ]
     }
   ],
   "schemaVersion": 39,

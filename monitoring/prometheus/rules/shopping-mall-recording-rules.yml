@@ -50,3 +50,29 @@ groups:
             sum by (cache) (rate(cache_gets_total{application="shopping-mall"}[1m])),
             1
           )
+
+      # ── [Phase 13] 비동기 Executor 큐 사용률 ──
+      - record: shopping_mall:async_queue_fill_ratio
+        expr: shop_async_queue_fill_ratio{application="shopping-mall"}
+
+      # ── [Phase 13] Backpressure 부하 수준 ──
+      - record: shopping_mall:backpressure_level
+        expr: shop_backpressure_level{application="shopping-mall"}
+
+      # ── [Phase 13] 주문 생성 p95 소요 시간 ──
+      - record: shopping_mall:order_creation_p95_seconds
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum by (le) (
+              rate(shop_order_creation_duration_seconds_bucket{application="shopping-mall"}[5m])
+            )
+          )
+
+      # ── [Phase 13] 주문 생성 성공/실패 RPS ──
+      - record: shopping_mall:order_creation_rps:rate1m
+        expr: sum by (result) (rate(shop_order_creation_total{application="shopping-mall"}[1m]))
+
+      # ── [Phase 13] Rate Limit 플랜별 거부 RPS ──
+      - record: shopping_mall:ratelimit_rejected_rps:rate1m
+        expr: sum by (plan) (rate(shop_ratelimit_requests_total{application="shopping-mall",result="rejected"}[1m]))

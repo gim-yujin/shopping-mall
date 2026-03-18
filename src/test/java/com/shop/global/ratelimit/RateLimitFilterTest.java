@@ -1,5 +1,6 @@
 package com.shop.global.ratelimit;
 
+import com.shop.global.metrics.RateLimitMetrics;
 import com.shop.global.security.ClientIpResolver;
 import com.shop.global.security.CustomUserPrincipal;
 import org.junit.jupiter.api.AfterEach;
@@ -37,13 +38,16 @@ class RateLimitFilterTest {
     @Mock
     private ClientIpResolver clientIpResolver;
 
+    @Mock
+    private RateLimitMetrics rateLimitMetrics;
+
     private RateLimitService rateLimitService;
     private RateLimitFilter filter;
 
     @BeforeEach
     void setUp() {
         rateLimitService = new RateLimitService();
-        filter = new RateLimitFilter(rateLimitService, clientIpResolver);
+        filter = new RateLimitFilter(rateLimitService, clientIpResolver, rateLimitMetrics);
     }
 
     @AfterEach
