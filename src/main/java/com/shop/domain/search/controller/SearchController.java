@@ -3,6 +3,7 @@ package com.shop.domain.search.controller;
 import com.shop.domain.product.entity.Product;
 import com.shop.domain.product.service.ProductService;
 import com.shop.domain.search.service.SearchService;
+import com.shop.global.backpressure.BackpressureDetector;
 import com.shop.global.common.PagingParams;
 import com.shop.global.security.ClientIpResolver;
 import com.shop.global.security.SecurityUtil;
@@ -24,11 +25,14 @@ public class SearchController {
     private final ProductService productService;
     private final SearchService searchService;
     private final ClientIpResolver clientIpResolver;
+    private final BackpressureDetector backpressureDetector;
 
-    public SearchController(ProductService productService, SearchService searchService, ClientIpResolver clientIpResolver) {
+    public SearchController(ProductService productService, SearchService searchService,
+                            ClientIpResolver clientIpResolver, BackpressureDetector backpressureDetector) {
         this.productService = productService;
         this.searchService = searchService;
         this.clientIpResolver = clientIpResolver;
+        this.backpressureDetector = backpressureDetector;
     }
 
     @GetMapping
@@ -56,7 +60,9 @@ public class SearchController {
         model.addAttribute("products", results);
 
         // 첫 페이지에서만 검색 로그 기록 (페이지네이션 시 중복 기록 방지)
-        if (normalizedPage == 0) {
+        // [Phase 12] Graceful Degradation: 시스템 과부하 시 검색 로그 저장을 건너뛴다.
+        // 검색 로그는 인기 검색어 통계용으로, 일부 누락되어도 서비스 품질에 영향이 없다.
+        if (normalizedPage == 0 && !backpressureDetector.shouldShedNonCritical()) {
             Long userId = SecurityUtil.getCurrentUserId().orElse(null);
             String clientIp = clientIpResolver.resolveClientIp(request);
             searchService.logSearch(userId, keyword, (int) results.getTotalElements(),

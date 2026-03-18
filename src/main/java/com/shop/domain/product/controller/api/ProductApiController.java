@@ -6,6 +6,7 @@ import com.shop.domain.product.dto.ProductSummaryResponse;
 import com.shop.domain.product.entity.Product;
 import com.shop.domain.product.service.ProductService;
 import com.shop.domain.product.service.ViewCountService;
+import com.shop.global.backpressure.BackpressureDetector;
 import com.shop.global.common.PagingParams;
 import com.shop.global.dto.ApiResponse;
 import com.shop.global.dto.PageResponse;
@@ -27,10 +28,13 @@ public class ProductApiController {
 
     private final ProductService productService;
     private final ViewCountService viewCountService;
+    private final BackpressureDetector backpressureDetector;
 
-    public ProductApiController(ProductService productService, ViewCountService viewCountService) {
+    public ProductApiController(ProductService productService, ViewCountService viewCountService,
+                                BackpressureDetector backpressureDetector) {
         this.productService = productService;
         this.viewCountService = viewCountService;
+        this.backpressureDetector = backpressureDetector;
     }
 
     /**
@@ -62,7 +66,10 @@ public class ProductApiController {
     @GetMapping("/{productId}")
     public ApiResponse<ProductDetailResponse> getProduct(@PathVariable Long productId) {
         CachedProductDetail product = productService.findByIdCached(productId);
-        viewCountService.incrementAsync(productId);
+        // [Phase 12] Graceful Degradation: CRITICAL 상태에서 조회수 증가를 건너뛴다.
+        if (!backpressureDetector.shouldShedNonCritical()) {
+            viewCountService.incrementAsync(productId);
+        }
         return ApiResponse.ok(ProductDetailResponse.from(product));
     }
 }

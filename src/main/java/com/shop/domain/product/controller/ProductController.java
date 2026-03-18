@@ -8,6 +8,7 @@ import com.shop.domain.review.service.ReviewService;
 import com.shop.domain.order.entity.OrderItem;
 import com.shop.domain.review.entity.Review;
 import com.shop.domain.wishlist.service.WishlistService;
+import com.shop.global.backpressure.BackpressureDetector;
 import com.shop.global.common.PageDefaults;
 import com.shop.global.common.PagingParams;
 import com.shop.global.security.SecurityUtil;
@@ -29,15 +30,18 @@ public class ProductController {
     private final ReviewService reviewService;
     private final WishlistService wishlistService;
     private final ViewCountService viewCountService;
+    private final BackpressureDetector backpressureDetector;
 
     public ProductController(ProductService productService, CategoryService categoryService,
                              ReviewService reviewService, WishlistService wishlistService,
-                             ViewCountService viewCountService) {
+                             ViewCountService viewCountService,
+                             BackpressureDetector backpressureDetector) {
         this.productService = productService;
         this.categoryService = categoryService;
         this.reviewService = reviewService;
         this.wishlistService = wishlistService;
         this.viewCountService = viewCountService;
+        this.backpressureDetector = backpressureDetector;
     }
 
     @GetMapping
@@ -65,7 +69,12 @@ public class ProductController {
         // 수정: findByIdCached(캐시 조회) + incrementAsync(매 요청 비동기 증가) 분리
         // [P2-7] findByIdCached가 이제 CachedProductDetail 불변 DTO를 반환한다.
         CachedProductDetail product = productService.findByIdCached(productId);
-        viewCountService.incrementAsync(productId);
+        // [Phase 12] Graceful Degradation: 시스템 과부하 시 조회수 증가를 건너뛴다.
+        // 조회수는 약간의 지연/누락이 허용되는 비필수 지표이므로,
+        // CRITICAL 상태에서 큐에 작업을 추가하지 않아 핵심 요청 처리를 보호한다.
+        if (!backpressureDetector.shouldShedNonCritical()) {
+            viewCountService.incrementAsync(productId);
+        }
         int normalizedReviewPage = PagingParams.normalizePage(reviewPage);
         Page<Review> reviews = reviewService.getProductReviews(productId, PageRequest.of(normalizedReviewPage, PageDefaults.DEFAULT_LIST_SIZE));
 

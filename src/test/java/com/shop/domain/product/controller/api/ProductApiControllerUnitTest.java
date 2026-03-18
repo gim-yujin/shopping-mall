@@ -4,6 +4,7 @@ import com.shop.domain.product.dto.CachedProductDetail;
 import com.shop.domain.product.entity.Product;
 import com.shop.domain.product.service.ProductService;
 import com.shop.domain.product.service.ViewCountService;
+import com.shop.global.backpressure.BackpressureDetector;
 import com.shop.global.exception.ResourceNotFoundException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -45,11 +46,14 @@ class ProductApiControllerUnitTest {
     @Mock
     private ViewCountService viewCountService;
 
+    @Mock
+    private BackpressureDetector backpressureDetector;
+
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
-        ProductApiController controller = new ProductApiController(productService, viewCountService);
+        ProductApiController controller = new ProductApiController(productService, viewCountService, backpressureDetector);
         mockMvc = MockMvcBuilders.standaloneSetup(controller).build();
     }
 

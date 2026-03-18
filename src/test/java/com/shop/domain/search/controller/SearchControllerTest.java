@@ -3,6 +3,7 @@ package com.shop.domain.search.controller;
 import com.shop.domain.product.entity.Product;
 import com.shop.domain.product.service.ProductService;
 import com.shop.domain.search.service.SearchService;
+import com.shop.global.backpressure.BackpressureDetector;
 import com.shop.global.security.ClientIpResolver;
 import jakarta.servlet.http.HttpServletRequest;
 import org.junit.jupiter.api.DisplayName;
@@ -39,12 +40,15 @@ class SearchControllerTest {
     private ClientIpResolver clientIpResolver;
 
     @Mock
+    private BackpressureDetector backpressureDetector;
+
+    @Mock
     private HttpServletRequest request;
 
     @Test
     @DisplayName("search - 200자 초과 검색어는 잘라서 검색하고 안내 메시지를 제공")
     void search_truncatesKeywordOver200AndAddsMessage() {
-        SearchController controller = new SearchController(productService, searchService, clientIpResolver);
+        SearchController controller = new SearchController(productService, searchService, clientIpResolver, backpressureDetector);
         Model model = new ConcurrentModel();
         String longKeyword = "가".repeat(201);
         Page<Product> results = new PageImpl<>(List.of());
@@ -68,7 +72,7 @@ class SearchControllerTest {
     @Test
     @DisplayName("search - 프록시 없는 환경에서는 remoteAddr 기반 IP가 검색 로그에 기록된다")
     void search_logsResolvedClientIp_withoutProxy() {
-        SearchController controller = new SearchController(productService, searchService, clientIpResolver);
+        SearchController controller = new SearchController(productService, searchService, clientIpResolver, backpressureDetector);
         Model model = new ConcurrentModel();
         Page<Product> results = new PageImpl<>(List.of(), PageRequest.of(0, 20), 3);
 
@@ -84,7 +88,7 @@ class SearchControllerTest {
     @Test
     @DisplayName("search - trusted proxy 환경에서는 X-Forwarded-For 해석 결과 IP가 검색 로그에 기록된다")
     void search_logsResolvedClientIp_withTrustedProxy() {
-        SearchController controller = new SearchController(productService, searchService, clientIpResolver);
+        SearchController controller = new SearchController(productService, searchService, clientIpResolver, backpressureDetector);
         Model model = new ConcurrentModel();
         Page<Product> results = new PageImpl<>(List.of(), PageRequest.of(0, 20), 7);
 

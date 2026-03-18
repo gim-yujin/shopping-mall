@@ -28,8 +28,17 @@ public class AsyncExecutorMetricsLogger {
             return;
         }
 
-        log.info("asyncExecutor metrics: queue.size={}, rejected.total={}, completed.total={}",
-                asyncExecutorMetrics.getQueueSize(),
+        // [Phase 12] 큐 용량 대비 사용률과 활성 스레드 수를 추가 로깅하여
+        // 부하 추세를 모니터링할 수 있도록 한다.
+        int capacity = asyncExecutorMetrics.getQueueCapacity();
+        int queueSize = asyncExecutorMetrics.getQueueSize();
+        String fillRatio = capacity > 0
+                ? String.format("%.1f%%", (double) queueSize / capacity * 100)
+                : "N/A";
+        log.info("asyncExecutor metrics: queue.size={}, queue.capacity={}, queue.fill={}, "
+                        + "active.threads={}, rejected.total={}, completed.total={}",
+                queueSize, capacity, fillRatio,
+                asyncExecutorMetrics.getActiveCount(),
                 asyncExecutorMetrics.getRejectedTotal(),
                 asyncExecutorMetrics.getCompletedTotal());
     }
