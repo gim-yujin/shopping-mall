@@ -1,7 +1,7 @@
 package com.shop.domain.search.controller;
 
-import com.shop.domain.product.entity.Product;
-import com.shop.domain.product.service.ProductService;
+import com.shop.domain.product.dto.ProductListReadModel;
+import com.shop.domain.product.service.ProductQueryService;
 import com.shop.domain.search.service.SearchService;
 import com.shop.global.backpressure.BackpressureDetector;
 import com.shop.global.security.ClientIpResolver;
@@ -30,8 +30,9 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class SearchControllerTest {
 
+    // [Phase 18] ProductService → ProductQueryService: CQRS 읽기 경로 분리에 따라 읽기 모의 객체 변경
     @Mock
-    private ProductService productService;
+    private ProductQueryService productQueryService;
 
     @Mock
     private SearchService searchService;
@@ -48,19 +49,20 @@ class SearchControllerTest {
     @Test
     @DisplayName("search - 200자 초과 검색어는 잘라서 검색하고 안내 메시지를 제공")
     void search_truncatesKeywordOver200AndAddsMessage() {
-        SearchController controller = new SearchController(productService, searchService, clientIpResolver, backpressureDetector);
+        SearchController controller = new SearchController(productQueryService, searchService, clientIpResolver, backpressureDetector);
         Model model = new ConcurrentModel();
         String longKeyword = "가".repeat(201);
-        Page<Product> results = new PageImpl<>(List.of());
+        // [Phase 18] Page<Product> → Page<ProductListReadModel>: CQRS 읽기 모델 전환
+        Page<ProductListReadModel> results = new PageImpl<>(List.of());
 
-        when(productService.search(any(String.class), any(PageRequest.class))).thenReturn(results);
+        when(productQueryService.search(any(String.class), any(PageRequest.class))).thenReturn(results);
         when(clientIpResolver.resolveClientIp(request)).thenReturn("127.0.0.1");
         when(request.getHeader("User-Agent")).thenReturn("JUnit");
 
         String viewName = controller.search(longKeyword, 0, 20, request, model);
 
         ArgumentCaptor<String> keywordCaptor = ArgumentCaptor.forClass(String.class);
-        verify(productService).search(keywordCaptor.capture(), eq(PageRequest.of(0, 20)));
+        verify(productQueryService).search(keywordCaptor.capture(), eq(PageRequest.of(0, 20)));
 
         assertThat(viewName).isEqualTo("product/search");
         assertThat(keywordCaptor.getValue()).hasSize(200);
@@ -72,11 +74,12 @@ class SearchControllerTest {
     @Test
     @DisplayName("search - 프록시 없는 환경에서는 remoteAddr 기반 IP가 검색 로그에 기록된다")
     void search_logsResolvedClientIp_withoutProxy() {
-        SearchController controller = new SearchController(productService, searchService, clientIpResolver, backpressureDetector);
+        SearchController controller = new SearchController(productQueryService, searchService, clientIpResolver, backpressureDetector);
         Model model = new ConcurrentModel();
-        Page<Product> results = new PageImpl<>(List.of(), PageRequest.of(0, 20), 3);
+        // [Phase 18] Page<Product> → Page<ProductListReadModel>: CQRS 읽기 모델 전환
+        Page<ProductListReadModel> results = new PageImpl<>(List.of(), PageRequest.of(0, 20), 3);
 
-        when(productService.search("phone", PageRequest.of(0, 20))).thenReturn(results);
+        when(productQueryService.search("phone", PageRequest.of(0, 20))).thenReturn(results);
         when(clientIpResolver.resolveClientIp(request)).thenReturn("198.51.100.20");
         when(request.getHeader("User-Agent")).thenReturn("JUnit");
 
@@ -88,11 +91,12 @@ class SearchControllerTest {
     @Test
     @DisplayName("search - trusted proxy 환경에서는 X-Forwarded-For 해석 결과 IP가 검색 로그에 기록된다")
     void search_logsResolvedClientIp_withTrustedProxy() {
-        SearchController controller = new SearchController(productService, searchService, clientIpResolver, backpressureDetector);
+        SearchController controller = new SearchController(productQueryService, searchService, clientIpResolver, backpressureDetector);
         Model model = new ConcurrentModel();
-        Page<Product> results = new PageImpl<>(List.of(), PageRequest.of(0, 20), 7);
+        // [Phase 18] Page<Product> → Page<ProductListReadModel>: CQRS 읽기 모델 전환
+        Page<ProductListReadModel> results = new PageImpl<>(List.of(), PageRequest.of(0, 20), 7);
 
-        when(productService.search("laptop", PageRequest.of(0, 20))).thenReturn(results);
+        when(productQueryService.search("laptop", PageRequest.of(0, 20))).thenReturn(results);
         when(clientIpResolver.resolveClientIp(request)).thenReturn("203.0.113.5");
         when(request.getHeader("User-Agent")).thenReturn("JUnit");
 

@@ -20,8 +20,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 })
 class ProductServiceIntegrationTest {
 
+    // [Phase 18] findByIdCached가 ProductQueryService로 이동됨
     @Autowired
-    private ProductService productService;
+    private ProductQueryService productQueryService;
 
     @Autowired
     private ViewCountService viewCountService;
@@ -56,7 +57,7 @@ class ProductServiceIntegrationTest {
     void findByIdCached_withSeparateIncrement_incrementsViewCount() {
         // [P0 FIX] 검증: 캐시 메서드와 조회수 증가가 분리되어 매 요청마다 정확히 증가하는지 확인.
         // [P2-7] findByIdCached가 CachedProductDetail 불변 DTO를 반환함을 검증.
-        CachedProductDetail product = productService.findByIdCached(testProductId);
+        CachedProductDetail product = productQueryService.findByIdCached(testProductId);
         viewCountService.incrementAsync(testProductId);
 
         // @Async로 변경된 viewCount UPDATE가 별도 스레드에서 완료되어 DB 상태가 기대값이 될 때까지 폴링

@@ -1,7 +1,7 @@
 package com.shop.domain.product.controller;
 
 import com.shop.domain.category.service.CategoryService;
-import com.shop.domain.product.service.ProductService;
+import com.shop.domain.product.service.ProductQueryService;
 import com.shop.domain.search.service.SearchService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -24,8 +24,9 @@ import static org.mockito.Mockito.when;
 @ExtendWith(MockitoExtension.class)
 class HomeControllerUnitTest {
 
+    // [Phase 18] ProductService → ProductQueryService: CQRS 읽기 경로 분리에 따라 읽기 모의 객체 변경
     @Mock
-    private ProductService productService;
+    private ProductQueryService productQueryService;
 
     @Mock
     private CategoryService categoryService;
@@ -41,17 +42,17 @@ class HomeControllerUnitTest {
     void home_usesExpectedHomePageableSpec() {
         PageRequest expectedPageable = PageRequest.of(0, 8);
         when(categoryService.getTopLevelCategories()).thenReturn(List.of());
-        when(productService.getBestSellers(eq(expectedPageable))).thenReturn(new PageImpl<>(List.of()));
-        when(productService.getNewArrivals(eq(expectedPageable))).thenReturn(new PageImpl<>(List.of()));
-        when(productService.getDeals(eq(expectedPageable))).thenReturn(new PageImpl<>(List.of()));
+        when(productQueryService.getBestSellers(eq(expectedPageable))).thenReturn(new PageImpl<>(List.of()));
+        when(productQueryService.getNewArrivals(eq(expectedPageable))).thenReturn(new PageImpl<>(List.of()));
+        when(productQueryService.getDeals(eq(expectedPageable))).thenReturn(new PageImpl<>(List.of()));
         when(searchService.getPopularKeywords()).thenReturn(List.of());
 
         Model model = new ConcurrentModel();
         String viewName = homeController.home(model);
 
-        verify(productService).getBestSellers(eq(expectedPageable));
-        verify(productService).getNewArrivals(eq(expectedPageable));
-        verify(productService).getDeals(eq(expectedPageable));
+        verify(productQueryService).getBestSellers(eq(expectedPageable));
+        verify(productQueryService).getNewArrivals(eq(expectedPageable));
+        verify(productQueryService).getDeals(eq(expectedPageable));
         assertThat(viewName).isEqualTo("home");
     }
 }

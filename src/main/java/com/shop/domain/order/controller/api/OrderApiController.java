@@ -21,7 +21,6 @@ import jakarta.validation.Valid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -240,15 +239,20 @@ public class OrderApiController {
 
     /**
      * 내 주문 목록 조회.
+     *
+     * <p>[Phase 18] CQRS: Page&lt;Order&gt; + fetchOrderItems() 2-쿼리 패턴을
+     * Page&lt;OrderListReadModel&gt; 단일 쿼리로 대체. 아이템 수와 대표 상품명이
+     * v_order_list 뷰의 서브쿼리로 미리 계산되어 추가 쿼리가 불필요하다.</p>
      */
     @GetMapping
     public ApiResponse<PageResponse<OrderSummaryResponse>> getOrders(
             @RequestParam(defaultValue = "0") int page) {
         Long userId = SecurityUtil.getCurrentUserId().orElseThrow();
         int normalizedPage = PagingParams.normalizePage(page);
-        Page<Order> orders = orderService.getOrdersByUser(userId,
-                PageRequest.of(normalizedPage, PageDefaults.DEFAULT_LIST_SIZE));
-        return ApiResponse.ok(PageResponse.from(orders, OrderSummaryResponse::from));
+        return ApiResponse.ok(PageResponse.from(
+                orderService.getOrdersByUserFlat(userId,
+                        PageRequest.of(normalizedPage, PageDefaults.DEFAULT_LIST_SIZE)),
+                OrderSummaryResponse::from));
     }
 
     /**

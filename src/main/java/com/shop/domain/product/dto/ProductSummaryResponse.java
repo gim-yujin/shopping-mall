@@ -32,4 +32,22 @@ public record ProductSummaryResponse(
                 product.getSalesCount() != null ? product.getSalesCount() : 0
         );
     }
+
+    /**
+     * [Phase 18] 읽기 모델로부터 API 응답 DTO를 생성한다.
+     * CQRS 분리 후 엔티티 없이 읽기 모델만으로 응답을 구성한다.
+     */
+    public static ProductSummaryResponse from(ProductListReadModel readModel) {
+        return new ProductSummaryResponse(
+                readModel.productId(),
+                readModel.productName(),
+                readModel.price(),
+                readModel.originalPrice(),
+                readModel.discountPercent(),
+                readModel.thumbnailUrl(),
+                readModel.ratingAvg(),
+                readModel.reviewCount() != null ? readModel.reviewCount() : 0,
+                readModel.salesCount() != null ? readModel.salesCount() : 0
+        );
+    }
 }

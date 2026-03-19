@@ -243,8 +243,10 @@ class AdminControllerReturnManagementTest {
         @DisplayName("대시보드에 pendingReturnCount 모델 속성 포함")
         void dashboard_includesPendingReturnCount() {
             // Given
-            when(productService.findAll(any())).thenReturn(new PageImpl<>(List.of()));
-            when(orderService.getAllOrders(any())).thenReturn(new PageImpl<>(List.of()));
+            // [Phase 18] findAll() → findAllForAdmin(): CQRS 분리로 관리자 전용 메서드 사용
+            when(productService.findAllForAdmin(any())).thenReturn(new PageImpl<>(List.of()));
+            // [Phase 18] CQRS: 대시보드가 getAllOrdersFlat()을 사용하도록 변경됨
+            when(orderService.getAllOrdersFlat(any())).thenReturn(new PageImpl<>(List.of()));
             when(couponService.getCouponStats()).thenReturn(new CouponStats(0, 0, 0, 0));
             when(orderService.getPendingReturnCount()).thenReturn(5L);
 
@@ -262,8 +264,10 @@ class AdminControllerReturnManagementTest {
         @Test
         @DisplayName("반품 대기 0건 — pendingReturnCount = 0")
         void dashboard_zeroPendingReturns() {
-            when(productService.findAll(any())).thenReturn(new PageImpl<>(List.of()));
-            when(orderService.getAllOrders(any())).thenReturn(new PageImpl<>(List.of()));
+            // [Phase 18] findAll() → findAllForAdmin(): CQRS 분리로 관리자 전용 메서드 사용
+            when(productService.findAllForAdmin(any())).thenReturn(new PageImpl<>(List.of()));
+            // [Phase 18] CQRS: 대시보드가 getAllOrdersFlat()을 사용하도록 변경됨
+            when(orderService.getAllOrdersFlat(any())).thenReturn(new PageImpl<>(List.of()));
             when(couponService.getCouponStats()).thenReturn(new CouponStats(0, 0, 0, 0));
             when(orderService.getPendingReturnCount()).thenReturn(0L);
 

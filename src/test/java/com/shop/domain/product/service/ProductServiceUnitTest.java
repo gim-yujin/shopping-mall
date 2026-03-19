@@ -1,7 +1,7 @@
 package com.shop.domain.product.service;
 
 import com.shop.domain.category.service.CategoryService;
-import com.shop.domain.product.entity.Product;
+import com.shop.domain.product.dto.ProductListReadModel;
 import com.shop.domain.product.repository.ProductRepository;
 import com.shop.domain.product.repository.ProductImageRepository;
 import com.shop.global.exception.ResourceNotFoundException;
@@ -18,6 +18,8 @@ import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
@@ -48,78 +50,104 @@ class ProductServiceUnitTest {
 
     private ProductService productService;
 
+    // [Phase 18] search, findAllSorted가 ProductQueryService로 이동됨
+    private ProductQueryService productQueryService;
+
     @BeforeEach
     void setUp() {
         productService = new ProductService(productRepository, productImageRepository, viewCountService, categoryService, inventoryService);
+        productQueryService = new ProductQueryService(productRepository);
     }
 
+    // [Phase 18] search가 ProductQueryService로 이동됨 — 내부적으로 searchByKeywordFlat/searchByKeywordLikeFlat 호출
     @Test
     @DisplayName("search - 정규 검색 결과가 비면 like 검색으로 폴백")
     void search_fallbackToLikeWhenTsQueryIsEmpty() {
-        Page<Product> empty = Page.empty();
-        Product found = mock(Product.class);
-        Page<Product> likeResult = new PageImpl<>(List.of(found));
+        Page<Object[]> empty = Page.empty();
+        Object[] row = createNativeRow(1L, "laptop product");
+        Page<Object[]> likeResult = new PageImpl<>(List.<Object[]>of(row));
 
-        when(productRepository.searchByKeyword(eq("laptop"), any(Pageable.class))).thenReturn(empty);
-        when(productRepository.searchByKeywordLike(eq("laptop"), any(Pageable.class))).thenReturn(likeResult);
+        when(productRepository.searchByKeywordFlat(eq("laptop"), any(Pageable.class))).thenReturn(empty);
+        when(productRepository.searchByKeywordLikeFlat(eq("laptop"), any(Pageable.class))).thenReturn(likeResult);
 
-        Page<Product> result = productService.search("laptop", PageRequest.of(0, 10));
+        Page<ProductListReadModel> result = productQueryService.search("laptop", PageRequest.of(0, 10));
 
         assertThat(result.getContent())
                 .as("정규 검색 결과가 없으면 like 검색 결과를 반환해야 함")
-                .containsExactly(found);
-        verify(productRepository).searchByKeyword(eq("laptop"), any(Pageable.class));
-        verify(productRepository).searchByKeywordLike(eq("laptop"), any(Pageable.class));
+                .hasSize(1);
+        verify(productRepository).searchByKeywordFlat(eq("laptop"), any(Pageable.class));
+        verify(productRepository).searchByKeywordLikeFlat(eq("laptop"), any(Pageable.class));
     }
 
+    // [Phase 18] search가 ProductQueryService로 이동됨 — searchByKeywordFlat/searchByKeywordLikeFlat 사용
     @Test
     @DisplayName("search - 검색어를 trim/소문자/공백 정규화 후 조회")
     void search_normalizesKeywordBeforeQuery() {
-        when(productRepository.searchByKeyword(any(String.class), any(Pageable.class))).thenReturn(Page.empty());
-        when(productRepository.searchByKeywordLike(any(String.class), any(Pageable.class))).thenReturn(Page.empty());
+        when(productRepository.searchByKeywordFlat(any(String.class), any(Pageable.class))).thenReturn(Page.empty());
+        when(productRepository.searchByKeywordLikeFlat(any(String.class), any(Pageable.class))).thenReturn(Page.empty());
 
         Pageable pageable = PageRequest.of(0, 10);
-        productService.search("Nike", pageable);
-        productService.search(" nike ", pageable);
-        productService.search("NIKE", pageable);
+        productQueryService.search("Nike", pageable);
+        productQueryService.search(" nike ", pageable);
+        productQueryService.search("NIKE", pageable);
 
-        verify(productRepository, times(3)).searchByKeyword(eq("nike"), any(Pageable.class));
-        verify(productRepository, times(3)).searchByKeywordLike(eq("nike"), any(Pageable.class));
+        verify(productRepository, times(3)).searchByKeywordFlat(eq("nike"), any(Pageable.class));
+        verify(productRepository, times(3)).searchByKeywordLikeFlat(eq("nike"), any(Pageable.class));
     }
 
+    // [Phase 18] search가 ProductQueryService로 이동됨 — searchByKeywordFlat/searchByKeywordLikeFlat 사용
     @Test
     @DisplayName("search - 정규 검색 쿼리 예외 발생 시 like 검색으로 폴백")
     void search_fallbackToLikeWhenTsQueryFails() {
-        Product found = mock(Product.class);
-        Page<Product> likeResult = new PageImpl<>(List.of(found));
+        Object[] row = createNativeRow(1L, "키보드 상품");
+        Page<Object[]> likeResult = new PageImpl<>(List.<Object[]>of(row));
 
-        when(productRepository.searchByKeyword(eq("키보드"), any(Pageable.class)))
+        when(productRepository.searchByKeywordFlat(eq("키보드"), any(Pageable.class)))
                 .thenThrow(new DataAccessResourceFailureException("fts function error"));
-        when(productRepository.searchByKeywordLike(eq("키보드"), any(Pageable.class))).thenReturn(likeResult);
+        when(productRepository.searchByKeywordLikeFlat(eq("키보드"), any(Pageable.class))).thenReturn(likeResult);
 
-        Page<Product> result = productService.search("키보드", PageRequest.of(0, 10));
+        Page<ProductListReadModel> result = productQueryService.search("키보드", PageRequest.of(0, 10));
 
         assertThat(result.getContent())
                 .as("정규 검색 쿼리 실패 시에도 like 검색 결과를 반환해야 함")
-                .containsExactly(found);
-        verify(productRepository).searchByKeyword(eq("키보드"), any(Pageable.class));
-        verify(productRepository).searchByKeywordLike(eq("키보드"), any(Pageable.class));
+                .hasSize(1);
+        verify(productRepository).searchByKeywordFlat(eq("키보드"), any(Pageable.class));
+        verify(productRepository).searchByKeywordLikeFlat(eq("키보드"), any(Pageable.class));
     }
 
+    // [Phase 18] findAllSorted가 ProductQueryService로 이동됨 — findActiveProductsFlat 사용
     @Test
     @DisplayName("findAllSorted - sort 파라미터에 따라 정렬 필드가 선택됨")
     void findAllSorted_usesExpectedSortField() {
-        when(productRepository.findByIsActiveTrue(any(Pageable.class))).thenReturn(Page.empty());
+        when(productRepository.findActiveProductsFlat(any(Pageable.class))).thenReturn(Page.empty());
 
-        productService.findAllSorted(0, 12, "rating");
+        productQueryService.findAllSorted(0, 12, "rating");
 
         ArgumentCaptor<Pageable> pageableCaptor = ArgumentCaptor.forClass(Pageable.class);
-        verify(productRepository).findByIsActiveTrue(pageableCaptor.capture());
+        verify(productRepository).findActiveProductsFlat(pageableCaptor.capture());
 
         Pageable pageable = pageableCaptor.getValue();
+        // [Phase 18] 네이티브 SQL용 snake_case 정렬 컬럼명 사용
         assertThat(pageable.getSort().toString())
-                .as("rating 정렬은 ratingAvg DESC를 사용해야 함")
-                .contains("ratingAvg: DESC");
+                .as("rating 정렬은 rating_avg DESC를 사용해야 함 (네이티브 SQL snake_case)")
+                .contains("rating_avg: DESC");
+    }
+
+    /**
+     * [Phase 18] ProductListReadModel.fromNativeRow()에 필요한 Object[] 픽스처 생성.
+     * v_product_list 뷰의 컬럼 순서와 일치해야 한다.
+     */
+    /**
+     * [Phase 18] 네이티브 SQL은 java.sql.Timestamp를 반환하므로 Timestamp으로 생성한다.
+     */
+    private Object[] createNativeRow(Long productId, String productName) {
+        return new Object[]{
+                productId, productName,
+                new BigDecimal("10000"), new BigDecimal("12000"),
+                new BigDecimal("4.50"), 25, 100,
+                1, "전자기기",
+                java.sql.Timestamp.valueOf(LocalDateTime.now()), "/images/thumb.jpg", true
+        };
     }
 
     @Test

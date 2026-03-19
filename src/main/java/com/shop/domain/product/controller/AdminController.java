@@ -52,8 +52,11 @@ public class AdminController {
      */
     @GetMapping
     public String dashboard(Model model) {
-        model.addAttribute("products", productService.findAll(PageRequest.of(0, PageDefaults.ADMIN_DASHBOARD_SIZE)));
-        model.addAttribute("recentOrders", orderService.getAllOrders(PageRequest.of(0, PageDefaults.ADMIN_DASHBOARD_SIZE)));
+        // [Phase 18] findAll() → findAllForAdmin(): CQRS 분리로 읽기 메서드가 ProductQueryService로 이동했으나,
+        // 관리자 대시보드는 비활성 상품을 포함해야 하므로 ProductService의 Admin 전용 메서드를 사용한다.
+        model.addAttribute("products", productService.findAllForAdmin(PageRequest.of(0, PageDefaults.ADMIN_DASHBOARD_SIZE)));
+        // [Phase 18] CQRS: 경량 읽기 모델로 대시보드 주문 목록 조회 — 2-쿼리 패턴 제거
+        model.addAttribute("recentOrders", orderService.getAllOrdersFlat(PageRequest.of(0, PageDefaults.ADMIN_DASHBOARD_SIZE)));
         model.addAttribute("couponStats", couponService.getCouponStats());
         // [Step 5] 반품 대기 건수 — 대시보드 카드에 표시
         model.addAttribute("pendingReturnCount", orderService.getPendingReturnCount());
@@ -66,11 +69,12 @@ public class AdminController {
     public String adminOrders(@RequestParam(defaultValue = "0") int page,
                               @RequestParam(required = false) String status,
                               Model model) {
+        // [Phase 18] CQRS: 관리자 주문 목록에 경량 읽기 모델 사용 — 2-쿼리 패턴 제거
         int normalizedPage = PagingParams.normalizePage(page);
         if (status != null && !status.isBlank()) {
-            model.addAttribute("orders", orderService.getOrdersByStatus(status, PageRequest.of(normalizedPage, PageDefaults.ADMIN_LIST_SIZE)));
+            model.addAttribute("orders", orderService.getOrdersByStatusFlat(status, PageRequest.of(normalizedPage, PageDefaults.ADMIN_LIST_SIZE)));
         } else {
-            model.addAttribute("orders", orderService.getAllOrders(PageRequest.of(normalizedPage, PageDefaults.ADMIN_LIST_SIZE)));
+            model.addAttribute("orders", orderService.getAllOrdersFlat(PageRequest.of(normalizedPage, PageDefaults.ADMIN_LIST_SIZE)));
         }
         model.addAttribute("currentStatus", status);
         model.addAttribute("orderStatuses", OrderStatus.codes());

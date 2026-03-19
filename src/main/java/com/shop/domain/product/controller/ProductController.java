@@ -2,7 +2,7 @@ package com.shop.domain.product.controller;
 
 import com.shop.domain.category.service.CategoryService;
 import com.shop.domain.product.dto.CachedProductDetail;
-import com.shop.domain.product.service.ProductService;
+import com.shop.domain.product.service.ProductQueryService;
 import com.shop.domain.product.service.ViewCountService;
 import com.shop.domain.review.service.ReviewService;
 import com.shop.domain.order.entity.OrderItem;
@@ -25,18 +25,22 @@ import java.util.stream.Collectors;
 @RequestMapping("/products")
 public class ProductController {
 
-    private final ProductService productService;
+    /**
+     * [Phase 18] 읽기 경로를 ProductQueryService(CQRS Query)로 분리.
+     * 목록 조회/상세 조회 모두 읽기 전용이므로 Query 서비스를 사용한다.
+     */
+    private final ProductQueryService productQueryService;
     private final CategoryService categoryService;
     private final ReviewService reviewService;
     private final WishlistService wishlistService;
     private final ViewCountService viewCountService;
     private final BackpressureDetector backpressureDetector;
 
-    public ProductController(ProductService productService, CategoryService categoryService,
+    public ProductController(ProductQueryService productQueryService, CategoryService categoryService,
                              ReviewService reviewService, WishlistService wishlistService,
                              ViewCountService viewCountService,
                              BackpressureDetector backpressureDetector) {
-        this.productService = productService;
+        this.productQueryService = productQueryService;
         this.categoryService = categoryService;
         this.reviewService = reviewService;
         this.wishlistService = wishlistService;
@@ -53,7 +57,7 @@ public class ProductController {
         int normalizedSize = PagingParams.normalizeSize(size);
         String normalizedSort = PagingParams.normalizeProductSort(sort);
 
-        model.addAttribute("products", productService.findAllSorted(normalizedPage, normalizedSize, normalizedSort));
+        model.addAttribute("products", productQueryService.findAllSorted(normalizedPage, normalizedSize, normalizedSort));
         model.addAttribute("categories", categoryService.getTopLevelCategories());
         model.addAttribute("currentSort", normalizedSort);
         model.addAttribute("baseUrl", "/products");
@@ -68,7 +72,7 @@ public class ProductController {
         // 기존: findByIdAndIncrementView() → @Cacheable 내부에서 increment → 캐시 히트 시 조회수 누락
         // 수정: findByIdCached(캐시 조회) + incrementAsync(매 요청 비동기 증가) 분리
         // [P2-7] findByIdCached가 이제 CachedProductDetail 불변 DTO를 반환한다.
-        CachedProductDetail product = productService.findByIdCached(productId);
+        CachedProductDetail product = productQueryService.findByIdCached(productId);
         // [Phase 12] Graceful Degradation: 시스템 과부하 시 조회수 증가를 건너뛴다.
         // 조회수는 약간의 지연/누락이 허용되는 비필수 지표이므로,
         // CRITICAL 상태에서 큐에 작업을 추가하지 않아 핵심 요청 처리를 보호한다.

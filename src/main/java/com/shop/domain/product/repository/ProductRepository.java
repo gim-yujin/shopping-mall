@@ -94,4 +94,90 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
     @Modifying
     @Query("UPDATE Product p SET p.viewCount = p.viewCount + 1 WHERE p.productId = :id")
     void incrementViewCount(@Param("id") Long id);
+
+    // ── [Phase 18] CQRS 읽기 전용 네이티브 쿼리 ─────────────────────────────
+    //
+    // 문제: 기존 JPQL(JOIN FETCH) 쿼리는 Product 엔티티 전체를 영속성 컨텍스트에 로딩한다.
+    // 목록 페이지에는 10개 컬럼만 필요한데, description/version/updatedAt 등
+    // 불필요한 컬럼까지 SELECT되고, JPA 스냅샷 보관으로 GC 부담이 증가한다.
+    //
+    // 해결: v_product_list 뷰를 활용한 네이티브 쿼리로 필요한 컬럼만 SELECT하고,
+    // 썸네일 URL을 서브쿼리로 한 번에 가져와 N+1 문제를 원천 차단한다.
+    // 결과는 Object[]로 반환되어 ProductListReadModel에 직접 매핑된다.
+
+    /**
+     * [Phase 18] 베스트셀러 목록 — 플랫 프로젝션.
+     * 기존 findBestSellers()의 JPQL JOIN FETCH를 대체한다.
+     */
+    @Query(value = "SELECT product_id, product_name, price, original_price, rating_avg, "
+            + "review_count, sales_count, category_id, category_name, created_at, thumbnail_url, is_active "
+            + "FROM v_product_list WHERE is_active = true ORDER BY sales_count DESC",
+            countQuery = "SELECT COUNT(*) FROM products WHERE is_active = true",
+            nativeQuery = true)
+    Page<Object[]> findBestSellersFlat(Pageable pageable);
+
+    /**
+     * [Phase 18] 신상품 목록 — 플랫 프로젝션.
+     */
+    @Query(value = "SELECT product_id, product_name, price, original_price, rating_avg, "
+            + "review_count, sales_count, category_id, category_name, created_at, thumbnail_url, is_active "
+            + "FROM v_product_list WHERE is_active = true ORDER BY created_at DESC",
+            countQuery = "SELECT COUNT(*) FROM products WHERE is_active = true",
+            nativeQuery = true)
+    Page<Object[]> findNewArrivalsFlat(Pageable pageable);
+
+    /**
+     * [Phase 18] 할인 상품 목록 — 플랫 프로젝션.
+     */
+    @Query(value = "SELECT product_id, product_name, price, original_price, rating_avg, "
+            + "review_count, sales_count, category_id, category_name, created_at, thumbnail_url, is_active "
+            + "FROM v_product_list WHERE is_active = true AND original_price IS NOT NULL AND original_price > price "
+            + "ORDER BY (original_price - price) DESC",
+            countQuery = "SELECT COUNT(*) FROM products WHERE is_active = true AND original_price IS NOT NULL AND original_price > price",
+            nativeQuery = true)
+    Page<Object[]> findDealsFlat(Pageable pageable);
+
+    /**
+     * [Phase 18] 전체 상품 목록 (활성만) — 플랫 프로젝션.
+     */
+    @Query(value = "SELECT product_id, product_name, price, original_price, rating_avg, "
+            + "review_count, sales_count, category_id, category_name, created_at, thumbnail_url, is_active "
+            + "FROM v_product_list WHERE is_active = true",
+            countQuery = "SELECT COUNT(*) FROM products WHERE is_active = true",
+            nativeQuery = true)
+    Page<Object[]> findActiveProductsFlat(Pageable pageable);
+
+    /**
+     * [Phase 18] 다중 카테고리 상품 목록 — 플랫 프로젝션.
+     */
+    @Query(value = "SELECT product_id, product_name, price, original_price, rating_avg, "
+            + "review_count, sales_count, category_id, category_name, created_at, thumbnail_url, is_active "
+            + "FROM v_product_list WHERE is_active = true AND category_id IN :categoryIds",
+            countQuery = "SELECT COUNT(*) FROM products WHERE is_active = true AND category_id IN :categoryIds",
+            nativeQuery = true)
+    Page<Object[]> findByCategoryIdsFlat(@Param("categoryIds") List<Integer> categoryIds, Pageable pageable);
+
+    /**
+     * [Phase 18] 키워드 검색 (FTS) — 플랫 프로젝션.
+     * 기존 searchByKeyword()를 대체하여 썸네일을 한 번에 가져온다.
+     */
+    @Query(value = "SELECT v.product_id, v.product_name, v.price, v.original_price, v.rating_avg, "
+            + "v.review_count, v.sales_count, v.category_id, v.category_name, v.created_at, v.thumbnail_url, v.is_active "
+            + "FROM v_product_list v "
+            + "WHERE v.is_active = true AND to_tsvector('simple', v.product_name) @@ plainto_tsquery('simple', :keyword) "
+            + "ORDER BY v.sales_count DESC",
+            countQuery = "SELECT COUNT(*) FROM products WHERE is_active = true AND to_tsvector('simple', product_name) @@ plainto_tsquery('simple', :keyword)",
+            nativeQuery = true)
+    Page<Object[]> searchByKeywordFlat(@Param("keyword") String keyword, Pageable pageable);
+
+    /**
+     * [Phase 18] 키워드 LIKE 검색 (FTS 폴백) — 플랫 프로젝션.
+     */
+    @Query(value = "SELECT v.product_id, v.product_name, v.price, v.original_price, v.rating_avg, "
+            + "v.review_count, v.sales_count, v.category_id, v.category_name, v.created_at, v.thumbnail_url, v.is_active "
+            + "FROM v_product_list v "
+            + "WHERE v.is_active = true AND LOWER(v.product_name) LIKE LOWER(CONCAT('%', :keyword, '%'))",
+            countQuery = "SELECT COUNT(*) FROM products WHERE is_active = true AND LOWER(product_name) LIKE LOWER(CONCAT('%', :keyword, '%'))",
+            nativeQuery = true)
+    Page<Object[]> searchByKeywordLikeFlat(@Param("keyword") String keyword, Pageable pageable);
 }

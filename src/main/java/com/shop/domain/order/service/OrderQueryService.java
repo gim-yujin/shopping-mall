@@ -1,6 +1,7 @@
 package com.shop.domain.order.service;
 
 import com.shop.domain.order.dto.AdminReturnResponse;
+import com.shop.domain.order.dto.OrderListReadModel;
 import com.shop.domain.order.entity.Order;
 import com.shop.domain.order.entity.OrderItem;
 import com.shop.domain.order.entity.OrderItemStatus;
@@ -81,6 +82,44 @@ public class OrderQueryService {
         Page<Order> orders = orderRepository.findByStatus(orderStatus, pageable);
         fetchOrderItems(orders);
         return orders;
+    }
+
+    // ── [Phase 18] CQRS 경량 읽기 모델 조회 ────────────────────────────
+    //
+    // 문제: 기존 주문 목록 조회(getOrdersByUser, getAllOrders, getOrdersByStatus)는
+    // Page<Order> 엔티티를 반환한 후 fetchOrderItems()로 2차 쿼리를 발행했다.
+    // 목록에 필요한 건 주문 요약과 아이템 수뿐인데, 전체 OrderItem 컬렉션이 로딩되었다.
+    //
+    // 해결: v_order_list 뷰의 네이티브 쿼리로 단일 쿼리 조회.
+    // item_count와 first_product_name을 서브쿼리로 미리 계산하여
+    // fetchOrderItems() 2-쿼리 패턴을 제거한다.
+
+    /**
+     * [Phase 18] 사용자별 주문 목록 — 경량 읽기 모델 반환.
+     * 기존 getOrdersByUser()의 2-쿼리 패턴을 단일 쿼리로 대체한다.
+     */
+    public Page<OrderListReadModel> getOrdersByUserFlat(Long userId, Pageable pageable) {
+        return orderRepository.findByUserIdFlat(userId, pageable)
+                .map(OrderListReadModel::fromNativeRow);
+    }
+
+    /**
+     * [Phase 18] 전체 주문 목록 (관리자) — 경량 읽기 모델 반환.
+     * 기존 getAllOrders()의 2-쿼리 패턴을 단일 쿼리로 대체한다.
+     */
+    public Page<OrderListReadModel> getAllOrdersFlat(Pageable pageable) {
+        return orderRepository.findAllOrdersFlat(pageable)
+                .map(OrderListReadModel::fromNativeRow);
+    }
+
+    /**
+     * [Phase 18] 상태별 주문 목록 (관리자) — 경량 읽기 모델 반환.
+     * 기존 getOrdersByStatus()의 2-쿼리 패턴을 단일 쿼리로 대체한다.
+     */
+    public Page<OrderListReadModel> getOrdersByStatusFlat(String status, Pageable pageable) {
+        OrderStatus orderStatus = OrderStatus.fromOrThrow(status);
+        return orderRepository.findByStatusFlat(orderStatus.name(), pageable)
+                .map(OrderListReadModel::fromNativeRow);
     }
 
     // ── Step 3 신규: 반품 관리 조회 ───────────────────────────────

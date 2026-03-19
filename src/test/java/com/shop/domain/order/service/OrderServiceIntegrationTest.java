@@ -4,7 +4,7 @@ import com.shop.domain.order.dto.OrderCreateRequest;
 import com.shop.domain.order.entity.Order;
 import com.shop.domain.order.entity.OrderStatus;
 import com.shop.domain.order.repository.OrderRepository;
-import com.shop.domain.product.service.ProductService;
+import com.shop.domain.product.service.ProductQueryService;
 import com.shop.global.exception.BusinessException;
 import com.shop.global.exception.InsufficientStockException;
 import com.shop.testsupport.ActiveDataLookupHelper;
@@ -57,8 +57,9 @@ class OrderServiceIntegrationTest {
     @Autowired
     private CacheManager cacheManager;
 
+    // [Phase 18] ProductService → ProductQueryService: findByIdCached가 CQRS 읽기 서비스로 이동
     @Autowired
-    private ProductService productService;
+    private ProductQueryService productQueryService;
 
     @Autowired
     private com.shop.global.outbox.OutboxEventPoller outboxEventPoller;
@@ -330,7 +331,7 @@ class OrderServiceIntegrationTest {
     void createOrder_cacheEvictOnlyOnSuccess() {
         Cache cache = productDetailCache();
 
-        productService.findByIdCached(testProductId);
+        productQueryService.findByIdCached(testProductId);
         assertThat(cache.get(testProductId)).isNotNull();
 
         int originalStock = jdbcTemplate.queryForObject(
@@ -665,7 +666,7 @@ class OrderServiceIntegrationTest {
         Order order = orderService.createOrder(testUserId, defaultRequest());
         createdOrderIds.add(order.getOrderId());
 
-        productService.findByIdCached(testProductId);
+        productQueryService.findByIdCached(testProductId);
         assertThat(cache.get(testProductId)).isNotNull();
 
         orderService.cancelOrder(order.getOrderId(), testUserId);
@@ -675,7 +676,7 @@ class OrderServiceIntegrationTest {
 
         assertThat(cache.get(testProductId)).isNull();
 
-        productService.findByIdCached(testProductId);
+        productQueryService.findByIdCached(testProductId);
         assertThat(cache.get(testProductId)).isNotNull();
 
         assertThatThrownBy(() -> orderService.cancelOrder(order.getOrderId(), testUserId))

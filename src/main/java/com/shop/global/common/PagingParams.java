@@ -56,4 +56,28 @@ public final class PagingParams {
             default -> Sort.by("salesCount").descending();
         };
     }
+
+    /**
+     * [Phase 18] 네이티브 SQL용 상품 정렬 — snake_case 컬럼명 사용.
+     *
+     * <p>문제: toProductSort()는 JPA 엔티티 필드명(camelCase: salesCount, createdAt)을 반환한다.
+     * JPQL에서는 Hibernate가 이를 자동으로 DB 컬럼명으로 변환하지만,
+     * 네이티브 SQL(@Query nativeQuery=true)에서는 Sort의 property가
+     * 그대로 ORDER BY 절에 삽입되어 "column salesCount does not exist" 오류가 발생한다.</p>
+     *
+     * <p>해결: 네이티브 쿼리에서 사용하는 Pageable의 Sort는
+     * DB 컬럼명(snake_case: sales_count, created_at)을 직접 지정한다.</p>
+     */
+    public static Sort toProductSortNative(String sort) {
+        String normalizedSort = normalizeProductSort(sort);
+
+        return switch (normalizedSort) {
+            case "price_asc" -> Sort.by("price").ascending();
+            case "price_desc" -> Sort.by("price").descending();
+            case "newest" -> Sort.by("created_at").descending();
+            case "rating" -> Sort.by("rating_avg").descending();
+            case "review" -> Sort.by("review_count").descending();
+            default -> Sort.by("sales_count").descending();
+        };
+    }
 }

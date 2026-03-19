@@ -2,8 +2,8 @@ package com.shop.domain.category.controller;
 
 import com.shop.domain.category.entity.Category;
 import com.shop.domain.category.service.CategoryService;
-import com.shop.domain.product.entity.Product;
-import com.shop.domain.product.service.ProductService;
+import com.shop.domain.product.dto.ProductListReadModel;
+import com.shop.domain.product.service.ProductQueryService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -37,14 +37,15 @@ class CategoryControllerUnitTest {
 
     @Mock
     private CategoryService categoryService;
+    // [Phase 18] ProductService → ProductQueryService: CQRS 읽기 경로 분리에 따라 읽기 모의 객체 변경
     @Mock
-    private ProductService productService;
+    private ProductQueryService productQueryService;
 
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
-        CategoryController controller = new CategoryController(categoryService, productService);
+        CategoryController controller = new CategoryController(categoryService, productQueryService);
         mockMvc = MockMvcBuilders.standaloneSetup(controller).build();
     }
 
@@ -82,8 +83,9 @@ class CategoryControllerUnitTest {
     void categoryProducts_rendersListView() throws Exception {
         // given: 카테고리 10번, 기본 정렬(best), 기본 페이지(0)
         stubCategoryService(10);
-        Page<Product> products = new PageImpl<>(Collections.emptyList());
-        when(productService.findByCategoryIdsSorted(anyList(), eq(0), eq(20), eq("best")))
+        // [Phase 18] Page<Product> → Page<ProductListReadModel>: CQRS 읽기 모델 전환
+        Page<ProductListReadModel> products = new PageImpl<>(Collections.emptyList());
+        when(productQueryService.findByCategoryIdsSorted(anyList(), eq(0), eq(20), eq("best")))
                 .thenReturn(products);
 
         // when & then: 뷰 이름 + 7개 모델 속성 존재 확인
@@ -102,8 +104,9 @@ class CategoryControllerUnitTest {
     void categoryProducts_withCustomParams_normalizesCorrectly() throws Exception {
         // given: sort=price_asc, page=2, size=40
         stubCategoryService(10);
-        Page<Product> products = new PageImpl<>(Collections.emptyList());
-        when(productService.findByCategoryIdsSorted(anyList(), eq(2), eq(40), eq("price_asc")))
+        // [Phase 18] Page<Product> → Page<ProductListReadModel>: CQRS 읽기 모델 전환
+        Page<ProductListReadModel> products = new PageImpl<>(Collections.emptyList());
+        when(productQueryService.findByCategoryIdsSorted(anyList(), eq(2), eq(40), eq("price_asc")))
                 .thenReturn(products);
 
         // when & then: 정규화된 파라미터가 서비스에 전달
@@ -121,9 +124,10 @@ class CategoryControllerUnitTest {
     void categoryProducts_negativePage_normalizedToZero() throws Exception {
         // given: page=-5 → 0으로 보정
         stubCategoryService(10);
-        Page<Product> products = new PageImpl<>(Collections.emptyList());
+        // [Phase 18] Page<Product> → Page<ProductListReadModel>: CQRS 읽기 모델 전환
+        Page<ProductListReadModel> products = new PageImpl<>(Collections.emptyList());
         // PagingParams.normalizePage(-5) → 0
-        when(productService.findByCategoryIdsSorted(anyList(), eq(0), anyInt(), anyString()))
+        when(productQueryService.findByCategoryIdsSorted(anyList(), eq(0), anyInt(), anyString()))
                 .thenReturn(products);
 
         // when & then

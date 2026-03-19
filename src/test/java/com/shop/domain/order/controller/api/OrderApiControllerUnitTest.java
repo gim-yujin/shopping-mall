@@ -1,6 +1,7 @@
 package com.shop.domain.order.controller.api;
 
 import com.shop.domain.order.dto.OrderCreateRequest;
+import com.shop.domain.order.dto.OrderListReadModel;
 import com.shop.domain.order.entity.Order;
 import com.shop.domain.order.service.OrderService;
 import com.shop.global.metrics.IdempotencyMetrics;
@@ -232,13 +233,18 @@ class OrderApiControllerUnitTest {
     @DisplayName("GET /api/v1/orders — 주문 목록 조회")
     class GetOrdersTests {
 
+        // [Phase 18] CQRS: API 컨트롤러가 getOrdersByUserFlat()을 호출하므로 읽기 모델로 mock 변경
         @Test
         @DisplayName("정상 조회 시 페이징된 주문 목록을 반환한다")
         void getOrders_returnsPagedList() throws Exception {
-            // given: 주문 1건이 존재하는 첫 페이지
-            Order order = createOrder();
-            Page<Order> page = new PageImpl<>(List.of(order), PageRequest.of(0, 10), 1);
-            when(orderService.getOrdersByUser(eq(USER_ID), any(PageRequest.class))).thenReturn(page);
+            // given: 주문 1건이 존재 (OrderListReadModel 사용)
+            OrderListReadModel readModel = new OrderListReadModel(
+                    ORDER_ID, "ORD-TEST-001", USER_ID, "PENDING",
+                    new java.math.BigDecimal("60000"), java.math.BigDecimal.ZERO,
+                    new java.math.BigDecimal("3000"), new java.math.BigDecimal("63000"),
+                    java.time.LocalDateTime.now(), null, null, null, null, 2, "테스트 상품");
+            Page<OrderListReadModel> page = new PageImpl<>(List.of(readModel), PageRequest.of(0, 10), 1);
+            when(orderService.getOrdersByUserFlat(eq(USER_ID), any(PageRequest.class))).thenReturn(page);
 
             // when & then: ApiResponse > PageResponse 구조 확인
             mockMvc.perform(get("/api/v1/orders").param("page", "0"))
@@ -251,9 +257,9 @@ class OrderApiControllerUnitTest {
         @Test
         @DisplayName("빈 목록일 때도 200 OK와 빈 content 배열을 반환한다")
         void getOrders_empty_returnsEmptyContent() throws Exception {
-            // given: 주문 없음
-            Page<Order> page = new PageImpl<>(Collections.emptyList(), PageRequest.of(0, 10), 0);
-            when(orderService.getOrdersByUser(eq(USER_ID), any(PageRequest.class))).thenReturn(page);
+            // given: [Phase 18] CQRS 읽기 모델 사용
+            Page<OrderListReadModel> page = new PageImpl<>(Collections.emptyList(), PageRequest.of(0, 10), 0);
+            when(orderService.getOrdersByUserFlat(eq(USER_ID), any(PageRequest.class))).thenReturn(page);
 
             // when & then
             mockMvc.perform(get("/api/v1/orders"))

@@ -32,4 +32,25 @@ public record OrderSummaryResponse(
                 order.getOrderDate()
         );
     }
+
+    /**
+     * [Phase 18] OrderListReadModel(CQRS 읽기 모델)에서 변환.
+     *
+     * <p>기존 from(Order)은 {@code order.getItems().size()}로 아이템 수를 계산하여
+     * Lazy 컬렉션 초기화가 필요했다. 읽기 모델은 item_count를 서브쿼리로 미리 가져오므로
+     * 추가 쿼리 없이 바로 변환 가능하다.</p>
+     */
+    public static OrderSummaryResponse from(OrderListReadModel readModel) {
+        return new OrderSummaryResponse(
+                readModel.orderId(),
+                readModel.orderNumber(),
+                readModel.orderStatus(),
+                readModel.totalAmount(),
+                readModel.discountAmount(),
+                readModel.shippingFee(),
+                readModel.finalAmount(),
+                readModel.itemCount(),
+                readModel.orderDate()
+        );
+    }
 }

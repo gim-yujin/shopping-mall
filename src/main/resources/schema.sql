@@ -698,6 +698,69 @@ CREATE INDEX idx_outbox_processed_at ON outbox_events(processed_at) WHERE status
 CREATE INDEX idx_outbox_dead_letter ON outbox_events(processed_at) WHERE status = 'DEAD_LETTER';
 
 -- ============================================================================
+-- [Phase 18] 읽기 전용 뷰 — CQRS 읽기 모델 분리
+-- ============================================================================
+-- 상품 목록/검색/홈 페이지에서 사용하는 플랫 프로젝션 뷰.
+--
+-- 문제: 기존에는 Product 엔티티를 JOIN FETCH로 가져온 뒤 Lazy 컬렉션(images)에
+-- 접근하여 썸네일을 추출했다. 이는 상품당 1개의 추가 쿼리를 유발하거나,
+-- batch_fetch_size에 의존하는 비결정적 동작을 초래했다.
+--
+-- 해결: 썸네일 URL을 서브쿼리로 한 번에 가져오는 뷰를 생성한다.
+-- 뷰는 물리화(MATERIALIZED)하지 않아 항상 최신 데이터를 반환한다.
+-- 읽기 모델(ProductListReadModel)이 이 뷰를 조회하여 JPA 프록시 없이 플랫 데이터를 제공한다.
+CREATE OR REPLACE VIEW v_product_list AS
+SELECT
+    p.product_id,
+    p.product_name,
+    p.price,
+    p.original_price,
+    p.rating_avg,
+    p.review_count,
+    p.sales_count,
+    c.category_id,
+    c.category_name,
+    p.created_at,
+    COALESCE(
+        (SELECT pi.image_url FROM product_images pi
+         WHERE pi.product_id = p.product_id AND pi.is_thumbnail = true
+         LIMIT 1),
+        '/images/product-placeholder.svg'
+    ) AS thumbnail_url,
+    p.is_active
+FROM products p
+JOIN categories c ON c.category_id = p.category_id;
+
+-- [Phase 18] 주문 목록 읽기 전용 뷰 — CQRS 읽기 모델 분리.
+--
+-- 문제: OrderQueryService의 getOrdersByUser/getAllOrders가 Page<Order> 엔티티를 반환한 뒤
+-- fetchOrderItems()로 2차 쿼리를 발행하여 아이템 수(itemCount)를 계산했다.
+-- 목록 페이지에는 주문당 아이템 수와 대표 상품명만 필요한데, 전체 OrderItem 컬렉션을 로딩했다.
+--
+-- 해결: 서브쿼리로 item_count와 first_product_name을 미리 계산하여
+-- JPA 컬렉션 페치 없이 플랫 데이터를 제공한다. 2-쿼리 패턴을 제거하고 단일 쿼리로 처리.
+CREATE OR REPLACE VIEW v_order_list AS
+SELECT
+    o.order_id,
+    o.order_number,
+    o.user_id,
+    o.order_status,
+    o.total_amount,
+    o.discount_amount,
+    o.shipping_fee,
+    o.final_amount,
+    o.order_date,
+    o.paid_at,
+    o.shipped_at,
+    o.delivered_at,
+    o.cancelled_at,
+    (SELECT COUNT(*) FROM order_items oi WHERE oi.order_id = o.order_id) AS item_count,
+    (SELECT oi2.product_name FROM order_items oi2
+     WHERE oi2.order_id = o.order_id
+     ORDER BY oi2.order_item_id LIMIT 1) AS first_product_name
+FROM orders o;
+
+-- ============================================================================
 -- 스키마 생성 완료
 -- ============================================================================
 -- [FIX] 기존 DO $$ ... END $$; PL/pgSQL 익명 블록을 제거했다.

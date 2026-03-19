@@ -1,7 +1,7 @@
 package com.shop.global.cache;
 
 import com.shop.domain.product.dto.CachedProductDetail;
-import com.shop.domain.product.service.ProductService;
+import com.shop.domain.product.service.ProductQueryService;
 import com.shop.testsupport.TestDataFactory;
 import jakarta.persistence.EntityManagerFactory;
 import org.hibernate.SessionFactory;
@@ -62,8 +62,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 @SuppressWarnings("PMD.CloseResource")
 class CacheStampedeConcurrencyTest {
 
+    // [Phase 18] findByIdCached가 ProductQueryService로 이동됨
     @Autowired
-    private ProductService productService;
+    private ProductQueryService productQueryService;
 
     @Autowired
     private CacheManager cacheManager;
@@ -116,7 +117,7 @@ class CacheStampedeConcurrencyTest {
         // ── 준비: 캐시 워밍 후 evict ──
         // 한 번 조회하여 캐시에 적재한 뒤 제거함으로써,
         // 이후 모든 요청이 확실히 캐시 미스를 겪도록 보장한다.
-        productService.findByIdCached(testProductId);
+        productQueryService.findByIdCached(testProductId);
         cacheManager.getCache("productDetail").evict(testProductId);
 
         // Hibernate 통계 초기화 — 이후 실행되는 쿼리만 카운트
@@ -139,7 +140,7 @@ class CacheStampedeConcurrencyTest {
                 ready.countDown();
                 try {
                     gate.await();
-                    results[idx] = productService.findByIdCached(testProductId);
+                    results[idx] = productQueryService.findByIdCached(testProductId);
                 } catch (Exception e) {
                     errors.add("Thread#" + idx + ": "
                             + e.getClass().getSimpleName() + " - " + e.getMessage());

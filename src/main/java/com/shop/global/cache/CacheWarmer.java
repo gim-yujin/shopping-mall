@@ -1,7 +1,7 @@
 package com.shop.global.cache;
 
 import com.shop.domain.category.service.CategoryService;
-import com.shop.domain.product.service.ProductService;
+import com.shop.domain.product.service.ProductQueryService;
 import com.shop.domain.search.service.SearchService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -47,14 +47,15 @@ public class CacheWarmer {
     /** 홈 페이지 기본 페이징 — 첫 페이지만 워밍하면 대부분의 트래픽을 흡수한다 */
     private static final Pageable HOME_PAGE = PageRequest.of(0, 20);
 
-    private final ProductService productService;
+    /** [Phase 18] ProductQueryService로 전환 — 읽기 전용 캐시를 CQRS Query 서비스로 채운다. */
+    private final ProductQueryService productQueryService;
     private final CategoryService categoryService;
     private final SearchService searchService;
 
-    public CacheWarmer(ProductService productService,
+    public CacheWarmer(ProductQueryService productQueryService,
                        CategoryService categoryService,
                        SearchService searchService) {
-        this.productService = productService;
+        this.productQueryService = productQueryService;
         this.categoryService = categoryService;
         this.searchService = searchService;
     }
@@ -76,9 +77,9 @@ public class CacheWarmer {
         int warmedCount = 0;
 
         // 홈 페이지 캐시: 서버 기동 직후 가장 먼저 트래픽이 집중되는 경로
-        warmedCount += warmSafely("bestSellers", () -> productService.getBestSellers(HOME_PAGE));
-        warmedCount += warmSafely("newArrivals", () -> productService.getNewArrivals(HOME_PAGE));
-        warmedCount += warmSafely("deals", () -> productService.getDeals(HOME_PAGE));
+        warmedCount += warmSafely("bestSellers", () -> productQueryService.getBestSellers(HOME_PAGE));
+        warmedCount += warmSafely("newArrivals", () -> productQueryService.getNewArrivals(HOME_PAGE));
+        warmedCount += warmSafely("deals", () -> productQueryService.getDeals(HOME_PAGE));
 
         // 카테고리 네비게이션: 모든 페이지에서 사용되는 글로벌 캐시
         warmedCount += warmSafely("topCategories", () -> categoryService.getTopLevelCategories());

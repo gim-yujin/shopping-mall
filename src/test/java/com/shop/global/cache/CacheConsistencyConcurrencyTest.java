@@ -2,7 +2,7 @@ package com.shop.global.cache;
 
 import com.shop.domain.product.dto.CachedProductDetail;
 import com.shop.domain.product.service.ProductCacheEvictHelper;
-import com.shop.domain.product.service.ProductService;
+import com.shop.domain.product.service.ProductQueryService;
 import com.shop.testsupport.TestDataFactory;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -64,8 +64,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 @SuppressWarnings("PMD.CloseResource")
 class CacheConsistencyConcurrencyTest {
 
+    // [Phase 18] findByIdCached가 ProductQueryService로 이동됨
     @Autowired
-    private ProductService productService;
+    private ProductQueryService productQueryService;
 
     @Autowired
     private ProductCacheEvictHelper productCacheEvictHelper;
@@ -116,7 +117,7 @@ class CacheConsistencyConcurrencyTest {
     void afterEviction_concurrentReads_returnFreshData() throws InterruptedException {
         // ── 준비: stale 캐시 생성 ──
         // 캐시에 재고 100인 상품 상세를 적재한다.
-        CachedProductDetail staleData = productService.findByIdCached(testProductId);
+        CachedProductDetail staleData = productQueryService.findByIdCached(testProductId);
         assertThat(staleData.stockQuantity())
                 .as("캐시 워밍 후 재고는 %d이어야 합니다", INITIAL_STOCK)
                 .isEqualTo(INITIAL_STOCK);
@@ -145,7 +146,7 @@ class CacheConsistencyConcurrencyTest {
                 ready.countDown();
                 try {
                     gate.await();
-                    results[idx] = productService.findByIdCached(testProductId);
+                    results[idx] = productQueryService.findByIdCached(testProductId);
                 } catch (Exception e) {
                     errors.add("Thread#" + idx + ": "
                             + e.getClass().getSimpleName() + " - " + e.getMessage());
@@ -202,9 +203,9 @@ class CacheConsistencyConcurrencyTest {
         Long productId3 = fixture.createActiveProduct(300);
 
         // 모든 상품을 캐시에 적재
-        productService.findByIdCached(productId1);
-        productService.findByIdCached(productId2);
-        productService.findByIdCached(productId3);
+        productQueryService.findByIdCached(productId1);
+        productQueryService.findByIdCached(productId2);
+        productQueryService.findByIdCached(productId3);
 
         // 상품1만 재고 변경 후 evict — 상품2, 3은 캐시 유지
         jdbcTemplate.update(
@@ -237,7 +238,7 @@ class CacheConsistencyConcurrencyTest {
                     ready.countDown();
                     try {
                         gate.await();
-                        allResults[productIdx][threadIdx] = productService.findByIdCached(pid);
+                        allResults[productIdx][threadIdx] = productQueryService.findByIdCached(pid);
                     } catch (Exception e) {
                         errors.add("Product" + productIdx + "-Thread" + threadIdx + ": "
                                 + e.getClass().getSimpleName() + " - " + e.getMessage());

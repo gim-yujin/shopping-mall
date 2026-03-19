@@ -2,6 +2,7 @@ package com.shop.domain.order.service;
 
 import com.shop.domain.order.dto.AdminReturnResponse;
 import com.shop.domain.order.dto.OrderCreateRequest;
+import com.shop.domain.order.dto.OrderListReadModel;
 import com.shop.domain.order.entity.Order;
 import com.shop.domain.order.entity.OrderStatus;
 import com.shop.domain.order.repository.OrderRepository;
@@ -105,6 +106,26 @@ public class OrderService {
 
     public Page<Order> getOrdersByStatus(String status, Pageable pageable) {
         return queryService.getOrdersByStatus(status, pageable);
+    }
+
+    // ── [Phase 18] CQRS 경량 읽기 모델 조회 ─────────────────────
+    //
+    // 기존 엔티티 기반 조회 메서드는 하위 호환성을 위해 유지하되,
+    // 목록 페이지에서는 2-쿼리 패턴 없이 단일 쿼리로 처리하는 Flat 메서드를 사용한다.
+
+    /** [Phase 18] 사용자별 주문 목록 — 경량 읽기 모델. */
+    public Page<OrderListReadModel> getOrdersByUserFlat(Long userId, Pageable pageable) {
+        return queryService.getOrdersByUserFlat(userId, pageable);
+    }
+
+    /** [Phase 18] 전체 주문 목록 (관리자) — 경량 읽기 모델. */
+    public Page<OrderListReadModel> getAllOrdersFlat(Pageable pageable) {
+        return queryService.getAllOrdersFlat(pageable);
+    }
+
+    /** [Phase 18] 상태별 주문 목록 (관리자) — 경량 읽기 모델. */
+    public Page<OrderListReadModel> getOrdersByStatusFlat(String status, Pageable pageable) {
+        return queryService.getOrdersByStatusFlat(status, pageable);
     }
 
     // ── 주문 취소 ─────────────────────────────────────────

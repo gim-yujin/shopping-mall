@@ -226,11 +226,17 @@ public class OrderController {
         }
     }
 
+    /**
+     * [Phase 18] CQRS: 주문 목록에 경량 읽기 모델(OrderListReadModel) 사용.
+     * 기존 Page&lt;Order&gt; + fetchOrderItems() 2-쿼리 패턴을 단일 쿼리로 대체하여
+     * 아이템 수를 위한 추가 쿼리가 불필요하다.
+     */
     @GetMapping
     public String orderList(@RequestParam(defaultValue = "0") int page, Model model) {
         Long userId = SecurityUtil.getCurrentUserId().orElseThrow();
         int normalizedPage = PagingParams.normalizePage(page);
-        model.addAttribute("orders", orderService.getOrdersByUser(userId, PageRequest.of(normalizedPage, PageDefaults.DEFAULT_LIST_SIZE)));
+        model.addAttribute("orders", orderService.getOrdersByUserFlat(userId,
+                PageRequest.of(normalizedPage, PageDefaults.DEFAULT_LIST_SIZE)));
         model.addAttribute("orderStatusLabels", OrderStatus.labelsByCode());
         model.addAttribute("orderStatusBadgeClasses", OrderStatus.badgeClassesByCode());
         return "order/list";

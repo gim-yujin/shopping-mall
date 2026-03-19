@@ -1,7 +1,7 @@
 package com.shop.domain.product.service;
 
 import com.shop.domain.product.dto.AdminProductRequest;
-import com.shop.domain.product.entity.Product;
+import com.shop.domain.product.dto.ProductListReadModel;
 import com.shop.global.cache.CacheKeyGenerator;
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -39,6 +39,10 @@ class ProductServiceIntegrationTestSupplementary {
     @Autowired
     private ProductService productService;
 
+    // [Phase 18] 읽기 메서드가 ProductQueryService로 이동됨
+    @Autowired
+    private ProductQueryService productQueryService;
+
     @Autowired
     private JdbcTemplate jdbcTemplate;
 
@@ -71,33 +75,37 @@ class ProductServiceIntegrationTestSupplementary {
     }
 
     @Test
-    @DisplayName("findByCategory — 특정 카테고리 상품 조회")
-    void findByCategory_returnsProductsInCategory() {
-        Page<Product> result = productService.findByCategory(testCategoryId, PageRequest.of(0, 10));
+    @DisplayName("findByCategoryIdsSorted — 특정 카테고리 상품 조회")
+    void findByCategoryIdsSorted_returnsProductsInCategory() {
+        // [Phase 18] findByCategory → findByCategoryIdsSorted: CQRS 읽기 서비스로 이동
+        Page<ProductListReadModel> result = productQueryService.findByCategoryIdsSorted(
+                List.of(testCategoryId), 0, 10, "best");
 
         assertThat(result.getContent()).isNotEmpty();
-        System.out.println("  [PASS] findByCategory: " + result.getTotalElements() + "개");
+        System.out.println("  [PASS] findByCategoryIdsSorted: " + result.getTotalElements() + "개");
     }
 
     @Test
-    @DisplayName("findByCategoryIds — 복수 카테고리 ID로 상품 조회")
-    void findByCategoryIds_returnsProductsAcrossCategories() {
-        // 카테고리 2개 이상 조회
+    @DisplayName("findByCategoryIdsSorted — 복수 카테고리 ID로 상품 조회")
+    void findByCategoryIdsSorted_returnsProductsAcrossCategories() {
+        // [Phase 18] findByCategoryIds → findByCategoryIdsSorted: CQRS 읽기 서비스로 이동
         List<Integer> categoryIds = jdbcTemplate.queryForList(
                 "SELECT DISTINCT category_id FROM products WHERE is_active = true LIMIT 3",
                 Integer.class);
 
-        Page<Product> result = productService.findByCategoryIds(categoryIds, PageRequest.of(0, 20));
+        Page<ProductListReadModel> result = productQueryService.findByCategoryIdsSorted(
+                categoryIds, 0, 20, "best");
 
         assertThat(result.getContent()).isNotEmpty();
-        System.out.println("  [PASS] findByCategoryIds (" + categoryIds.size() + "개 카테고리): "
+        System.out.println("  [PASS] findByCategoryIdsSorted (" + categoryIds.size() + "개 카테고리): "
                 + result.getTotalElements() + "개 상품");
     }
 
     @Test
     @DisplayName("getBestSellers — 베스트셀러 조회")
     void getBestSellers_returnsResults() {
-        Page<Product> result = productService.getBestSellers(PageRequest.of(0, 8));
+        // [Phase 18] ProductService → ProductQueryService: CQRS 읽기 서비스로 이동
+        Page<ProductListReadModel> result = productQueryService.getBestSellers(PageRequest.of(0, 8));
 
         // 시드 데이터에 상품이 있다면 결과가 있어야 함
         assertThat(result).isNotNull();
@@ -134,9 +142,10 @@ class ProductServiceIntegrationTestSupplementary {
             jdbcTemplate.update("UPDATE products SET sales_count = ? WHERE product_id = ?", secondSalesStable, secondProductId);
 
             evictBestSellersCache();
-            Page<Product> boostedResult = productService.getBestSellers(PageRequest.of(0, 50));
+            // [Phase 18] ProductService → ProductQueryService: CQRS 읽기 서비스로 이동
+            Page<ProductListReadModel> boostedResult = productQueryService.getBestSellers(PageRequest.of(0, 50));
             List<Long> boostedIds = boostedResult.getContent().stream()
-                    .map(Product::getProductId)
+                    .map(ProductListReadModel::productId)
                     .toList();
             assertThat(boostedIds)
                     .as("판매량 보정 후 두 테스트 상품이 베스트셀러 목록에 포함되어야 함")
@@ -148,9 +157,10 @@ class ProductServiceIntegrationTestSupplementary {
             jdbcTemplate.update("UPDATE products SET sales_count = ? WHERE product_id = ?", firstSalesAfterCancel, firstProductId);
 
             evictBestSellersCache();
-            Page<Product> rolledBackResult = productService.getBestSellers(PageRequest.of(0, 50));
+            // [Phase 18] ProductService → ProductQueryService: CQRS 읽기 서비스로 이동
+            Page<ProductListReadModel> rolledBackResult = productQueryService.getBestSellers(PageRequest.of(0, 50));
             List<Long> rolledBackIds = rolledBackResult.getContent().stream()
-                    .map(Product::getProductId)
+                    .map(ProductListReadModel::productId)
                     .toList();
             assertThat(rolledBackIds)
                     .as("롤백 후 두 테스트 상품이 베스트셀러 목록에 포함되어야 함")
@@ -169,7 +179,8 @@ class ProductServiceIntegrationTestSupplementary {
     @Test
     @DisplayName("getNewArrivals — 신상품 조회")
     void getNewArrivals_returnsResults() {
-        Page<Product> result = productService.getNewArrivals(PageRequest.of(0, 8));
+        // [Phase 18] ProductService → ProductQueryService: CQRS 읽기 서비스로 이동
+        Page<ProductListReadModel> result = productQueryService.getNewArrivals(PageRequest.of(0, 8));
 
         assertThat(result).isNotNull();
         System.out.println("  [PASS] getNewArrivals: " + result.getTotalElements() + "개");
@@ -178,7 +189,8 @@ class ProductServiceIntegrationTestSupplementary {
     @Test
     @DisplayName("getDeals — 할인 상품 조회")
     void getDeals_returnsResults() {
-        Page<Product> result = productService.getDeals(PageRequest.of(0, 8));
+        // [Phase 18] ProductService → ProductQueryService: CQRS 읽기 서비스로 이동
+        Page<ProductListReadModel> result = productQueryService.getDeals(PageRequest.of(0, 8));
 
         assertThat(result).isNotNull();
         System.out.println("  [PASS] getDeals: " + result.getTotalElements() + "개");
@@ -198,7 +210,8 @@ class ProductServiceIntegrationTestSupplementary {
         String sort = "best";
         String cacheKey = page + ":" + size + ":" + sort;
 
-        productService.findAllSorted(page, size, sort);
+        // [Phase 18] findAllSorted가 ProductQueryService로 이동됨
+        productQueryService.findAllSorted(page, size, sort);
         assertThat(productListCache.get(cacheKey))
                 .as("초기 조회 후 productList 캐시 엔트리가 생성되어야 함")
                 .isNotNull();
@@ -235,7 +248,8 @@ class ProductServiceIntegrationTestSupplementary {
                 .as("상품 수정 후 productList 캐시가 제거되어야 함")
                 .isNull();
 
-        productService.findAllSorted(page, size, sort);
+        // [Phase 18] findAllSorted가 ProductQueryService로 이동됨
+        productQueryService.findAllSorted(page, size, sort);
 
         assertThat(productListCache.get(cacheKey))
                 .as("캐시 miss 이후 재조회 시 productList 캐시가 다시 채워져야 함")
@@ -247,9 +261,10 @@ class ProductServiceIntegrationTestSupplementary {
     void homePageableSpec_matchesCacheKey() {
         PageRequest homePageable = PageRequest.of(0, 8);
 
-        productService.getBestSellers(homePageable);
-        productService.getNewArrivals(homePageable);
-        productService.getDeals(homePageable);
+        // [Phase 18] ProductService → ProductQueryService: CQRS 읽기 서비스로 이동
+        productQueryService.getBestSellers(homePageable);
+        productQueryService.getNewArrivals(homePageable);
+        productQueryService.getDeals(homePageable);
 
         String expectedKey = CacheKeyGenerator.pageable(homePageable);
 
@@ -277,12 +292,13 @@ class ProductServiceIntegrationTestSupplementary {
         PageRequest firstPageable = PageRequest.of(0, 8);
         PageRequest secondPageable = PageRequest.of(1, 8);
 
-        productService.getBestSellers(firstPageable);
-        productService.getBestSellers(secondPageable);
-        productService.getNewArrivals(firstPageable);
-        productService.getNewArrivals(secondPageable);
-        productService.getDeals(firstPageable);
-        productService.getDeals(secondPageable);
+        // [Phase 18] ProductService → ProductQueryService: CQRS 읽기 서비스로 이동
+        productQueryService.getBestSellers(firstPageable);
+        productQueryService.getBestSellers(secondPageable);
+        productQueryService.getNewArrivals(firstPageable);
+        productQueryService.getNewArrivals(secondPageable);
+        productQueryService.getDeals(firstPageable);
+        productQueryService.getDeals(secondPageable);
 
         String firstKey = CacheKeyGenerator.pageable(firstPageable);
         String secondKey = CacheKeyGenerator.pageable(secondPageable);

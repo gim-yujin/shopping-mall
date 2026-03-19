@@ -4,30 +4,21 @@ import com.shop.domain.category.entity.Category;
 import com.shop.domain.category.service.CategoryService;
 import com.shop.domain.inventory.service.InventoryService;
 import com.shop.domain.product.dto.AdminProductRequest;
-import com.shop.domain.product.dto.CachedProductDetail;
 import com.shop.domain.product.entity.Product;
 import com.shop.domain.product.entity.ProductImage;
 import com.shop.domain.product.repository.ProductImageRepository;
 import com.shop.domain.product.repository.ProductRepository;
-import com.shop.global.cache.CacheKeyGenerator;
-import com.shop.global.common.PagingParams;
 import com.shop.global.exception.BusinessException;
 import com.shop.global.exception.ResourceNotFoundException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.cache.annotation.Caching;
 import org.springframework.cache.annotation.CacheEvict;
-import org.springframework.cache.annotation.Cacheable;
-import org.springframework.dao.DataAccessException;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
-import java.util.Locale;
-import java.util.List;
 
 @Service
 @Transactional(readOnly = true)
@@ -59,44 +50,20 @@ public class ProductService {
     }
 
     /**
-     * 상품 상세 조회 (캐시 적용).
+     * [Phase 18] 읽기 전용 메서드들은 ProductQueryService로 이동됨.
      *
-     * [P0 BUG FIX] 조회수 증가 로직을 이 메서드에서 분리함.
-     *
-     * 기존 문제:
-     *   @Cacheable 메서드 안에서 viewCountService.incrementAsync()를 호출했으므로,
-     *   캐시 히트 시 메서드 본문 자체가 실행되지 않아 조회수가 캐시 미스 시에만 증가했다.
-     *   TTL 2분 기준으로 상품당 2분에 1회만 조회수가 오르는 결과를 초래했다.
-     *
-     * 수정:
-     *   캐시 메서드는 순수 조회만 담당하고, 조회수 증가는 컨트롤러에서 별도 호출한다.
-     *   이렇게 하면 캐시 히트 여부와 무관하게 매 요청마다 조회수가 정확히 증가한다.
-     *
-     * [P2-7] 반환 타입을 Product 엔티티 → CachedProductDetail 불변 DTO로 전환.
-     * Caffeine 캐시에 JPA 엔티티 대신 불변 DTO를 저장하여 객체 참조 공유로 인한
-     * 데이터 오염 가능성을 근본적으로 차단한다. 자세한 설명은 CachedProductDetail Javadoc 참조.
-     *
-     * @see CachedProductDetail — 캐시 저장 DTO, 변경 불가
-     *
-     * [Phase 10] sync = true: 캐시 스탬피드(Thundering Herd) 방지.
-     * 캐시 만료 직후 동시 N개 요청이 같은 productId를 조회하면,
-     * sync 없이는 N개 모두 DB를 조회하여 순간 부하를 일으킨다.
-     * sync=true는 Caffeine의 Cache.get(key, loader)를 사용하여
-     * 1개 스레드만 DB를 조회하고 나머지는 로딩 완료를 대기한다.
-     * 이하 모든 @Cacheable 메서드에 동일한 이유로 sync=true를 적용한다.
+     * <p>CQRS 읽기 모델 분리에 의해 다음 메서드들이 ProductQueryService로 이전되었다:</p>
+     * <ul>
+     *   <li>findByIdCached → ProductQueryService.findByIdCached</li>
+     *   <li>getBestSellers/getNewArrivals/getDeals → ProductQueryService</li>
+     *   <li>findAllSorted/findByCategoryIdsSorted → ProductQueryService</li>
+     *   <li>search → ProductQueryService.search</li>
+     * </ul>
+     * <p>@CacheEvict는 캐시 이름으로 동작하므로 이 서비스에 그대로 남아 있다.</p>
      */
-    @Cacheable(value = "productDetail", key = "#productId", sync = true)
-    public CachedProductDetail findByIdCached(Long productId) {
-        Product product = productRepository.findByIdWithCategory(productId)
-                .orElseThrow(() -> new ResourceNotFoundException("상품", productId));
-        return CachedProductDetail.from(product);
-    }
 
-    /**
-     * @deprecated findByIdCached + ViewCountService.incrementAsync 조합으로 대체됨.
-     *             기존 호출처 호환을 위해 유지하되, 신규 코드에서는 사용하지 말 것.
-     */
-    @Deprecated(since = "P0 viewCount fix", forRemoval = true)
+    /** @deprecated Phase 18에서 ProductQueryService.findByIdCached()로 대체됨. */
+    @Deprecated(since = "Phase 18", forRemoval = true)
     public Product findByIdAndIncrementView(Long productId) {
         Product product = productRepository.findByIdWithCategory(productId)
                 .orElseThrow(() -> new ResourceNotFoundException("상품", productId));
@@ -108,88 +75,6 @@ public class ProductService {
     @CacheEvict(value = "productDetail", key = "#productId")
     public void evictProductDetailCache(Long productId) {
         // 캐시 evict 전용 진입점
-    }
-
-    public Page<Product> findByCategory(Integer categoryId, Pageable pageable) {
-        return productRepository.findByCategoryId(categoryId, pageable);
-    }
-
-    @Cacheable(value = "categoryProducts", sync = true,
-               key = "#categoryIds.toString() + ':' + #pageable.pageNumber + ':' + #pageable.pageSize + ':' + #pageable.sort.toString()")
-    public Page<Product> findByCategoryIds(List<Integer> categoryIds, Pageable pageable) {
-        return productRepository.findByCategoryIds(categoryIds, pageable);
-    }
-
-    /**
-     * 카테고리별 상품 목록 조회 (정렬 포함).
-     * 입력 파라미터는 컨트롤러에서 정규화된 상태로 전달된다.
-     */
-    @Cacheable(value = "categoryProducts", sync = true,
-               key = "#categoryIds.toString() + ':' + #page + ':' + #size + ':' + #sort")
-    public Page<Product> findByCategoryIdsSorted(List<Integer> categoryIds, int page, int size, String sort) {
-        return productRepository.findByCategoryIds(categoryIds,
-                PageRequest.of(page, size, PagingParams.toProductSort(sort)));
-    }
-
-    @Cacheable(value = "searchResults", sync = true,
-               key = "#root.target.searchCacheKey(#keyword, #pageable)")
-    public Page<Product> search(String keyword, Pageable pageable) {
-        String normalizedKeyword = normalizeSearchKeyword(keyword);
-
-        Page<Product> results;
-        try {
-            results = productRepository.searchByKeyword(normalizedKeyword, pageable);
-        } catch (DataAccessException e) {
-            log.warn("정규 검색(FTS) 실패로 LIKE 검색으로 폴백합니다. keyword={}", normalizedKeyword, e);
-            return productRepository.searchByKeywordLike(normalizedKeyword, pageable);
-        }
-
-        if (results.isEmpty()) {
-            results = productRepository.searchByKeywordLike(normalizedKeyword, pageable);
-        }
-        return results;
-    }
-
-    String normalizeSearchKeyword(String keyword) {
-        if (keyword == null) {
-            return "";
-        }
-        return keyword.trim()
-                .replaceAll("\\s+", " ")
-                .toLowerCase(Locale.ROOT);
-    }
-
-    public String searchCacheKey(String keyword, Pageable pageable) {
-        return CacheKeyGenerator.pageableWithPrefix(normalizeSearchKeyword(keyword), pageable);
-    }
-
-    @Cacheable(value = "bestSellers", key = "T(com.shop.global.cache.CacheKeyGenerator).pageable(#pageable)", sync = true)
-    public Page<Product> getBestSellers(Pageable pageable) {
-        return productRepository.findBestSellers(pageable);
-    }
-
-    @Cacheable(value = "newArrivals", key = "T(com.shop.global.cache.CacheKeyGenerator).pageable(#pageable)", sync = true)
-    public Page<Product> getNewArrivals(Pageable pageable) {
-        return productRepository.findNewArrivals(pageable);
-    }
-
-    @Cacheable(value = "deals", key = "T(com.shop.global.cache.CacheKeyGenerator).pageable(#pageable)", sync = true)
-    public Page<Product> getDeals(Pageable pageable) {
-        return productRepository.findDeals(pageable);
-    }
-
-    public Page<Product> findAll(Pageable pageable) {
-        return productRepository.findAll(pageable);
-    }
-
-    /**
-     * 상품 전체 목록 조회 (정렬 포함).
-     * 입력 파라미터는 컨트롤러에서 정규화된 상태로 전달된다.
-     */
-    @Cacheable(value = "productList", key = "#page + ':' + #size + ':' + #sort", sync = true)
-    public Page<Product> findAllSorted(int page, int size, String sort) {
-        return productRepository.findByIsActiveTrue(
-                PageRequest.of(page, size, PagingParams.toProductSort(sort)));
     }
 
     // ────────────────────────────────────────────

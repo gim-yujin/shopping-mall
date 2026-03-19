@@ -1,7 +1,7 @@
 package com.shop.domain.search.controller;
 
-import com.shop.domain.product.entity.Product;
-import com.shop.domain.product.service.ProductService;
+import com.shop.domain.product.dto.ProductListReadModel;
+import com.shop.domain.product.service.ProductQueryService;
 import com.shop.domain.search.service.SearchService;
 import com.shop.global.backpressure.BackpressureDetector;
 import com.shop.global.common.PagingParams;
@@ -22,14 +22,15 @@ public class SearchController {
 
     private static final int MAX_KEYWORD_LENGTH = 200;
 
-    private final ProductService productService;
+    /** [Phase 18] 읽기 경로를 ProductQueryService(CQRS Query)로 분리. */
+    private final ProductQueryService productQueryService;
     private final SearchService searchService;
     private final ClientIpResolver clientIpResolver;
     private final BackpressureDetector backpressureDetector;
 
-    public SearchController(ProductService productService, SearchService searchService,
+    public SearchController(ProductQueryService productQueryService, SearchService searchService,
                             ClientIpResolver clientIpResolver, BackpressureDetector backpressureDetector) {
-        this.productService = productService;
+        this.productQueryService = productQueryService;
         this.searchService = searchService;
         this.clientIpResolver = clientIpResolver;
         this.backpressureDetector = backpressureDetector;
@@ -56,7 +57,8 @@ public class SearchController {
         int normalizedPage = PagingParams.normalizePage(page);
         int normalizedSize = PagingParams.normalizeSize(size);
 
-        Page<Product> results = productService.search(keyword, PageRequest.of(normalizedPage, normalizedSize));
+        // [Phase 18] CQRS: 읽기 모델을 직접 반환하여 JPA 엔티티 오버헤드 제거
+        Page<ProductListReadModel> results = productQueryService.search(keyword, PageRequest.of(normalizedPage, normalizedSize));
         model.addAttribute("products", results);
 
         // 첫 페이지에서만 검색 로그 기록 (페이지네이션 시 중복 기록 방지)

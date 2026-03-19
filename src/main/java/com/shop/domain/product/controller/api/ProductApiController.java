@@ -2,9 +2,9 @@ package com.shop.domain.product.controller.api;
 
 import com.shop.domain.product.dto.CachedProductDetail;
 import com.shop.domain.product.dto.ProductDetailResponse;
+import com.shop.domain.product.dto.ProductListReadModel;
 import com.shop.domain.product.dto.ProductSummaryResponse;
-import com.shop.domain.product.entity.Product;
-import com.shop.domain.product.service.ProductService;
+import com.shop.domain.product.service.ProductQueryService;
 import com.shop.domain.product.service.ViewCountService;
 import com.shop.global.backpressure.BackpressureDetector;
 import com.shop.global.common.PagingParams;
@@ -26,13 +26,14 @@ import org.springframework.web.bind.annotation.*;
 @RequestMapping("/api/v1/products")
 public class ProductApiController {
 
-    private final ProductService productService;
+    /** [Phase 18] 읽기 경로를 ProductQueryService(CQRS Query)로 분리. */
+    private final ProductQueryService productQueryService;
     private final ViewCountService viewCountService;
     private final BackpressureDetector backpressureDetector;
 
-    public ProductApiController(ProductService productService, ViewCountService viewCountService,
+    public ProductApiController(ProductQueryService productQueryService, ViewCountService viewCountService,
                                 BackpressureDetector backpressureDetector) {
-        this.productService = productService;
+        this.productQueryService = productQueryService;
         this.viewCountService = viewCountService;
         this.backpressureDetector = backpressureDetector;
     }
@@ -54,7 +55,8 @@ public class ProductApiController {
         int normalizedSize = PagingParams.normalizeSize(size);
         String normalizedSort = PagingParams.normalizeProductSort(sort);
 
-        Page<Product> products = productService.findAllSorted(normalizedPage, normalizedSize, normalizedSort);
+        // [Phase 18] CQRS: 읽기 모델을 직접 반환하여 JPA 엔티티 변환 비용 제거
+        Page<ProductListReadModel> products = productQueryService.findAllSorted(normalizedPage, normalizedSize, normalizedSort);
         return ApiResponse.ok(PageResponse.from(products, ProductSummaryResponse::from));
     }
 
@@ -65,7 +67,7 @@ public class ProductApiController {
      */
     @GetMapping("/{productId}")
     public ApiResponse<ProductDetailResponse> getProduct(@PathVariable Long productId) {
-        CachedProductDetail product = productService.findByIdCached(productId);
+        CachedProductDetail product = productQueryService.findByIdCached(productId);
         // [Phase 12] Graceful Degradation: CRITICAL 상태에서 조회수 증가를 건너뛴다.
         if (!backpressureDetector.shouldShedNonCritical()) {
             viewCountService.incrementAsync(productId);

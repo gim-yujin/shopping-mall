@@ -57,12 +57,17 @@ class ProductServiceBranchCoverageTest {
 
     private ProductService productService;
 
+    // [Phase 18] normalizeSearchKeyword, findByIdCached가 ProductQueryService로 이동됨
+    private ProductQueryService productQueryService;
+
     @BeforeEach
     void setUp() {
         productService = new ProductService(
                 productRepository, productImageRepository,
                 viewCountService, categoryService, inventoryService
         );
+        // [Phase 18] CQRS 읽기 서비스 — ProductRepository만 주입
+        productQueryService = new ProductQueryService(productRepository);
     }
 
     private AdminProductRequest buildRequest(int stockQuantity, List<String> imageUrls) {
@@ -86,7 +91,8 @@ class ProductServiceBranchCoverageTest {
     void normalizeSearchKeyword_null_returnsEmpty() {
         // given: keyword가 null일 때 NPE 대신 빈 문자열로 정규화해야 한다.
         // 이 방어 로직이 없으면 search() 메서드 내에서 trim() 호출 시 NPE 발생.
-        String result = productService.normalizeSearchKeyword(null);
+        // [Phase 18] normalizeSearchKeyword가 ProductQueryService로 이동됨
+        String result = productQueryService.normalizeSearchKeyword(null);
 
         assertThat(result).isEmpty();
     }
@@ -116,7 +122,8 @@ class ProductServiceBranchCoverageTest {
             when(productRepository.findByIdWithCategory(1L)).thenReturn(Optional.of(product));
 
             // when
-            CachedProductDetail result = productService.findByIdCached(1L);
+            // [Phase 18] findByIdCached가 ProductQueryService로 이동됨
+            CachedProductDetail result = productQueryService.findByIdCached(1L);
 
             // then: Product 엔티티가 아닌 불변 DTO가 반환됨
             assertThat(result.productId()).isEqualTo(1L);
@@ -131,7 +138,8 @@ class ProductServiceBranchCoverageTest {
             when(productRepository.findByIdWithCategory(999L)).thenReturn(Optional.empty());
 
             // when & then
-            assertThatThrownBy(() -> productService.findByIdCached(999L))
+            // [Phase 18] findByIdCached가 ProductQueryService로 이동됨
+            assertThatThrownBy(() -> productQueryService.findByIdCached(999L))
                     .isInstanceOf(ResourceNotFoundException.class);
         }
     }

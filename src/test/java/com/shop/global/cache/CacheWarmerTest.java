@@ -1,7 +1,7 @@
 package com.shop.global.cache;
 
 import com.shop.domain.category.service.CategoryService;
-import com.shop.domain.product.service.ProductService;
+import com.shop.domain.product.service.ProductQueryService;
 import com.shop.domain.search.service.SearchService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -27,7 +27,7 @@ import static org.mockito.Mockito.*;
 class CacheWarmerTest {
 
     @Mock
-    private ProductService productService;
+    private ProductQueryService productService;
 
     @Mock
     private CategoryService categoryService;

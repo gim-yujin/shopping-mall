@@ -2,23 +2,27 @@ package com.shop.domain.category.controller;
 
 import com.shop.domain.category.entity.Category;
 import com.shop.domain.category.service.CategoryService;
-import com.shop.domain.product.service.ProductService;
+import com.shop.domain.product.service.ProductQueryService;
 import com.shop.global.common.PagingParams;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
+/**
+ * [Phase 18] ProductService → ProductQueryService 전환.
+ * 카테고리별 상품 목록은 읽기 전용이므로 CQRS Query 서비스를 사용한다.
+ */
 @Controller
 @RequestMapping("/categories")
 public class CategoryController {
 
     private final CategoryService categoryService;
-    private final ProductService productService;
+    private final ProductQueryService productQueryService;
 
-    public CategoryController(CategoryService categoryService, ProductService productService) {
+    public CategoryController(CategoryService categoryService, ProductQueryService productQueryService) {
         this.categoryService = categoryService;
-        this.productService = productService;
+        this.productQueryService = productQueryService;
     }
 
     @GetMapping("/{categoryId}")
@@ -36,7 +40,7 @@ public class CategoryController {
         int normalizedSize = PagingParams.normalizeSize(size);
         String normalizedSort = PagingParams.normalizeProductSort(sort);
 
-        model.addAttribute("products", productService.findByCategoryIdsSorted(categoryIds, normalizedPage, normalizedSize, normalizedSort));
+        model.addAttribute("products", productQueryService.findByCategoryIdsSorted(categoryIds, normalizedPage, normalizedSize, normalizedSort));
         model.addAttribute("breadcrumb", categoryService.getBreadcrumb(categoryId));
         model.addAttribute("allCategories", categoryService.getTopLevelCategories());
         model.addAttribute("currentSort", normalizedSort);

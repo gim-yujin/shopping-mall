@@ -66,4 +66,50 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
            "GROUP BY o.userId")
     List<Object[]> findYearlySpentByUser(@Param("startDate") java.time.LocalDateTime startDate,
                                           @Param("endDate") java.time.LocalDateTime endDate);
+
+    // ── [Phase 18] CQRS 읽기 전용 네이티브 쿼리 ─────────────────────────────
+    //
+    // 문제: 기존 주문 목록 조회는 Page<Order>를 반환한 후 fetchOrderItems()로
+    // 2차 쿼리를 발행하여 아이템 수를 계산했다. 목록에 필요한 건 주문 요약 정보와
+    // 아이템 수뿐인데, 전체 OrderItem 컬렉션을 메모리에 올렸다.
+    //
+    // 해결: v_order_list 뷰를 활용한 네이티브 쿼리로 필요한 컬럼만 SELECT하고,
+    // item_count와 first_product_name을 서브쿼리로 한 번에 가져와
+    // 2-쿼리 패턴을 제거한다.
+
+    /**
+     * [Phase 18] 사용자별 주문 목록 — 플랫 프로젝션.
+     * 기존 findByUserId() + fetchOrderItems() 2-쿼리 패턴을 단일 쿼리로 대체한다.
+     */
+    @Query(value = "SELECT order_id, order_number, user_id, order_status, total_amount, "
+            + "discount_amount, shipping_fee, final_amount, order_date, paid_at, "
+            + "shipped_at, delivered_at, cancelled_at, item_count, first_product_name "
+            + "FROM v_order_list WHERE user_id = :userId ORDER BY order_date DESC",
+            countQuery = "SELECT COUNT(*) FROM orders WHERE user_id = :userId",
+            nativeQuery = true)
+    Page<Object[]> findByUserIdFlat(@Param("userId") Long userId, Pageable pageable);
+
+    /**
+     * [Phase 18] 전체 주문 목록 (관리자용) — 플랫 프로젝션.
+     * 기존 findAllByOrderByOrderDateDesc() + fetchOrderItems() 2-쿼리 패턴을 대체한다.
+     */
+    @Query(value = "SELECT order_id, order_number, user_id, order_status, total_amount, "
+            + "discount_amount, shipping_fee, final_amount, order_date, paid_at, "
+            + "shipped_at, delivered_at, cancelled_at, item_count, first_product_name "
+            + "FROM v_order_list ORDER BY order_date DESC",
+            countQuery = "SELECT COUNT(*) FROM orders",
+            nativeQuery = true)
+    Page<Object[]> findAllOrdersFlat(Pageable pageable);
+
+    /**
+     * [Phase 18] 상태별 주문 목록 (관리자용) — 플랫 프로젝션.
+     * 기존 findByStatus() + fetchOrderItems() 2-쿼리 패턴을 대체한다.
+     */
+    @Query(value = "SELECT order_id, order_number, user_id, order_status, total_amount, "
+            + "discount_amount, shipping_fee, final_amount, order_date, paid_at, "
+            + "shipped_at, delivered_at, cancelled_at, item_count, first_product_name "
+            + "FROM v_order_list WHERE order_status = :status ORDER BY order_date DESC",
+            countQuery = "SELECT COUNT(*) FROM orders WHERE order_status = :status",
+            nativeQuery = true)
+    Page<Object[]> findByStatusFlat(@Param("status") String status, Pageable pageable);
 }
