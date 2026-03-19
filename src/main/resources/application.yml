@@ -151,4 +151,14 @@ app:
     retry-base-delay-sec: 10
     # [Phase 15] Dead Letter 보존 기간: 원인 분석을 위해 PROCESSED보다 긴 30일 보존
     dead-letter-retention-days: 30
+  # [Phase 19] 검색 로그 배치 쓰기 설정
+  # 기존: @Async 개별 INSERT → 초당 1000건 = 1000 DB 라운드트립
+  # 개선: 인메모리 버퍼 + 주기적 배치 INSERT → 초당 1000건 = 2 DB 라운드트립 (5초 간격)
+  search-log:
+    retention-days: 30             # 보존 기간 (SearchLogCleanupScheduler 사용)
+    cleanup-batch-size: 10000      # 정리 스케줄러 1회당 삭제 배치 크기
+    batch:
+      flush-interval-ms: 5000      # 배치 플러시 주기 (밀리초) — 5초마다 버퍼의 로그를 DB에 저장
+      batch-size: 500              # 한 번의 플러시에서 처리할 최대 건수
+      max-buffer-size: 10000       # 버퍼 최대 크기 — 초과 시 새 로그 폐기 (통계 목적이므로 유실 허용)
 

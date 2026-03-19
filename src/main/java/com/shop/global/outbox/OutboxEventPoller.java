@@ -53,7 +53,7 @@ import java.util.stream.Collectors;
  * 동일 이벤트가 재처리된다. 따라서 핸들러는 멱등(idempotent)해야 한다.</p>
  *
  * <h3>폴링 간격과 배치 크기</h3>
- * <p>fixedDelay=5000ms: 이전 실행 완료 후 5초 대기. fixedRate와 달리
+ * <p>fixedDelay=기본 5000ms(프로퍼티로 조정 가능): 이전 실행 완료 후 대기. fixedRate와 달리
  * 처리가 오래 걸려도 중복 실행이 발생하지 않는다.
  * batchSize=100: 한 번에 100건까지 처리. 급격한 트래픽 증가 시에도
  * 폴러가 과도한 메모리를 소비하지 않도록 제한한다.</p>
@@ -107,10 +107,24 @@ public class OutboxEventPoller {
      * <p>[Phase 6] findPendingEventsForUpdate(FOR UPDATE SKIP LOCKED)를 사용하여
      * 다중 폴러 간 이벤트 중복 처리를 방지한다.</p>
      */
-    @Scheduled(fixedDelay = 5000)
+    // [Phase 19] 테스트 환경에서 스키마 리셋(test-reset.sql)과 폴러 실행이 경합하지 않도록
+    // 폴링 간격을 외부 프로퍼티로 설정 가능하게 변경. 운영 기본값은 5초(5000ms).
+    @Scheduled(fixedDelayString = "${app.outbox.poll-interval-ms:5000}")
     @Transactional
     public void pollAndProcess() {
-        List<OutboxEvent> events = outboxEventRepository.findPendingEventsForUpdate(batchSize);
+        List<OutboxEvent> events;
+        try {
+            events = outboxEventRepository.findPendingEventsForUpdate(batchSize);
+        } catch (org.springframework.dao.InvalidDataAccessResourceUsageException e) {
+            // [Phase 19] 테스트 환경에서 다수의 @SpringBootTest 컨텍스트가 동일 DB를 공유할 때,
+            // 한 컨텍스트가 test-reset.sql(DROP SCHEMA CASCADE)을 실행하는 동안
+            // 다른 컨텍스트의 폴러가 outbox_events를 조회하면 "relation does not exist" 발생.
+            // 운영 환경에서는 스키마 리셋이 없으므로 이 경로에 도달하지 않는다.
+            // graceful하게 경고 로그만 남기고 다음 폴링까지 대기한다.
+            log.warn("Outbox 폴링 건너뜀 — 테이블 접근 불가 (스키마 리셋 중 가능): {}",
+                    e.getMessage());
+            return;
+        }
         if (events.isEmpty()) {
             return;
         }

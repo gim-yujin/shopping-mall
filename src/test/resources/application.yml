@@ -10,8 +10,14 @@ spring:
     password: ${TEST_DB_PASSWORD:4321}
     hikari:
       maximum-pool-size: 17
-      # [Phase 2 성능] 테스트 환경도 동적 풀로 전환하여 운영과 동일한 동작 검증.
-      minimum-idle: 7
+      # [Phase 19] 테스트 환경의 minimum-idle을 축소.
+      # 다수의 @SpringBootTest가 서로 다른 @TestPropertySource로 독립 컨텍스트를 생성하면,
+      # 각 컨텍스트마다 별도 HikariPool이 생성된다. 기존 minimum-idle=7 × 8개 컨텍스트 = 56개
+      # idle 커넥션이 PostgreSQL max_connections(100)을 소진하여
+      # 후속 컨텍스트의 초기화가 CannotGetJdbcConnectionException으로 실패했다.
+      # minimum-idle=5로 줄이면 idle 총량이 40으로 감소하여 동시 풀 공존이 가능하고,
+      # 동시성 테스트(5스레드)도 즉시 커넥션을 확보하여 진정한 경합을 발생시킬 수 있다.
+      minimum-idle: 5
       idle-timeout: 300000
       max-lifetime: 600000
       connection-timeout: 5000
@@ -71,6 +77,25 @@ server:
 shop:
   cache:
     warm-on-startup: false
+
+# [Phase 19] 검색 로그 배치 누적기 테스트 설정.
+# 자동 플러시 간격을 충분히 길게 설정하여, 테스트 중 @Scheduled 플러시가
+# DB 스키마 리셋(test-reset.sql)과 경합하지 않도록 한다.
+# 통합 테스트에서는 accumulator.flush()를 명시적으로 호출하여 결정적(deterministic) 검증.
+app:
+  # [Phase 19] 테스트 환경에서 @Scheduled 메서드 전체를 비활성화한다.
+  # 다수의 @SpringBootTest 컨텍스트가 동일 DB를 공유하므로, 한 컨텍스트가 스키마를
+  # 리셋(test-reset.sql: DROP SCHEMA CASCADE)하는 동안 다른 컨텍스트의 @Scheduled 메서드
+  # (OutboxEventPoller, IdempotencyCleanupScheduler 등)가 삭제된 테이블에 접근하면
+  # "relation does not exist" 오류가 발생하여 컨텍스트 로딩이 실패한다.
+  # 테스트에서 스케줄러 동작 검증이 필요한 경우 해당 메서드를 직접 호출한다.
+  scheduling:
+    enabled: false
+  search-log:
+    batch:
+      flush-interval-ms: 600000
+      batch-size: 500
+      max-buffer-size: 10000
 
 logging:
   level:

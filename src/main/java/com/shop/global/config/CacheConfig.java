@@ -8,7 +8,6 @@ import org.springframework.cache.caffeine.CaffeineCache;
 import org.springframework.cache.support.SimpleCacheManager;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.scheduling.annotation.EnableScheduling;
 
 import java.util.List;
 import java.util.concurrent.TimeUnit;
@@ -31,10 +30,12 @@ import java.util.concurrent.TimeUnit;
  * <p>트래픽이 집중되는 hot 캐시에만 PER을 적용한다. 트래픽이 낮거나 상태 관리 목적인
  * 캐시(loginAttempts, productReviewVersion, userDetails)는 표준 TTL을 유지한다.
  * 이들은 thundering herd 위험이 낮고, PER의 확률적 조기 만료가 오히려 불필요한 갱신을 유발할 수 있다.</p>
+ *
+ * <p>[Phase 19] {@code @EnableScheduling}을 {@link SchedulingConfig}로 분리하여
+ * 테스트 환경에서 프로퍼티로 비활성화 가능하도록 변경.</p>
  */
 @Configuration
 @EnableCaching
-@EnableScheduling
 public class CacheConfig {
 
     /**
