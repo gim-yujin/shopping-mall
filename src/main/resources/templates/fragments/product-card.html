@@ -10,9 +10,14 @@
                     <path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z"/>
                 </svg>
             </div>
-            <div th:if="${product.getDiscountPercent() > 0}"
+            <!-- [Phase 18 수정] Product 엔티티에서 ProductListReadModel 레코드로 전환됨에 따라
+                 getDiscountPercent() 명시적 메서드 호출을 프로퍼티 접근으로 변경.
+                 Java record의 컴포넌트 접근자 discountPercent()는 Thymeleaf에서
+                 ${product.discountPercent}로 접근 가능하다 (Spring Boot 3.x).
+                 기존 getDiscountPercent() 호출은 record에 존재하지 않아 SpelEvaluationException 발생. -->
+            <div th:if="${product.discountPercent > 0}"
                  class="absolute top-2 left-2 bg-red-500 text-white text-xs font-bold px-2 py-1 rounded">
-                <span th:text="${product.getDiscountPercent() + '%'}"></span>
+                <span th:text="${product.discountPercent + '%'}"></span>
             </div>
         </div>
         <div class="p-3">
