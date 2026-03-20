@@ -167,6 +167,24 @@ class ProductApiControllerUnitTest {
     }
 
     @Test
+    @DisplayName("GET /api/v1/products/{id} — 백프레셔 CRITICAL 시 조회수 증가를 건너뛴다")
+    void getProduct_criticalBackpressure_skipsViewCount() throws Exception {
+        // 백프레셔 CRITICAL 상태: shouldShedNonCritical()이 true → 조회수 증가 건너뜀
+        // 조회수는 비필수 지표이므로 시스템 과부하 시 큐에 작업을 추가하지 않아
+        // 핵심 요청(상품 상세 조회 자체)의 처리를 보호한다.
+        CachedProductDetail cached = createCachedProduct(10L);
+        when(productQueryService.findByIdCached(10L)).thenReturn(cached);
+        when(backpressureDetector.shouldShedNonCritical()).thenReturn(true);
+
+        mockMvc.perform(get("/api/v1/products/10"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success", is(true)));
+
+        // CRITICAL 상태이므로 조회수 증가가 호출되지 않아야 함
+        verify(viewCountService, never()).incrementAsync(anyLong());
+    }
+
+    @Test
     @DisplayName("GET /api/v1/products/{id} — 재고 0인 상품은 inStock=false")
     void getProduct_outOfStock_inStockFalse() throws Exception {
         // given: 재고가 0인 상품
