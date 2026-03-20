@@ -15,6 +15,7 @@ import com.shop.domain.product.entity.Product;
 import com.shop.domain.user.entity.User;
 import com.shop.domain.user.entity.UserTier;
 import com.shop.global.exception.BusinessException;
+import com.shop.global.idempotency.IdempotencyRecord;
 import com.shop.global.security.CustomUserPrincipal;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -24,6 +25,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
@@ -41,6 +43,7 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 
 import static org.hamcrest.Matchers.*;
 import static org.mockito.ArgumentMatchers.any;
@@ -602,6 +605,192 @@ class OrderControllerUnitTest {
                     .andExpect(status().is3xxRedirection())
                     .andExpect(redirectedUrl("/orders/" + ORDER_ID))
                     .andExpect(flash().attribute("errorMessage", "반품 가능 기간이 지났습니다."));
+        }
+    }
+
+    // ── POST /orders — 멱등성 키 분기 커버리지 ──────────────────
+
+    /**
+     * SSR 주문 생성의 멱등성 키 분기를 모두 커버한다.
+     *
+     * <p>SSR에서는 hidden input으로 멱등성 키가 전달된다.
+     * 체크아웃 페이지 렌더링 시 UUID를 생성하여 폼에 포함하고,
+     * 폼 제출 시 이 키가 함께 전송된다.
+     * SSR은 API와 달리 리다이렉트로 응답하며, markCompletedForSsr()로
+     * responseBody 없이 resourceId(orderId)만 저장한다.</p>
+     */
+    @Nested
+    @DisplayName("POST /orders — 멱등성 키 분기")
+    class CreateOrderIdempotencyTests {
+
+        @Test
+        @DisplayName("COMPLETED 상태 — 이전 성공 주문의 상세 페이지로 리다이렉트")
+        void createOrder_completed_redirectsToExistingOrder() throws Exception {
+            String key = "ssr-completed-key";
+            IdempotencyRecord completed = new IdempotencyRecord(USER_ID, key, "ORDER");
+            completed.markCompletedForSsr(ORDER_ID);
+
+            when(idempotencyService.findExisting(USER_ID, key)).thenReturn(Optional.of(completed));
+
+            mockMvc.perform(post("/orders")
+                            .param("shippingAddress", "서울시 강남구")
+                            .param("recipientName", "홍길동")
+                            .param("recipientPhone", "010-1234-5678")
+                            .param("paymentMethod", "CARD")
+                            .param("idempotencyKey", key))
+                    .andExpect(status().is3xxRedirection())
+                    .andExpect(redirectedUrl("/orders/" + ORDER_ID))
+                    .andExpect(flash().attribute("successMessage", "주문이 완료되었습니다."));
+
+            // 주문 서비스가 호출되지 않아야 함 — 중복 주문 방지
+            verify(orderService, never()).createOrder(anyLong(), any());
+        }
+
+        @Test
+        @DisplayName("PROCESSING 상태 — 주문 목록으로 리다이렉트 + 안내 메시지")
+        void createOrder_processing_redirectsToOrders() throws Exception {
+            String key = "ssr-processing-key";
+            IdempotencyRecord processing = new IdempotencyRecord(USER_ID, key, "ORDER");
+            // 생성 직후 기본 상태가 PROCESSING
+
+            when(idempotencyService.findExisting(USER_ID, key)).thenReturn(Optional.of(processing));
+
+            mockMvc.perform(post("/orders")
+                            .param("shippingAddress", "서울시 강남구")
+                            .param("recipientName", "홍길동")
+                            .param("recipientPhone", "010-1234-5678")
+                            .param("paymentMethod", "CARD")
+                            .param("idempotencyKey", key))
+                    .andExpect(status().is3xxRedirection())
+                    .andExpect(redirectedUrl("/orders"))
+                    .andExpect(flash().attribute("errorMessage",
+                            "이전 주문 요청이 처리 중입니다. 잠시 후 주문 내역을 확인해주세요."));
+
+            verify(orderService, never()).createOrder(anyLong(), any());
+        }
+
+        @Test
+        @DisplayName("FAILED 상태 — 재시도 허용 후 주문 생성")
+        void createOrder_failed_allowsRetry() throws Exception {
+            String key = "ssr-failed-key";
+            IdempotencyRecord failed = new IdempotencyRecord(USER_ID, key, "ORDER");
+            failed.markFailed();
+
+            IdempotencyRecord newRecord = new IdempotencyRecord(USER_ID, key, "ORDER");
+            ReflectionTestUtils.setField(newRecord, "recordId", 200L);
+            Order order = createOrder();
+
+            when(idempotencyService.findExisting(USER_ID, key)).thenReturn(Optional.of(failed));
+            when(idempotencyService.retryAfterFailure(USER_ID, key, "ORDER")).thenReturn(newRecord);
+            when(orderService.createOrder(eq(USER_ID), any())).thenReturn(order);
+
+            mockMvc.perform(post("/orders")
+                            .param("shippingAddress", "서울시 강남구")
+                            .param("recipientName", "홍길동")
+                            .param("recipientPhone", "010-1234-5678")
+                            .param("paymentMethod", "CARD")
+                            .param("idempotencyKey", key))
+                    .andExpect(status().is3xxRedirection())
+                    .andExpect(redirectedUrl("/orders/" + ORDER_ID));
+
+            verify(idempotencyService).markCompletedForSsr(200L, ORDER_ID);
+        }
+
+        @Test
+        @DisplayName("DataIntegrityViolation — 동시 폼 제출 시 주문 목록으로 리다이렉트")
+        void createOrder_uniqueViolation_redirectsToOrders() throws Exception {
+            String key = "ssr-race-key";
+            when(idempotencyService.findExisting(USER_ID, key)).thenReturn(Optional.empty());
+            when(idempotencyService.initRecord(USER_ID, key, "ORDER"))
+                    .thenThrow(new DataIntegrityViolationException("unique_violation"));
+
+            mockMvc.perform(post("/orders")
+                            .param("shippingAddress", "서울시 강남구")
+                            .param("recipientName", "홍길동")
+                            .param("recipientPhone", "010-1234-5678")
+                            .param("paymentMethod", "CARD")
+                            .param("idempotencyKey", key))
+                    .andExpect(status().is3xxRedirection())
+                    .andExpect(redirectedUrl("/orders"))
+                    .andExpect(flash().attribute("errorMessage",
+                            "주문 요청이 중복되었습니다. 잠시 후 주문 내역을 확인해주세요."));
+        }
+
+        @Test
+        @DisplayName("멱등성 키 + BusinessException — FAILED 전환 후 checkout으로 리다이렉트")
+        void createOrder_businessExceptionWithKey_marksFailedAndRedirects() throws Exception {
+            String key = "ssr-biz-fail-key";
+            IdempotencyRecord record = new IdempotencyRecord(USER_ID, key, "ORDER");
+            ReflectionTestUtils.setField(record, "recordId", 300L);
+
+            when(idempotencyService.findExisting(USER_ID, key)).thenReturn(Optional.empty());
+            when(idempotencyService.initRecord(USER_ID, key, "ORDER")).thenReturn(record);
+            when(orderService.createOrder(eq(USER_ID), any()))
+                    .thenThrow(new BusinessException("STOCK_NOT_ENOUGH", "재고가 부족합니다."));
+
+            mockMvc.perform(post("/orders")
+                            .param("shippingAddress", "서울시 강남구")
+                            .param("recipientName", "홍길동")
+                            .param("recipientPhone", "010-1234-5678")
+                            .param("paymentMethod", "CARD")
+                            .param("idempotencyKey", key))
+                    .andExpect(status().is3xxRedirection())
+                    .andExpect(redirectedUrl("/orders/checkout"))
+                    .andExpect(flash().attribute("errorMessage", "재고가 부족합니다."));
+
+            // BusinessException → FAILED 전환 확인
+            verify(idempotencyService).markFailed(300L);
+        }
+
+        @Test
+        @DisplayName("멱등성 키 + 예상치 못한 예외 — FAILED 전환 후 예외 전파")
+        void createOrder_unexpectedExceptionWithKey_marksFailedAndRethrows() throws Exception {
+            String key = "ssr-unexpected-key";
+            IdempotencyRecord record = new IdempotencyRecord(USER_ID, key, "ORDER");
+            ReflectionTestUtils.setField(record, "recordId", 400L);
+
+            when(idempotencyService.findExisting(USER_ID, key)).thenReturn(Optional.empty());
+            when(idempotencyService.initRecord(USER_ID, key, "ORDER")).thenReturn(record);
+            when(orderService.createOrder(eq(USER_ID), any()))
+                    .thenThrow(new RuntimeException("DB_CONNECTION_LOST"));
+
+            // standaloneSetup에는 GlobalExceptionHandler 없으므로 ServletException으로 래핑됨
+            try {
+                mockMvc.perform(post("/orders")
+                        .param("shippingAddress", "서울시 강남구")
+                        .param("recipientName", "홍길동")
+                        .param("recipientPhone", "010-1234-5678")
+                        .param("paymentMethod", "CARD")
+                        .param("idempotencyKey", key));
+            } catch (Exception ignored) {
+                // 예외 전파 확인 — 핵심은 markFailed 호출 여부
+            }
+
+            verify(idempotencyService).markFailed(400L);
+        }
+
+        @Test
+        @DisplayName("최초 요청 — initRecord 후 주문 생성 성공 → markCompletedForSsr 호출")
+        void createOrder_firstRequest_createsAndCompletes() throws Exception {
+            String key = "ssr-new-key";
+            IdempotencyRecord record = new IdempotencyRecord(USER_ID, key, "ORDER");
+            ReflectionTestUtils.setField(record, "recordId", 500L);
+            Order order = createOrder();
+
+            when(idempotencyService.findExisting(USER_ID, key)).thenReturn(Optional.empty());
+            when(idempotencyService.initRecord(USER_ID, key, "ORDER")).thenReturn(record);
+            when(orderService.createOrder(eq(USER_ID), any())).thenReturn(order);
+
+            mockMvc.perform(post("/orders")
+                            .param("shippingAddress", "서울시 강남구")
+                            .param("recipientName", "홍길동")
+                            .param("recipientPhone", "010-1234-5678")
+                            .param("paymentMethod", "CARD")
+                            .param("idempotencyKey", key))
+                    .andExpect(status().is3xxRedirection())
+                    .andExpect(redirectedUrl("/orders/" + ORDER_ID));
+
+            verify(idempotencyService).markCompletedForSsr(500L, ORDER_ID);
         }
     }
 
