@@ -397,12 +397,25 @@ class CancelOrderConcurrencyTest {
         );
 
         // Thread A: 주문 취소
+        // Cancel(Order→Product→User)과 Create(User→Product)의 락 순서가 다르므로
+        // 데드락이 발생할 수 있다. Thread B/C와 동일한 재시도 패턴을 적용한다.
         executor.submit(() -> {
             ready.countDown();
             try {
                 start.await();
-                orderService.cancelOrder(orderIdA, testUserId);
-                cancelSuccess.incrementAndGet();
+                int maxAttempts = 3;
+                for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+                    try {
+                        orderService.cancelOrder(orderIdA, testUserId);
+                        cancelSuccess.incrementAndGet();
+                        break;
+                    } catch (PessimisticLockingFailureException e) {
+                        if (attempt == maxAttempts) {
+                            throw e;
+                        }
+                        LockSupport.parkNanos(TimeUnit.MILLISECONDS.toNanos(100L * attempt));
+                    }
+                }
             } catch (Exception e) {
                 errors.add("[Cancel] " + e.getClass().getSimpleName() + " - " + e.getMessage());
             } finally {
