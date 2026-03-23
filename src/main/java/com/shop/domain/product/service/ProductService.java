@@ -2,10 +2,10 @@ package com.shop.domain.product.service;
 
 import com.shop.domain.category.entity.Category;
 import com.shop.domain.category.service.CategoryService;
-import com.shop.domain.inventory.service.InventoryService;
 import com.shop.domain.product.dto.AdminProductRequest;
 import com.shop.domain.product.entity.Product;
 import com.shop.domain.product.entity.ProductImage;
+import com.shop.domain.product.port.InventoryAdjustmentPort;
 import com.shop.domain.product.repository.ProductImageRepository;
 import com.shop.domain.product.repository.ProductRepository;
 import com.shop.global.exception.BusinessException;
@@ -30,18 +30,18 @@ public class ProductService {
     private final ProductImageRepository productImageRepository;
     private final ViewCountService viewCountService;
     private final CategoryService categoryService;
-    private final InventoryService inventoryService;
+    private final InventoryAdjustmentPort inventoryAdjustmentPort;
 
     public ProductService(ProductRepository productRepository,
                           ProductImageRepository productImageRepository,
                           ViewCountService viewCountService,
                           CategoryService categoryService,
-                          InventoryService inventoryService) {
+                          InventoryAdjustmentPort inventoryAdjustmentPort) {
         this.productRepository = productRepository;
         this.productImageRepository = productImageRepository;
         this.viewCountService = viewCountService;
         this.categoryService = categoryService;
-        this.inventoryService = inventoryService;
+        this.inventoryAdjustmentPort = inventoryAdjustmentPort;
     }
 
     public Product findById(Long productId) {
@@ -133,7 +133,7 @@ public class ProductService {
      * 감사(audit) 시 관리자의 재고 조정 내역을 추적할 수 없고,
      * Outbox 이벤트가 발행되지 않아 상품 상세 캐시가 갱신되지 않았다.
      *
-     * 수정: 재고 수량이 변경된 경우에만 InventoryService.adjustStock()을
+     * 수정: 재고 수량이 변경된 경우에만 InventoryAdjustmentPort.adjustStock()을
      * 호출하여 비관적 잠금 + 이력 기록 + Outbox 이벤트 발행을 수행한다.
      * product.update()에는 원래 재고값을 전달하여 이중 변경을 방지한다.
      *
@@ -180,7 +180,7 @@ public class ProductService {
         int stockDelta = requestedStock - currentStock;
 
         // product.update()에는 현재 재고를 전달하여 재고값은 변경하지 않음
-        // 재고 변경은 InventoryService를 통해 이력+캐시 무효화와 함께 처리
+        // 재고 변경은 inventory 포트를 통해 이력+캐시 무효화와 함께 처리
         product.update(
                 request.getProductName(),
                 category,
@@ -197,9 +197,9 @@ public class ProductService {
         // 충돌을 서비스 계층에서 잡아 의미 있는 BusinessException으로 변환할 수 있다.
         productRepository.flush();
 
-        // 재고 변경분이 있을 때만 InventoryService 경유 — 이력 기록 + Outbox 이벤트 발행
+        // 재고 변경분이 있을 때만 inventory 포트 경유 — 이력 기록 + Outbox 이벤트 발행
         if (stockDelta != 0) {
-            inventoryService.adjustStock(productId, stockDelta, "ADMIN_EDIT", null);
+            inventoryAdjustmentPort.adjustStock(productId, stockDelta, "ADMIN_EDIT", null);
         }
 
         // [P2-9] 이미지 전량 교체 전략: 기존 이미지를 모두 삭제 후 새 목록으로 재생성.

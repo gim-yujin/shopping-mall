@@ -3,13 +3,18 @@ spring:
     name: shopping-mall
 
   datasource:
+    # 운영/로컬 실행은 환경변수로만 주입한다.
+    # 실행 필수값:
+    # - SPRING_DATASOURCE_URL
+    # - SPRING_DATASOURCE_USERNAME
+    # - SPRING_DATASOURCE_PASSWORD
     # [Phase 2 성능] socketTimeout=30: DB 쿼리 실행 시 소켓 읽기 타임아웃(초).
     # 문제: 기존 설정에 소켓 타임아웃이 없어, 느린 쿼리나 DB 장애 시
     # JDBC 커넥션이 응답을 무한 대기하여 Tomcat 스레드가 고갈될 수 있었다.
     # 해결: 30초 소켓 타임아웃을 설정하여 응답 없는 커넥션을 빠르게 해제한다.
-    url: jdbc:postgresql://localhost:5432/shopping_mall_db?stringtype=unspecified&socketTimeout=30
-    username: postgres
-    password: 4321
+    url: ${SPRING_DATASOURCE_URL}
+    username: ${SPRING_DATASOURCE_USERNAME}
+    password: ${SPRING_DATASOURCE_PASSWORD}
     hikari:
       maximum-pool-size: 17 # (8cores × 2) + 1 = 17 (HikariCP 권장 공식)
       # [Phase 2 성능] fixed-size pool → dynamic pool 전환.
@@ -161,4 +166,3 @@ app:
       flush-interval-ms: 5000      # 배치 플러시 주기 (밀리초) — 5초마다 버퍼의 로그를 DB에 저장
       batch-size: 500              # 한 번의 플러시에서 처리할 최대 건수
       max-buffer-size: 10000       # 버퍼 최대 크기 — 초과 시 새 로그 폐기 (통계 목적이므로 유실 허용)
-

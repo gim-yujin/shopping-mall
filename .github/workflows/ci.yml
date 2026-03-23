@@ -50,6 +50,9 @@ jobs:
       - name: Validate documented metrics drift
         run: ./scripts/validate-doc-stats.sh
 
+      - name: Validate domain dependency rules
+        run: ./scripts/check-domain-dependencies.sh
+
       - name: Install PostgreSQL client
         run: sudo apt-get update && sudo apt-get install -y postgresql-client
 

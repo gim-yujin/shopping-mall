@@ -22,13 +22,13 @@
 **서비스 계층 (비즈니스 로직)**
 - OrderCreationService → cart, coupon, inventory, point, product, user (핵심 유스케이스, 불가피)
 - ReviewService → order, product
-- 나머지 서비스 간 의존은 단방향, 순환 없음
+- 나머지 서비스 간 의존은 단방향이며, 양방향 순환은 `scripts/check-domain-dependencies.sh`로 CI에서 차단한다.
 
 **스케줄러/이벤트**
 - TierScheduler(user) → `OrderRepository` 직접 import
-- ProductStockChangedEventListener(product) → `order.event.ProductStockChangedEvent` import
+- 상품 재고 변경 알림은 Spring 이벤트가 아니라 Transactional Outbox로 일원화
 
-**핵심 사실: 순환 의존이 없습니다.** README에 명시된 대로 모든 흐름이 단방향입니다. 이건 이미 잘 설계된 구조입니다.
+**핵심 사실: 서비스/레포지토리 계층의 양방향 순환 의존은 없습니다.** 현재 기준은 스크립트와 CI가 함께 강제합니다.
 
 ---
 
@@ -54,7 +54,7 @@ Controller → MyPageQueryFacade → OrderService, CouponService, ReviewService
 
 ### 규모 대비 오버헤드
 
-프로젝트가 Java 파일 135개, 소스 약 10,700줄입니다. 이 규모에서 Facade 7개를 추가하면 전체 대비 약 5%의 순수 위임(delegation) 코드가 생깁니다. 마이크로서비스로 분리하거나 도메인별 모듈 빌드가 예정되어 있다면 의미가 있지만, 단일 모놀리스 SSR 앱에서는 과잉 설계에 해당합니다.
+현재처럼 단일 모놀리스 SSR 앱 규모에서는 Facade 7개를 추가하면 순수 위임 코드만 늘고, 실질 결합도는 크게 줄지 않습니다. 마이크로서비스 분리나 모듈 빌드가 예정된 상황이 아니라면 과잉 설계에 가깝습니다.
 
 ---
 
@@ -62,9 +62,9 @@ Controller → MyPageQueryFacade → OrderService, CouponService, ReviewService
 
 전면 Facade 도입 대신, **실제 문제가 있는 2곳만 정리**하는 것을 추천합니다.
 
-### 1. ProductStockChangedEvent → `global.event`로 이동 (강력 추천)
+### 1. 재고 변경 알림은 Outbox 단일 경로 유지 (강력 추천)
 
-이건 순수한 개선입니다. 현재 product 도메인이 order 도메인의 이벤트 클래스를 import하는 구조는 이벤트의 본래 목적(발행자-구독자 디커플링)과 모순됩니다. `com.shop.global.event`로 옮기면 양쪽 도메인 모두 global만 의존하게 됩니다. 비용 제로, 효과 확실합니다.
+이 항목은 이미 정리된 상태로 보는 것이 맞습니다. 재고 변경 알림은 Spring `ApplicationEvent`가 아니라 Outbox에 기록되고, 폴러가 후속 처리를 담당합니다. 새 Facade나 이벤트 계층을 추가하기보다 이 단일 경로를 유지하는 편이 더 명확합니다.
 
 ### 2. TierScheduler의 OrderRepository 직접 참조 제거 (강력 추천)
 

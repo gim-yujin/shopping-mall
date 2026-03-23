@@ -1,43 +1,25 @@
 package com.shop.domain.order.service;
 
-import com.shop.domain.cart.entity.Cart;
-import com.shop.domain.cart.repository.CartRepository;
 import com.shop.domain.coupon.entity.UserCoupon;
 import com.shop.domain.coupon.repository.UserCouponRepository;
-import com.shop.domain.inventory.entity.ProductInventoryHistory;
-import com.shop.domain.inventory.repository.ProductInventoryHistoryRepository;
 import com.shop.domain.order.dto.OrderCreateRequest;
-import com.shop.global.outbox.OutboxEventPublisher;
 import com.shop.domain.order.entity.Order;
 import com.shop.domain.order.entity.PaymentMethod;
 import com.shop.domain.order.entity.OrderItem;
 import com.shop.domain.order.repository.OrderRepository;
 import com.shop.domain.order.validation.OrderInvariantValidator;
-import com.shop.domain.point.entity.PointHistory;
-import com.shop.domain.point.repository.PointHistoryRepository;
-import com.shop.domain.product.entity.Product;
-import com.shop.domain.product.repository.ProductRepository;
 import com.shop.domain.user.entity.User;
 import com.shop.domain.user.entity.UserTier;
 import com.shop.domain.user.repository.UserRepository;
-import com.shop.domain.user.repository.UserTierRepository;
-import com.shop.global.event.OrderCompletedEvent;
 import com.shop.global.exception.BusinessException;
-import com.shop.global.exception.InsufficientStockException;
 import com.shop.global.exception.ResourceNotFoundException;
 import com.shop.global.metrics.OrderMetrics;
-import jakarta.persistence.EntityManager;
-import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.LinkedHashSet;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -53,57 +35,42 @@ import java.util.UUID;
  * 모든 단계를 한 메서드에서 처리했다. 코드 리뷰 시 개별 단계의 시작/끝을 파악하기 어렵고,
  * 특정 단계만 테스트하거나 수정할 때 관련 없는 코드를 읽어야 했다.</p>
  *
- * <p><b>해결:</b> 각 비즈니스 단계를 의미 있는 이름의 private 메서드로 추출한다.
- * createOrder()는 전체 흐름을 한눈에 파악할 수 있는 고수준 오케스트레이터가 되고,
- * 각 단계의 세부 로직은 해당 메서드 안에 캡슐화된다.
- * 메서드 간 데이터 전달은 내부 record 타입(CartSelection, StockDeductionResult, CouponResult)을
- * 사용하여 타입 안전하게 처리한다.</p>
+ * <p><b>해결:</b> createOrder()는 고수준 오케스트레이터로 유지하고,
+ * 장바구니 선택/재고 처리/후처리는 전담 협력 클래스로 분리한다.
+ * 쿠폰 할인과 포인트 사용처럼 주문 생성 문맥에 밀접한 계산만 이 서비스에 남긴다.</p>
  */
 @Service
 @Transactional(readOnly = true)
 public class OrderCreationService {
 
     private final OrderRepository orderRepository;
-    private final CartRepository cartRepository;
-    private final ProductRepository productRepository;
     private final UserRepository userRepository;
-    private final ProductInventoryHistoryRepository inventoryHistoryRepository;
     private final UserCouponRepository userCouponRepository;
-    private final UserTierRepository userTierRepository;
-    private final PointHistoryRepository pointHistoryRepository;
-    private final EntityManager entityManager;
-    private final OutboxEventPublisher outboxEventPublisher;
     private final ShippingFeeCalculator shippingFeeCalculator;
     private final OrderInvariantValidator orderInvariantValidator;
-    private final ApplicationEventPublisher applicationEventPublisher;
     private final OrderMetrics orderMetrics;
+    private final OrderCartSelectionResolver cartSelectionResolver;
+    private final OrderStockProcessor stockProcessor;
+    private final OrderPostProcessor orderPostProcessor;
 
-    public OrderCreationService(OrderRepository orderRepository, CartRepository cartRepository,
-                                ProductRepository productRepository, UserRepository userRepository,
-                                ProductInventoryHistoryRepository inventoryHistoryRepository,
+    public OrderCreationService(OrderRepository orderRepository,
+                                UserRepository userRepository,
                                 UserCouponRepository userCouponRepository,
-                                UserTierRepository userTierRepository,
-                                PointHistoryRepository pointHistoryRepository,
-                                EntityManager entityManager,
-                                OutboxEventPublisher outboxEventPublisher,
                                 ShippingFeeCalculator shippingFeeCalculator,
                                 OrderInvariantValidator orderInvariantValidator,
-                                ApplicationEventPublisher applicationEventPublisher,
-                                OrderMetrics orderMetrics) {
+                                OrderMetrics orderMetrics,
+                                OrderCartSelectionResolver cartSelectionResolver,
+                                OrderStockProcessor stockProcessor,
+                                OrderPostProcessor orderPostProcessor) {
         this.orderRepository = orderRepository;
-        this.cartRepository = cartRepository;
-        this.productRepository = productRepository;
         this.userRepository = userRepository;
-        this.inventoryHistoryRepository = inventoryHistoryRepository;
         this.userCouponRepository = userCouponRepository;
-        this.userTierRepository = userTierRepository;
-        this.pointHistoryRepository = pointHistoryRepository;
-        this.entityManager = entityManager;
-        this.outboxEventPublisher = outboxEventPublisher;
         this.shippingFeeCalculator = shippingFeeCalculator;
         this.orderInvariantValidator = orderInvariantValidator;
-        this.applicationEventPublisher = applicationEventPublisher;
         this.orderMetrics = orderMetrics;
+        this.cartSelectionResolver = cartSelectionResolver;
+        this.stockProcessor = stockProcessor;
+        this.orderPostProcessor = orderPostProcessor;
     }
 
     /**
@@ -141,11 +108,8 @@ public class OrderCreationService {
         PaymentMethod paymentMethod = PaymentMethod.fromCode(request.paymentMethod())
                 .orElseThrow(() -> new BusinessException("UNSUPPORTED_PAYMENT_METHOD", "지원하지 않는 결제수단"));
 
-        // 같은 사용자의 동시 주문 요청을 트랜잭션 단위로 직렬화
-        cartRepository.acquireUserCartLock(userId);
-
         // 1) 장바구니 항목 결정 (전체 / 선택 주문)
-        CartSelection cartSelection = resolveCartItems(userId, request);
+        OrderCartSelectionResolver.CartSelection cartSelection = cartSelectionResolver.resolve(userId, request);
 
         // 2) 사용자 & 등급 정보 로드
         User user = userRepository.findByIdWithLockAndTier(userId)
@@ -153,7 +117,7 @@ public class OrderCreationService {
         UserTier tier = user.getTier();
 
         // 3) 재고 차감 & 주문 라인 생성
-        StockDeductionResult stockResult = deductStockAndBuildOrderLines(
+        OrderStockProcessor.StockDeductionResult stockResult = stockProcessor.deductStockAndBuildOrderLines(
                 cartSelection.items(), tier.getDiscountRate());
 
         // 4) 쿠폰 할인 적용
@@ -175,156 +139,10 @@ public class OrderCreationService {
                 usePoints, shippingFee, finalAmount, tier);
 
         // 8) 후처리 (재고 이력, 쿠폰 사용, 등급 재계산, 장바구니 정리, 이벤트 발행)
-        finalizeOrder(savedOrder, user, tier, stockResult, couponResult,
-                cartSelection, usePoints);
+        orderPostProcessor.finalizeOrder(
+                savedOrder, user, cartSelection, stockResult, couponResult.userCoupon(), usePoints);
 
         return savedOrder;
-    }
-
-    // ── 1단계: 장바구니 항목 결정 ────────────────────────────────
-
-    /**
-     * [Phase 3 코드 품질] 장바구니 선택 로직을 분리.
-     *
-     * <p><b>문제:</b> 전체 주문과 선택 주문의 분기 로직이 createOrder() 상단에
-     * 25줄 이상 혼재하여, 이후 단계의 시작점을 파악하기 어려웠다.</p>
-     *
-     * <p><b>해결:</b> 장바구니 결정 로직을 별도 메서드로 추출하고,
-     * 결과를 CartSelection record로 반환하여 isPartialOrder 플래그까지 캡슐화한다.</p>
-     *
-     * <p>[P1-6] cartItemIds가 null/빈 리스트이면 전체 장바구니를 주문한다 (기존 동작 호환).
-     * 값이 있으면 해당 ID의 장바구니 항목만 주문 대상으로 사용한다.</p>
-     */
-    private CartSelection resolveCartItems(Long userId, OrderCreateRequest request) {
-        List<Cart> cartItems;
-        boolean isPartialOrder;
-        if (request.cartItemIds() != null && !request.cartItemIds().isEmpty()) {
-            Set<Long> requestedCartItemIds = new LinkedHashSet<>(request.cartItemIds());
-            cartItems = cartRepository.findByUserIdAndCartIdIn(userId, new ArrayList<>(requestedCartItemIds));
-            Set<Long> foundCartItemIds = cartItems.stream()
-                    .map(Cart::getCartId)
-                    .collect(java.util.stream.Collectors.toSet());
-
-            if (!requestedCartItemIds.equals(foundCartItemIds)) {
-                throw new BusinessException(
-                        "INVALID_CART_SELECTION",
-                        "유효하지 않거나 접근 불가한 장바구니 항목이 포함됨"
-                );
-            }
-            isPartialOrder = true;
-        } else {
-            cartItems = cartRepository.findByUserIdWithProduct(userId);
-            isPartialOrder = false;
-        }
-        if (cartItems.isEmpty()) {
-            throw new BusinessException("EMPTY_CART", "장바구니가 비어있습니다.");
-        }
-        // 데드락 예방을 위해 상품 ID 순으로 정렬 (자원 획득 순서 일관성 유지)
-        cartItems.sort(java.util.Comparator.comparing(cart -> cart.getProduct().getProductId()));
-
-        return new CartSelection(cartItems, isPartialOrder);
-    }
-
-    // ── 3단계: 재고 차감 & 주문 라인 생성 ──────────────────────────
-
-    /**
-     * [Phase 3 코드 품질] 재고 차감 + 주문 라인 빌드 + 등급 할인 계산을 분리.
-     *
-     * <p><b>문제:</b> 상품별 재고 차감, 소계 계산, 등급 할인 계산, 재고 이력 스냅샷 생성이
-     * 하나의 for 루프 안에 40줄 이상 혼재했다. 재고 관련 로직만 확인하려 해도
-     * 할인 계산 코드를 함께 읽어야 했다.</p>
-     *
-     * <p><b>해결:</b> for 루프 전체를 별도 메서드로 추출하고, 결과를 StockDeductionResult로
-     * 캡슐화하여 totalAmount, tierDiscountTotal, orderLines, inventorySnapshots를
-     * 한 번에 반환한다.</p>
-     */
-    /**
-     * [Phase 8] 재고 차감 + 주문 라인 생성 — 개별 잠금 쿼리를 일괄 잠금 쿼리로 최적화.
-     *
-     * <p><b>문제:</b> 기존 구현은 장바구니 상품 N개에 대해 findByIdWithLock()을
-     * N번 호출했다. 각 호출마다 SELECT ... FOR UPDATE 쿼리가 발행되어,
-     * 상품 5개 주문 시 5개의 개별 SELECT + LOCK 쿼리가 실행되었다.
-     * DB 왕복(round-trip) 횟수가 상품 수에 비례하여 증가한다.</p>
-     *
-     * <p><b>해결:</b> findAllByIdInWithLock()으로 N개 상품을 한 번의
-     * SELECT ... WHERE product_id IN (...) FOR UPDATE 쿼리로 일괄 조회+잠금한다.
-     * DB 왕복 N→1회로 감소. cartItems는 이미 productId 오름차순으로 정렬되어 있으므로
-     * 데드락 방지를 위한 잠금 순서도 보장된다.</p>
-     */
-    private StockDeductionResult deductStockAndBuildOrderLines(
-            List<Cart> cartItems, BigDecimal tierDiscountRate) {
-        BigDecimal totalAmount = BigDecimal.ZERO;
-        BigDecimal tierDiscountTotal = BigDecimal.ZERO;
-        List<OrderLine> orderLines = new ArrayList<>();
-
-        // [BUG FIX] 재고 이력을 Order save 이후에 저장하기 위해 임시 보관하는 리스트.
-        // 기존 코드는 이 루프 안에서 inventoryHistoryRepository.save()를 호출했는데,
-        // 이 시점에는 아직 Order가 persist되지 않아 reference_id(orderId)에 null이 전달되었다.
-        // 주문 취소 시에는 orderId가 정상 전달되므로, 생성 쪽과 취소 쪽의 이력 일관성이 깨졌다.
-        // 수정: 재고 차감은 즉시 수행하되, 이력 데이터는 InventorySnapshot으로 모아두고
-        // Order가 저장된 후에 orderId를 포함하여 일괄 저장한다.
-        List<InventorySnapshot> inventorySnapshots = new ArrayList<>();
-
-        // [Phase 8] L1 캐시에서 Cart가 참조하는 Product를 모두 분리(detach)한 후,
-        // 일괄 잠금 쿼리로 최신 상태를 재조회한다.
-        // [Phase 4] @Version 도입에 따른 L1 캐시 정합성 보장:
-        // Cart 조회 시 Product가 L1 캐시에 로드(version=N)되었으나,
-        // 다른 트랜잭션이 재고를 변경하여 version=N+1이 되었을 수 있다.
-        // detach 없이 잠금 쿼리를 실행하면 Hibernate가 L1 캐시의 구 엔티티를 반환하여
-        // @Version 충돌이 발생한다.
-        List<Long> productIds = new ArrayList<>(cartItems.size());
-        for (Cart cart : cartItems) {
-            productIds.add(cart.getProduct().getProductId());
-            entityManager.detach(cart.getProduct());
-        }
-
-        // 단일 SELECT ... WHERE product_id IN (...) FOR UPDATE 쿼리로
-        // N개 상품을 한 번에 조회+잠금 (기존: N번의 개별 findByIdWithLock)
-        List<Product> lockedProducts = productRepository.findAllByIdInWithLock(productIds);
-
-        // 조회된 상품을 Map으로 변환하여 O(1) 접근 (productId → Product)
-        java.util.Map<Long, Product> productMap = new java.util.LinkedHashMap<>(lockedProducts.size());
-        for (Product p : lockedProducts) {
-            productMap.put(p.getProductId(), p);
-        }
-
-        for (Cart cart : cartItems) {
-            Long productId = cart.getProduct().getProductId();
-            Product product = productMap.get(productId);
-            if (product == null) {
-                throw new ResourceNotFoundException("상품", productId);
-            }
-
-            if (product.getStockQuantity() < cart.getQuantity()) {
-                throw new InsufficientStockException(product.getProductName(),
-                        cart.getQuantity(), product.getStockQuantity());
-            }
-
-            int beforeStock = product.getStockQuantity();
-            product.decreaseStock(cart.getQuantity());
-
-            BigDecimal subtotal = product.getPrice().multiply(BigDecimal.valueOf(cart.getQuantity()));
-            totalAmount = totalAmount.add(subtotal);
-
-            orderLines.add(new OrderLine(
-                    product.getProductId(),
-                    product.getProductName(),
-                    cart.getQuantity(),
-                    product.getPrice(),
-                    subtotal
-            ));
-
-            // 등급 할인 계산 (아이템별)
-            BigDecimal itemTierDiscount = subtotal.multiply(tierDiscountRate)
-                    .divide(BigDecimal.valueOf(100), 0, java.math.RoundingMode.FLOOR);
-            tierDiscountTotal = tierDiscountTotal.add(itemTierDiscount);
-
-            // 재고 이력 데이터를 임시 보관 (orderId는 Order save 후 설정)
-            inventorySnapshots.add(new InventorySnapshot(
-                    product.getProductId(), cart.getQuantity(), beforeStock, product.getStockQuantity()));
-        }
-
-        return new StockDeductionResult(totalAmount, tierDiscountTotal, orderLines, inventorySnapshots);
     }
 
     // ── 4단계: 쿠폰 할인 적용 ──────────────────────────────────
@@ -419,7 +237,7 @@ public class OrderCreationService {
 
     private Order buildAndSaveOrder(Long userId, PaymentMethod paymentMethod,
                                      OrderCreateRequest request,
-                                     StockDeductionResult stockResult,
+                                     OrderStockProcessor.StockDeductionResult stockResult,
                                      CouponResult couponResult,
                                      int usePoints, BigDecimal shippingFee,
                                      BigDecimal finalAmount, UserTier tier) {
@@ -438,7 +256,7 @@ public class OrderCreationService {
                 paymentMethod.getCode(), request.shippingAddress(),
                 request.recipientName(), request.recipientPhone());
 
-        for (OrderLine orderLine : stockResult.orderLines()) {
+        for (OrderStockProcessor.OrderLine orderLine : stockResult.orderLines()) {
             OrderItem item = new OrderItem(orderLine.productId(), orderLine.productName(),
                     orderLine.quantity(), orderLine.unitPrice(), tierDiscountRate, orderLine.subtotal());
             order.addItem(item);
@@ -449,106 +267,6 @@ public class OrderCreationService {
         return orderRepository.save(order);
     }
 
-    // ── 8단계: 후처리 ──────────────────────────────────────────
-
-    /**
-     * [Phase 3 코드 품질] 주문 저장 후 후처리 단계를 분리.
-     *
-     * <p><b>문제:</b> 재고 이력 저장, 쿠폰 사용 처리, 누적 구매 금액 반영,
-     * 등급 재계산, 장바구니 정리, Outbox 이벤트 발행이 createOrder() 하단에
-     * 70줄 이상 나열되어 있었다. 주문 "생성" 로직과 "후처리" 로직의 경계가 불명확했다.</p>
-     *
-     * <p><b>해결:</b> 모든 후처리를 하나의 메서드로 묶어 createOrder()의 마지막 단계로
-     * 명확히 구분한다.</p>
-     */
-    private void finalizeOrder(Order savedOrder, User user, UserTier tier,
-                                StockDeductionResult stockResult, CouponResult couponResult,
-                                CartSelection cartSelection, int usePoints) {
-        Long userId = savedOrder.getUserId();
-
-        // [BUG FIX] 재고 이력에 orderId를 포함하여 저장.
-        // 기존: Order save 전에 inventoryHistory를 저장 → reference_id = null
-        // 수정: Order save 후 savedOrder.getOrderId()로 정확한 주문 ID를 기록.
-        //
-        // [Phase 8] 개별 save() → saveAll() 일괄 저장으로 최적화.
-        //
-        // 문제: 기존 코드는 for 루프에서 상품 N개에 대해 inventoryHistoryRepository.save()를
-        // N번 호출했다. JPA save()는 호출마다 persist → 즉시 INSERT를 실행하므로,
-        // 상품 5개 주문 시 5번의 개별 INSERT가 순차 발행되었다.
-        //
-        // 해결: saveAll()로 일괄 저장하면 Hibernate가 JDBC 배치 삽입을 활용할 수 있다.
-        // (spring.jpa.properties.hibernate.jdbc.batch_size 설정에 따라)
-        // 개별 save() 호출의 EntityManager.merge() 오버헤드도 제거된다.
-        List<ProductInventoryHistory> historyEntities = new ArrayList<>(stockResult.inventorySnapshots().size());
-        for (InventorySnapshot snapshot : stockResult.inventorySnapshots()) {
-            historyEntities.add(new ProductInventoryHistory(
-                    snapshot.productId(), "OUT", snapshot.quantity(),
-                    snapshot.beforeStock(), snapshot.afterStock(),
-                    "ORDER", savedOrder.getOrderId(), userId
-            ));
-        }
-        inventoryHistoryRepository.saveAll(historyEntities);
-
-        // 쿠폰 사용 처리 (DB 레벨 원자적 전환 보장)
-        if (couponResult.userCoupon() != null) {
-            int updatedRows = userCouponRepository.markAsUsedIfUnused(
-                    couponResult.userCoupon().getUserCouponId(),
-                    savedOrder.getOrderId(),
-                    LocalDateTime.now()
-            );
-            if (updatedRows != 1) {
-                throw new BusinessException("COUPON_ALREADY_USED", "이미 사용된 쿠폰입니다.");
-            }
-        }
-
-        // 누적 구매 금액(total_spent) 반영
-        user.addTotalSpent(savedOrder.getFinalAmount());
-
-        // [P0 FIX] 포인트 적립을 배송 완료(DELIVERED) 시점으로 이연.
-        // earnedPointsSnapshot은 Order에 저장하되, 실제 적립은
-        // OrderService.settleEarnedPoints()에서 배송 완료 시에만 수행한다.
-
-        // 포인트 사용 이력 기록
-        if (usePoints > 0) {
-            pointHistoryRepository.save(new PointHistory(
-                    userId, PointHistory.USE, usePoints, user.getPointBalance(),
-                    "ORDER", savedOrder.getOrderId(),
-                    "주문 사용 (주문번호: " + savedOrder.getOrderNumber() + ")"
-            ));
-        }
-
-        // [Phase 6] 등급 재계산을 비동기 이벤트로 분리.
-        //
-        // 문제: 등급 재계산(UserTier 조회 + User 갱신)이 주문 트랜잭션 안에서 동기 실행되면,
-        // User 행에 대한 PESSIMISTIC_WRITE 락 보유 시간이 등급 조회만큼 늘어난다.
-        // 동시 주문 100건 시 이 추가 시간이 직렬화 병목이 된다.
-        //
-        // 해결: ApplicationEventPublisher로 OrderCompletedEvent를 발행하면,
-        // @TransactionalEventListener(AFTER_COMMIT) + @Async가 커밋 후 별도 스레드에서
-        // 등급을 재계산한다. 주문 트랜잭션은 totalSpent 갱신 후 즉시 커밋된다.
-        List<Long> productIds = stockResult.orderLines().stream()
-                .map(OrderLine::productId).toList();
-        applicationEventPublisher.publishEvent(new OrderCompletedEvent(
-                savedOrder.getOrderId(), userId, savedOrder.getFinalAmount(), productIds));
-
-        // [P1-6] 선택 주문인 경우 주문한 장바구니 항목만 삭제, 나머지는 유지한다.
-        if (cartSelection.isPartialOrder()) {
-            List<Long> orderedCartIds = cartSelection.items().stream().map(Cart::getCartId).toList();
-            cartRepository.deleteAllById(orderedCartIds);
-        } else {
-            cartRepository.deleteByUserId(userId);
-        }
-
-        // [Outbox] 재고 변경 이벤트를 Outbox 테이블에 기록한다.
-        outboxEventPublisher.publishStockChanged(productIds);
-
-        // [Phase 6] 주문 생성 이벤트를 Outbox에 기록하여 at-least-once 알림 발송을 보장한다.
-        // ApplicationEvent(best-effort)와 Outbox(at-least-once)의 이중 경로 전략:
-        // 등급 재계산은 ApplicationEvent로 빠르게, 알림은 Outbox로 신뢰성 있게 처리한다.
-        outboxEventPublisher.publishOrderCreated(
-                savedOrder.getOrderId(), userId, savedOrder.getFinalAmount());
-    }
-
     private String generateOrderNumber() {
         String datePart = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmssSSS"));
         String randomPart = UUID.randomUUID().toString().replace("-", "").substring(0, 12).toUpperCase();
@@ -557,42 +275,11 @@ public class OrderCreationService {
 
     // ── 내부 DTO ─────────────────────────────────────────────
 
-    /** 장바구니 선택 결과를 캡슐화하는 내부 DTO. */
-    private record CartSelection(List<Cart> items, boolean isPartialOrder) {
-    }
-
-    /**
-     * 재고 차감 단계의 결과를 캡슐화하는 내부 DTO.
-     * totalAmount, tierDiscountTotal, orderLines, inventorySnapshots를 한 번에 전달한다.
-     */
-    private record StockDeductionResult(BigDecimal totalAmount, BigDecimal tierDiscountTotal,
-                                         List<OrderLine> orderLines,
-                                         List<InventorySnapshot> inventorySnapshots) {
-    }
-
     /**
      * 쿠폰 할인 단계의 결과를 캡슐화하는 내부 DTO.
      * 쿠폰 미사용 시 {@link #NONE}을 반환한다.
      */
     private record CouponResult(BigDecimal discount, UserCoupon userCoupon) {
         private static final CouponResult NONE = new CouponResult(BigDecimal.ZERO, null);
-    }
-
-    // 주문 생성 중 계산된 상품별 스냅샷 데이터를 임시로 보관하는 내부 DTO
-    private record OrderLine(Long productId, String productName, int quantity,
-                             BigDecimal unitPrice, BigDecimal subtotal) {
-    }
-
-    /**
-     * [BUG FIX] 재고 차감 시점의 before/after 수량을 임시 보관하는 내부 DTO.
-     *
-     * 기존 코드는 재고 차감 루프 안에서 즉시 inventoryHistoryRepository.save()를 호출했으나,
-     * 이 시점에는 Order가 아직 persist되지 않아 reference_id(orderId)에 null이 전달되었다.
-     * (주문 취소 쪽은 이미 존재하는 orderId를 정상 전달하므로 생성/취소 간 이력 일관성이 깨짐)
-     *
-     * 수정: 재고 차감은 즉시 수행하되(비관적 잠금 구간 내), 이력 데이터는 이 DTO로 모아두고
-     * Order가 저장된 후에 savedOrder.getOrderId()를 포함하여 일괄 저장한다.
-     */
-    private record InventorySnapshot(Long productId, int quantity, int beforeStock, int afterStock) {
     }
 }

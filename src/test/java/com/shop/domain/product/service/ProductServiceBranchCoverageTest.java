@@ -2,7 +2,7 @@ package com.shop.domain.product.service;
 
 import com.shop.domain.category.entity.Category;
 import com.shop.domain.category.service.CategoryService;
-import com.shop.domain.inventory.service.InventoryService;
+import com.shop.domain.product.port.InventoryAdjustmentPort;
 import com.shop.domain.product.dto.AdminProductRequest;
 import com.shop.domain.product.dto.CachedProductDetail;
 import com.shop.domain.product.entity.Product;
@@ -53,7 +53,7 @@ class ProductServiceBranchCoverageTest {
     @Mock private ProductImageRepository productImageRepository;
     @Mock private ViewCountService viewCountService;
     @Mock private CategoryService categoryService;
-    @Mock private InventoryService inventoryService;
+    @Mock private InventoryAdjustmentPort inventoryAdjustmentPort;
 
     private ProductService productService;
 
@@ -64,7 +64,7 @@ class ProductServiceBranchCoverageTest {
     void setUp() {
         productService = new ProductService(
                 productRepository, productImageRepository,
-                viewCountService, categoryService, inventoryService
+                viewCountService, categoryService, inventoryAdjustmentPort
         );
         // [Phase 18] CQRS 읽기 서비스 — ProductRepository만 주입
         productQueryService = new ProductQueryService(productRepository);
@@ -219,8 +219,8 @@ class ProductServiceBranchCoverageTest {
         // when
         productService.updateProduct(1L, req);
 
-        // then: 재고 변경 없으므로 InventoryService가 호출되지 않아야 함
-        verify(inventoryService, never()).adjustStock(anyLong(), anyInt(), anyString(), any());
+        // then: 재고 변경 없으므로 inventory 포트가 호출되지 않아야 함
+        verify(inventoryAdjustmentPort, never()).adjustStock(anyLong(), anyInt(), anyString(), any());
     }
 
     // =====================================================

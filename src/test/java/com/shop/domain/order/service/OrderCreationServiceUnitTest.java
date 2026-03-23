@@ -18,7 +18,6 @@ import com.shop.domain.product.repository.ProductRepository;
 import com.shop.domain.user.entity.User;
 import com.shop.domain.user.entity.UserTier;
 import com.shop.domain.user.repository.UserRepository;
-import com.shop.domain.user.repository.UserTierRepository;
 import com.shop.global.exception.BusinessException;
 import com.shop.global.exception.InsufficientStockException;
 import com.shop.global.metrics.OrderMetrics;
@@ -64,7 +63,6 @@ class OrderCreationServiceUnitTest {
     @Mock private UserRepository userRepository;
     @Mock private ProductInventoryHistoryRepository inventoryHistoryRepository;
     @Mock private UserCouponRepository userCouponRepository;
-    @Mock private UserTierRepository userTierRepository;
     @Mock private PointHistoryRepository pointHistoryRepository;
     @Mock private EntityManager entityManager;
     @Mock private OutboxEventPublisher outboxEventPublisher;
@@ -86,11 +84,18 @@ class OrderCreationServiceUnitTest {
     @BeforeEach
     void setUp() {
         creationService = new OrderCreationService(
-                orderRepository, cartRepository, productRepository, userRepository,
-                inventoryHistoryRepository, userCouponRepository, userTierRepository,
-                pointHistoryRepository, entityManager, outboxEventPublisher,
-                shippingFeeCalculator, orderInvariantValidator, applicationEventPublisher,
-                orderMetrics
+                orderRepository, userRepository, userCouponRepository,
+                shippingFeeCalculator, orderInvariantValidator, orderMetrics,
+                new OrderCartSelectionResolver(cartRepository),
+                new OrderStockProcessor(productRepository, entityManager),
+                new OrderPostProcessor(
+                        inventoryHistoryRepository,
+                        userCouponRepository,
+                        pointHistoryRepository,
+                        cartRepository,
+                        outboxEventPublisher,
+                        applicationEventPublisher
+                )
         );
     }
 

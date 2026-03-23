@@ -3,6 +3,7 @@ package com.shop.domain.inventory.service;
 import com.shop.domain.inventory.entity.ProductInventoryHistory;
 import com.shop.domain.inventory.repository.ProductInventoryHistoryRepository;
 import com.shop.domain.product.entity.Product;
+import com.shop.domain.product.port.InventoryAdjustmentPort;
 import com.shop.domain.product.repository.ProductRepository;
 import com.shop.global.exception.ResourceNotFoundException;
 import com.shop.global.outbox.OutboxEventPublisher;
@@ -15,7 +16,7 @@ import java.util.List;
 
 @Service
 @Transactional(readOnly = true)
-public class InventoryService {
+public class InventoryService implements InventoryAdjustmentPort {
 
     private final ProductInventoryHistoryRepository historyRepository;
     private final ProductRepository productRepository;
@@ -49,6 +50,7 @@ public class InventoryService {
      * Outbox 폴러가 5초 간격으로 이벤트를 처리하므로 캐시 반영까지 최대 ~5초.
      */
     @Transactional
+    @Override
     public void adjustStock(Long productId, int amount, String reason, Long userId) {
         Product product = productRepository.findByIdWithLock(productId)
                 .orElseThrow(() -> new ResourceNotFoundException("상품", productId));

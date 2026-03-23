@@ -2,6 +2,7 @@ package com.shop.domain.product.service;
 
 import com.shop.domain.category.entity.Category;
 import com.shop.domain.category.service.CategoryService;
+import com.shop.domain.product.port.InventoryAdjustmentPort;
 import com.shop.domain.product.dto.AdminProductRequest;
 import com.shop.domain.product.entity.Product;
 import com.shop.domain.product.repository.ProductRepository;
@@ -30,13 +31,13 @@ class ProductServiceAdminCrudTest {
     @Mock private ViewCountService viewCountService;
     @Mock private CategoryService categoryService;
     // [P1 FIX] 상품 수정 시 재고 변경분 이력 기록을 위해 추가
-    @Mock private com.shop.domain.inventory.service.InventoryService inventoryService;
+    @Mock private InventoryAdjustmentPort inventoryAdjustmentPort;
 
     private ProductService productService;
 
     @BeforeEach
     void setUp() {
-        productService = new ProductService(productRepository, productImageRepository, viewCountService, categoryService, inventoryService);
+        productService = new ProductService(productRepository, productImageRepository, viewCountService, categoryService, inventoryAdjustmentPort);
     }
 
     private AdminProductRequest buildRequest() {
@@ -107,10 +108,10 @@ class ProductServiceAdminCrudTest {
         assertThat(result.getPrice()).isEqualByComparingTo("19900");
         assertThat(result.getCategory()).isSameAs(newCat);
 
-        // [P1 FIX] 재고 변경분(100-50=50)은 InventoryService를 경유하여 처리된다.
-        // InventoryService가 mock이므로 Product의 stockQuantity는 직접 변경되지 않고,
+        // [P1 FIX] 재고 변경분(100-50=50)은 inventory 포트를 경유하여 처리된다.
+        // 포트가 mock이므로 Product의 stockQuantity는 직접 변경되지 않고,
         // 대신 adjustStock 호출이 위임되었는지를 검증한다.
-        verify(inventoryService).adjustStock(1L, 50, "ADMIN_EDIT", null);
+        verify(inventoryAdjustmentPort).adjustStock(1L, 50, "ADMIN_EDIT", null);
     }
 
     @Test

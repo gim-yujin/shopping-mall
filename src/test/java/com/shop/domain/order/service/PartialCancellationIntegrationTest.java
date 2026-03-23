@@ -30,7 +30,7 @@ import static org.assertj.core.api.Assertions.*;
  *   <li>포인트가 비례 환불되고 PointHistory에 기록되는지 (P0-2)</li>
  *   <li>등급이 재계산되는지 (P0-3)</li>
  *   <li>재고가 복구되고 재고 이력이 기록되는지</li>
- *   <li>ProductStockChangedEvent에 의한 캐시 무효화 (P1-3)</li>
+ *   <li>Outbox 기반 재고 변경 이벤트에 의한 캐시 무효화 (P1-3)</li>
  *   <li>totalSpent가 환불 금액만큼 차감되는지</li>
  * </ul>
  *
@@ -393,7 +393,7 @@ class PartialCancellationIntegrationTest {
     }
 
     /**
-     * [P1-3 검증] 부분 취소 후 ProductStockChangedEvent 발행으로
+     * [P1-3 검증] 부분 취소 후 Outbox 재고 변경 이벤트 발행으로
      * productDetail 캐시가 무효화되는지 확인한다.
      *
      * <p>기존 버그: 부분 취소에서 이벤트를 발행하지 않아,

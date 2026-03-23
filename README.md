@@ -17,8 +17,8 @@
 
 ### 코드베이스 스냅샷
 
-- 메인 코드: `src/main/java` 기준 **187개 Java 파일**
-- 테스트 코드: `src/test/java` 기준 **166개 Java 파일**
+- 메인 코드: `src/main/java` 기준 **189개 Java 파일**
+- 테스트 코드: `src/test/java` 기준 **165개 Java 파일**
 - 템플릿: `src/main/resources/templates` 기준 **30개 HTML 파일**
 - DB 스키마: **19개 테이블**, **60개 인덱스** (일반 57 + UNIQUE 3)
 
@@ -34,6 +34,13 @@
 - **Cache**: Caffeine
 - **Observability**: Micrometer Prometheus, Prometheus, Grafana
 - **Quality**: Checkstyle, PMD, SpotBugs(옵션), JaCoCo
+
+### 백엔드 포트폴리오 관전 포인트
+
+- **주문 동시성 제어**: 사용자별 장바구니 락, 상품 재고 잠금, 상태 전이 검증으로 오버셀과 경합을 방지합니다.
+- **신뢰성 있는 후처리**: 주문/재고/알림 경로에 Outbox와 보정 스케줄러를 적용해 at-least-once 처리를 보강합니다.
+- **도메인 경계 관리**: `scripts/check-domain-dependencies.sh`로 서비스/레포지토리 계층의 양방향 도메인 의존을 CI에서 차단합니다.
+- **테스트 전략**: 단위 테스트 + 통합 테스트 + 동시성 테스트를 함께 운영해 비즈니스 규칙과 락 경합 시나리오를 검증합니다.
 
 ---
 
@@ -132,21 +139,25 @@ CREATE DATABASE shopping_mall_db;
 - `spring.jpa.hibernate.ddl-auto=validate`
 - `spring.sql.init.mode=never`
 
-따라서 아래 SQL을 먼저 적용하세요.
+따라서 아래 규약에 따라 SQL을 먼저 적용하세요.
 
-- 기본 스키마: `src/main/resources/schema.sql`
-- 추가 변경 스크립트: `src/main/resources/migration/*.sql`, `src/main/resources/sql/*.sql`
+- 전체 스냅샷: `src/main/resources/schema.sql`
+- 순차 마이그레이션: `src/main/resources/migration/*.sql`
+- 수동 운영 점검 SQL: `src/main/resources/ops-sql/*.sql`
+
+권장 절차:
+1. 신규 환경은 `schema.sql`로 기본 스키마를 생성합니다.
+2. 이후 버전 차이는 `migration/*.sql`만 순서대로 적용합니다.
+3. `ops-sql/*.sql`은 운영 점검/감사용 수동 쿼리이며 부팅 절차에는 포함하지 않습니다.
 
 ### 6-4. 애플리케이션 설정
 
-`src/main/resources/application.yml`의 DB 접속 정보를 환경에 맞게 수정하세요.
+애플리케이션은 DB 접속 정보를 파일 기본값으로 갖지 않습니다. 아래 환경변수를 설정하세요.
 
-```yaml
-spring:
-  datasource:
-    url: jdbc:postgresql://localhost:5432/shopping_mall_db?stringtype=unspecified
-    username: postgres
-    password: 4321
+```bash
+export SPRING_DATASOURCE_URL='jdbc:postgresql://localhost:5432/shopping_mall_db?stringtype=unspecified&socketTimeout=30'
+export SPRING_DATASOURCE_USERNAME='postgres'
+export SPRING_DATASOURCE_PASSWORD='your-password'
 ```
 
 ### 6-5. 실행
@@ -188,6 +199,7 @@ PGPASSWORD="$TEST_DB_PASSWORD" psql \
 ./gradlew jacocoTestReport
 ./gradlew jacocoTestCoverageVerification
 ./gradlew spotbugsMain spotbugsTest -PenableSpotbugs=true
+./scripts/check-domain-dependencies.sh
 ```
 
 ### 7-3. 아키텍처 규칙 점검 스크립트

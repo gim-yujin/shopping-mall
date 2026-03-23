@@ -1,6 +1,7 @@
 package com.shop.domain.product.service;
 
 import com.shop.domain.category.service.CategoryService;
+import com.shop.domain.product.port.InventoryAdjustmentPort;
 import com.shop.domain.product.dto.ProductListReadModel;
 import com.shop.domain.product.repository.ProductRepository;
 import com.shop.domain.product.repository.ProductImageRepository;
@@ -46,7 +47,7 @@ class ProductServiceUnitTest {
 
     // [P1 FIX] 상품 수정 시 재고 변경분 이력 기록을 위해 추가
     @Mock
-    private com.shop.domain.inventory.service.InventoryService inventoryService;
+    private InventoryAdjustmentPort inventoryAdjustmentPort;
 
     private ProductService productService;
 
@@ -55,7 +56,7 @@ class ProductServiceUnitTest {
 
     @BeforeEach
     void setUp() {
-        productService = new ProductService(productRepository, productImageRepository, viewCountService, categoryService, inventoryService);
+        productService = new ProductService(productRepository, productImageRepository, viewCountService, categoryService, inventoryAdjustmentPort);
         productQueryService = new ProductQueryService(productRepository);
     }
 

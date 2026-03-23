@@ -19,8 +19,8 @@ import java.util.Map;
  *
  * <h3>호출부 변경</h3>
  * <pre>
- *   [기존] eventPublisher.publishEvent(new ProductStockChangedEvent(productIds));
- *   [변경] outboxEventPublisher.publishStockChanged(productIds);
+ *   [이전] Spring ApplicationEvent 발행
+ *   [현재] outboxEventPublisher.publishStockChanged(productIds)
  * </pre>
  *
  * <h3>왜 ApplicationEventPublisher를 완전히 대체하는가?</h3>
