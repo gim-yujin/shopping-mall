@@ -20,7 +20,7 @@
 - 메인 코드: `src/main/java` 기준 **193개 Java 파일**
 - 테스트 코드: `src/test/java` 기준 **170개 Java 파일**
 - 템플릿: `src/main/resources/templates` 기준 **30개 HTML 파일**
-- DB 스키마: **19개 테이블**, **60개 인덱스** (일반 57 + UNIQUE 3)
+- DB 스키마: **19개 테이블**, **57개 인덱스** (일반 54 + UNIQUE 3)
 
 ---
 

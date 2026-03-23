@@ -553,12 +553,11 @@ COMMENT ON TABLE outbox_events IS 'Transactional Outbox 이벤트 레코드';
 -- ============================================================================
 
 -- Review_Helpfuls 인덱스
-CREATE INDEX idx_review_helpful_review ON review_helpfuls(review_id);
-CREATE INDEX idx_review_helpful_user ON review_helpfuls(user_id);
+-- idx_review_helpful_review 불필요: uk_helpful_review_user(review_id, user_id) 선두 컬럼으로 커버됨
+CREATE INDEX idx_review_helpful_user ON review_helpfuls(user_id, review_id);
 
 -- Users 테이블 인덱스
-CREATE INDEX idx_users_email ON users(email);
-CREATE INDEX idx_users_username ON users(username);
+-- idx_users_email, idx_users_username 불필요: UNIQUE 제약이 자동으로 unique index 생성
 CREATE INDEX idx_users_tier ON users(tier_id);
 CREATE INDEX idx_users_created ON users(created_at);
 CREATE INDEX idx_users_total_spent ON users(total_spent DESC);
@@ -589,12 +588,13 @@ CREATE INDEX idx_product_deals ON products ((original_price - price) DESC)
 
 -- Product_Images 인덱스
 CREATE INDEX idx_image_product ON product_images(product_id, image_order);
+CREATE INDEX idx_image_thumbnail ON product_images(product_id) WHERE is_thumbnail = true;
 
 -- Orders 인덱스
 CREATE INDEX idx_order_user ON orders(user_id, order_date DESC);
 CREATE INDEX idx_order_status ON orders(order_status, order_date);
 CREATE INDEX idx_order_date ON orders(order_date DESC);
-CREATE INDEX idx_order_number ON orders(order_number);
+-- idx_order_number 불필요: order_number UNIQUE 제약이 자동으로 unique index 생성
 
 -- Order_Items 인덱스 ⭐️ 최적화 핵심
 CREATE INDEX idx_order_items_order ON order_items(order_id);
@@ -622,7 +622,7 @@ CREATE INDEX idx_wishlist_user ON wishlists(user_id, created_at DESC);
 CREATE INDEX idx_wishlist_product ON wishlists(product_id);
 
 -- Coupons 인덱스
-CREATE INDEX idx_coupon_code ON coupons(coupon_code);
+-- idx_coupon_code 불필요: coupon_code UNIQUE 제약이 자동으로 unique index 생성
 CREATE INDEX idx_coupon_valid ON coupons(valid_from, valid_until, is_active);
 
 -- User_Coupons 인덱스
@@ -696,6 +696,8 @@ CREATE INDEX idx_outbox_pending ON outbox_events(status, created_at) WHERE statu
 CREATE INDEX idx_outbox_processed_at ON outbox_events(processed_at) WHERE status = 'PROCESSED';
 -- [Phase 15] Dead Letter 이벤트 조회용 부분 인덱스
 CREATE INDEX idx_outbox_dead_letter ON outbox_events(processed_at) WHERE status = 'DEAD_LETTER';
+CREATE INDEX idx_outbox_retry ON outbox_events(next_retry_at)
+    WHERE status = 'PENDING' AND next_retry_at IS NOT NULL;
 
 -- ============================================================================
 -- [Phase 18] 읽기 전용 뷰 — CQRS 읽기 모델 분리
@@ -769,4 +771,4 @@ FROM orders o;
 -- 이로 인해 DO $$ 블록이 여러 개의 불완전한 SQL 조각으로 분리되어
 -- PSQLException (Parser.java) 파싱 에러가 발생한다.
 -- RAISE NOTICE는 디버깅 편의용이었으므로 주석으로 대체한다.
--- 총 19개 테이블, 50+ 인덱스 생성됨
+-- 총 19개 테이블, 57개 인덱스 생성됨 (일반 54 + UNIQUE 3)
