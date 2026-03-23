@@ -9,6 +9,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.Locale;
 import java.util.Set;
 
 @Service
@@ -43,7 +44,7 @@ public class PointQueryService {
         if (changeType == null || changeType.isBlank()) {
             return null;
         }
-        String normalizedType = changeType.trim().toUpperCase();
+        String normalizedType = changeType.trim().toUpperCase(Locale.ROOT);
         return OPS_ALLOWED_CHANGE_TYPES.contains(normalizedType) ? normalizedType : null;
     }
 }

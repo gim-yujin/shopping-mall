@@ -41,8 +41,8 @@ public class WishlistService {
         if (!productRepository.existsById(productId)) {
             throw new ResourceNotFoundException("상품", productId);
         }
-        int inserted = wishlistRepository.insertIgnoreConflict(userId, productId);
-        // inserted=1이면 추가됨, inserted=0이면 다른 스레드가 이미 추가함 (어느 쪽이든 "존재" 상태)
+        wishlistRepository.insertIgnoreConflict(userId, productId);
+        // 반환값 1이면 추가됨, 0이면 다른 스레드가 이미 추가함 (어느 쪽이든 "존재" 상태)
         return true;
     }
 }

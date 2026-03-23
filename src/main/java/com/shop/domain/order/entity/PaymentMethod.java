@@ -1,6 +1,7 @@
 package com.shop.domain.order.entity;
 
 import java.util.Arrays;
+import java.util.Locale;
 import java.util.Optional;
 
 public enum PaymentMethod {
@@ -29,7 +30,7 @@ public enum PaymentMethod {
             return Optional.empty();
         }
         return Arrays.stream(values())
-                .filter(method -> method.name().equals(value.trim().toUpperCase()))
+                .filter(method -> method.name().equals(value.trim().toUpperCase(Locale.ROOT)))
                 .findFirst();
     }
 }

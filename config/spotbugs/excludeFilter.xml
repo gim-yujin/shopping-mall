@@ -1,4 +1,33 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <FindBugsFilter>
-    <!-- 팀 정책에 따라 false positive가 확인된 항목을 여기에 제외 규칙으로 추가 -->
+    <!--
+      EI_EXPOSE_REP / EI_EXPOSE_REP2: JPA 엔티티·record DTO에서 가변 객체(List, LocalDateTime 등)를
+      getter/constructor로 노출하는 것은 Spring 프레임워크 표준 패턴이다.
+      방어적 복사는 JPA 프록시 동작과 충돌하며, record는 구조적으로 불변이므로 제외한다.
+    -->
+    <Match>
+        <Bug pattern="EI_EXPOSE_REP,EI_EXPOSE_REP2"/>
+    </Match>
+
+    <!--
+      IP_PARAMETER_IS_DEAD_BUT_OVERWRITTEN: OrderCreateRequest compact constructor에서
+      shippingFee를 BigDecimal.ZERO로 덮어쓰는 것은 의도적 설계.
+      클라이언트 요청값을 신뢰하지 않고 서버 정책으로 재계산한다.
+    -->
+    <Match>
+        <Bug pattern="IP_PARAMETER_IS_DEAD_BUT_OVERWRITTEN"/>
+        <Class name="com.shop.domain.order.dto.OrderCreateRequest"/>
+    </Match>
+
+    <!--
+      NM_CONFUSING: AdminReturnResponse.userName(사용자 표시명)과
+      SignupRequest.username(로그인 ID)은 의미적으로 다른 필드이다.
+    -->
+    <Match>
+        <Bug pattern="NM_CONFUSING"/>
+        <Or>
+            <Class name="com.shop.domain.order.dto.AdminReturnResponse"/>
+            <Class name="com.shop.domain.user.dto.SignupRequest"/>
+        </Or>
+    </Match>
 </FindBugsFilter>

@@ -24,7 +24,7 @@ public class CacheStatsLogger {
         sb.append("\n╔══════════════════════════════════════════════════════════════╗\n");
         sb.append("║              CAFFEINE CACHE STATISTICS                       ║\n");
         sb.append("╠══════════════════════════════════════════════════════════════╣\n");
-        sb.append(String.format("║ %-18s │ %6s │ %6s │ %8s │ %5s ║\n",
+        sb.append(String.format("║ %-18s │ %6s │ %6s │ %8s │ %5s ║%n",
                 "Cache Name", "Hits", "Misses", "Hit Rate", "Size"));
         sb.append("╠══════════════════════════════════════════════════════════════╣\n");
 
@@ -42,7 +42,7 @@ public class CacheStatsLogger {
                 totalHits += hits;
                 totalMisses += misses;
 
-                sb.append(String.format("║ %-18s │ %6d │ %6d │ %7.1f%% │ %5d ║\n",
+                sb.append(String.format("║ %-18s │ %6d │ %6d │ %7.1f%% │ %5d ║%n",
                         cacheName, hits, misses, hitRate, size));
             }
         }
@@ -50,7 +50,7 @@ public class CacheStatsLogger {
         sb.append("╠══════════════════════════════════════════════════════════════╣\n");
         double totalRate = (totalHits + totalMisses) > 0
                 ? (double) totalHits / (totalHits + totalMisses) * 100 : 0;
-        sb.append(String.format("║ %-18s │ %6d │ %6d │ %7.1f%% │       ║\n",
+        sb.append(String.format("║ %-18s │ %6d │ %6d │ %7.1f%% │       ║%n",
                 "TOTAL", totalHits, totalMisses, totalRate));
         sb.append("╚══════════════════════════════════════════════════════════════╝");
 

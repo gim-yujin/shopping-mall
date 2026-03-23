@@ -7,6 +7,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Locale;
 import java.util.Optional;
 
 @Service
@@ -127,7 +128,7 @@ public class LoginAttemptService {
     }
 
     private String buildCacheKey(String username, String ipAddress) {
-        String normalizedUsername = username == null ? "" : username.trim().toLowerCase();
+        String normalizedUsername = username == null ? "" : username.trim().toLowerCase(Locale.ROOT);
         String normalizedIp = ipAddress == null ? "unknown" : ipAddress.trim();
         return normalizedUsername + "|" + normalizedIp;
     }

@@ -20,6 +20,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.Locale;
 import java.util.UUID;
 
 /**
@@ -269,7 +270,7 @@ public class OrderCreationService {
 
     private String generateOrderNumber() {
         String datePart = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmssSSS"));
-        String randomPart = UUID.randomUUID().toString().replace("-", "").substring(0, 12).toUpperCase();
+        String randomPart = UUID.randomUUID().toString().replace("-", "").substring(0, 12).toUpperCase(Locale.ROOT);
         return datePart + "-" + randomPart;
     }
 

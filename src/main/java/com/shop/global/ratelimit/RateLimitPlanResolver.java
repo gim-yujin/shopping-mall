@@ -2,6 +2,8 @@ package com.shop.global.ratelimit;
 
 import jakarta.servlet.http.HttpServletRequest;
 
+import java.util.Locale;
+
 /**
  * HTTP 요청의 URI와 메서드를 기반으로 적용할 {@link RateLimitPlan}을 결정한다.
  *
@@ -33,7 +35,7 @@ public final class RateLimitPlanResolver {
      * @return 적용할 플랜 (null이면 rate limit 미적용)
      */
     public static RateLimitPlan resolve(HttpServletRequest request) {
-        String method = request.getMethod().toUpperCase();
+        String method = request.getMethod().toUpperCase(Locale.ROOT);
         String uri = request.getRequestURI();
 
         // ── 주문 생성 (가장 엄격) ───────────────────
