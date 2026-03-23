@@ -14,6 +14,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.test.util.ReflectionTestUtils;
 
+import org.junit.jupiter.api.BeforeEach;
+
 import java.util.Collections;
 import java.util.List;
 
@@ -39,16 +41,33 @@ class OutboxEventPollerTest {
     private final OutboxMetrics outboxMetrics = mock(OutboxMetrics.class);
     private final ObjectMapper objectMapper = new ObjectMapper();
 
+    @BeforeEach
+    void setUp() {
+        // 기본 stub: 두 분리 쿼리가 모두 빈 리스트를 반환하도록 설정.
+        // 개별 테스트에서 필요한 쿼리만 override한다.
+        lenient().when(repository.findFirstAttemptEventsForUpdate(anyInt()))
+                .thenReturn(Collections.emptyList());
+        lenient().when(repository.findRetryEventsForUpdate(anyInt()))
+                .thenReturn(Collections.emptyList());
+    }
+
     /**
      * 실제 핸들러들을 생성하여 폴러에 주입한다.
      * [Phase 15] OutboxMetrics 및 retryBaseDelaySec 파라미터 추가.
+     * Retry Budget: retryBudgetPerPoll=20, jitterFactor=0(테스트 결정성 보장).
      */
     private OutboxEventPoller createPoller(int maxRetries) {
+        return createPoller(maxRetries, 100, 20, 0.0);
+    }
+
+    private OutboxEventPoller createPoller(int maxRetries, int batchSize,
+                                            int retryBudgetPerPoll, double jitterFactor) {
         List<OutboxEventHandler> handlers = List.of(
                 new StockChangedEventHandler(cacheEvictHelper, objectMapper),
                 new OrderCreatedEventHandler(notificationService, objectMapper),
                 new OrderCancelledEventHandler(notificationService, objectMapper));
-        return new OutboxEventPoller(repository, handlers, outboxMetrics, maxRetries, 100, 10);
+        return new OutboxEventPoller(repository, handlers, outboxMetrics,
+                maxRetries, batchSize, 10, retryBudgetPerPoll, jitterFactor);
     }
 
     private OutboxEvent createStockEvent(Long eventId, String payload) {
@@ -79,7 +98,7 @@ class OutboxEventPollerTest {
         @DisplayName("PENDING 이벤트를 처리하고 PROCESSED로 전이한다")
         void processesAndMarksCompleted() {
             OutboxEvent event = createStockEvent(1L, "{\"productIds\":[10,20]}");
-            when(repository.findPendingEventsForUpdate(anyInt())).thenReturn(List.of(event));
+            when(repository.findFirstAttemptEventsForUpdate(anyInt())).thenReturn(List.of(event));
 
             OutboxEventPoller poller = createPoller(5);
             poller.pollAndProcess();
@@ -93,7 +112,7 @@ class OutboxEventPollerTest {
         @Test
         @DisplayName("PENDING 이벤트가 없으면 아무 작업도 하지 않는다")
         void noOpWhenNoPendingEvents() {
-            when(repository.findPendingEventsForUpdate(anyInt())).thenReturn(Collections.emptyList());
+            when(repository.findFirstAttemptEventsForUpdate(anyInt())).thenReturn(Collections.emptyList());
 
             OutboxEventPoller poller = createPoller(5);
             poller.pollAndProcess();
@@ -107,7 +126,7 @@ class OutboxEventPollerTest {
         void processesMultipleEvents() {
             OutboxEvent event1 = createStockEvent(1L, "{\"productIds\":[10]}");
             OutboxEvent event2 = createStockEvent(2L, "{\"productIds\":[20,30]}");
-            when(repository.findPendingEventsForUpdate(anyInt())).thenReturn(List.of(event1, event2));
+            when(repository.findFirstAttemptEventsForUpdate(anyInt())).thenReturn(List.of(event1, event2));
 
             OutboxEventPoller poller = createPoller(5);
             poller.pollAndProcess();
@@ -126,7 +145,7 @@ class OutboxEventPollerTest {
         @DisplayName("ORDER_CREATED 이벤트를 처리하여 주문 확인 알림을 발송한다")
         void processesOrderCreatedEvent() {
             OutboxEvent event = createOrderCreatedEvent(1L);
-            when(repository.findPendingEventsForUpdate(anyInt())).thenReturn(List.of(event));
+            when(repository.findFirstAttemptEventsForUpdate(anyInt())).thenReturn(List.of(event));
 
             OutboxEventPoller poller = createPoller(5);
             poller.pollAndProcess();
@@ -142,7 +161,7 @@ class OutboxEventPollerTest {
         @DisplayName("ORDER_CANCELLED 이벤트를 처리하여 취소 알림을 발송한다")
         void processesOrderCancelledEvent() {
             OutboxEvent event = createOrderCancelledEvent(1L);
-            when(repository.findPendingEventsForUpdate(anyInt())).thenReturn(List.of(event));
+            when(repository.findFirstAttemptEventsForUpdate(anyInt())).thenReturn(List.of(event));
 
             OutboxEventPoller poller = createPoller(5);
             poller.pollAndProcess();
@@ -159,7 +178,7 @@ class OutboxEventPollerTest {
         void routesMixedEventTypes() {
             OutboxEvent stockEvent = createStockEvent(1L, "{\"productIds\":[10]}");
             OutboxEvent orderEvent = createOrderCreatedEvent(2L);
-            when(repository.findPendingEventsForUpdate(anyInt()))
+            when(repository.findFirstAttemptEventsForUpdate(anyInt()))
                     .thenReturn(List.of(stockEvent, orderEvent));
 
             OutboxEventPoller poller = createPoller(5);
@@ -186,7 +205,7 @@ class OutboxEventPollerTest {
             OutboxEvent event = createStockEvent(1L, "{\"productIds\":[10]}");
             doThrow(new RuntimeException("캐시 서버 다운"))
                     .when(cacheEvictHelper).evictProductDetailCaches(any());
-            when(repository.findPendingEventsForUpdate(anyInt())).thenReturn(List.of(event));
+            when(repository.findFirstAttemptEventsForUpdate(anyInt())).thenReturn(List.of(event));
 
             OutboxEventPoller poller = createPoller(5);
             poller.pollAndProcess();
@@ -208,7 +227,7 @@ class OutboxEventPollerTest {
             ReflectionTestUtils.setField(event, "retryCount", 4);
             doThrow(new RuntimeException("영구 실패"))
                     .when(cacheEvictHelper).evictProductDetailCaches(any());
-            when(repository.findPendingEventsForUpdate(anyInt())).thenReturn(List.of(event));
+            when(repository.findFirstAttemptEventsForUpdate(anyInt())).thenReturn(List.of(event));
 
             OutboxEventPoller poller = createPoller(5);
             poller.pollAndProcess();
@@ -229,7 +248,7 @@ class OutboxEventPollerTest {
             doThrow(new RuntimeException("실패"))
                     .doNothing()
                     .when(cacheEvictHelper).evictProductDetailCaches(any());
-            when(repository.findPendingEventsForUpdate(anyInt())).thenReturn(List.of(failEvent, okEvent));
+            when(repository.findFirstAttemptEventsForUpdate(anyInt())).thenReturn(List.of(failEvent, okEvent));
 
             OutboxEventPoller poller = createPoller(5);
             poller.pollAndProcess();
@@ -272,13 +291,100 @@ class OutboxEventPollerTest {
         void unknownEventTypeIsProcessed() {
             OutboxEvent event = new OutboxEvent("UNKNOWN_TYPE", "{}");
             ReflectionTestUtils.setField(event, "eventId", 99L);
-            when(repository.findPendingEventsForUpdate(anyInt())).thenReturn(List.of(event));
+            when(repository.findFirstAttemptEventsForUpdate(anyInt())).thenReturn(List.of(event));
 
             OutboxEventPoller poller = createPoller(5);
             poller.pollAndProcess();
 
             // 알 수 없는 유형이지만 예외가 발생하지 않으므로 PROCESSED로 전이
             assertThat(event.getStatus()).isEqualTo(OutboxEvent.STATUS_PROCESSED);
+        }
+    }
+
+    @Nested
+    @DisplayName("Retry Budget — 신규/재시도 이벤트 분리 처리")
+    class RetryBudget {
+
+        @Test
+        @DisplayName("신규 이벤트와 재시도 이벤트가 각각의 쿼리로 조회되어 모두 처리된다")
+        void processesFirstAttemptAndRetryEventsSeparately() {
+            OutboxEvent firstAttempt = createStockEvent(1L, "{\"productIds\":[10]}");
+            OutboxEvent retryEvent = createStockEvent(2L, "{\"productIds\":[20]}");
+            // 재시도 이벤트: retryCount > 0이고 nextRetryAt이 설정된 상태
+            ReflectionTestUtils.setField(retryEvent, "retryCount", 1);
+
+            when(repository.findFirstAttemptEventsForUpdate(anyInt()))
+                    .thenReturn(List.of(firstAttempt));
+            when(repository.findRetryEventsForUpdate(anyInt()))
+                    .thenReturn(List.of(retryEvent));
+
+            OutboxEventPoller poller = createPoller(5);
+            poller.pollAndProcess();
+
+            assertThat(firstAttempt.getStatus()).isEqualTo(OutboxEvent.STATUS_PROCESSED);
+            assertThat(retryEvent.getStatus()).isEqualTo(OutboxEvent.STATUS_PROCESSED);
+            verify(outboxMetrics, times(2)).recordProcessed();
+        }
+
+        @Test
+        @DisplayName("재시도 쿼리에 retryBudgetPerPoll 값이 전달된다")
+        void retryBudgetLimitsRetryQuery() {
+            OutboxEventPoller poller = createPoller(5, 100, 3, 0.0);
+            poller.pollAndProcess();
+
+            // batchSize=100으로 신규 이벤트 조회
+            verify(repository).findFirstAttemptEventsForUpdate(100);
+            // retryBudgetPerPoll=3으로 재시도 이벤트 조회
+            verify(repository).findRetryEventsForUpdate(3);
+        }
+
+        @Test
+        @DisplayName("신규 이벤트만 있고 재시도 이벤트 없음 → 신규만 처리")
+        void onlyFirstAttemptEvents_processedNormally() {
+            OutboxEvent event = createStockEvent(1L, "{\"productIds\":[10]}");
+            when(repository.findFirstAttemptEventsForUpdate(anyInt()))
+                    .thenReturn(List.of(event));
+
+            OutboxEventPoller poller = createPoller(5);
+            poller.pollAndProcess();
+
+            assertThat(event.getStatus()).isEqualTo(OutboxEvent.STATUS_PROCESSED);
+            verify(outboxMetrics).recordProcessed();
+        }
+
+        @Test
+        @DisplayName("재시도 이벤트만 있고 신규 이벤트 없음 → 재시도만 처리")
+        void onlyRetryEvents_processedNormally() {
+            OutboxEvent retryEvent = createStockEvent(1L, "{\"productIds\":[10]}");
+            ReflectionTestUtils.setField(retryEvent, "retryCount", 2);
+            when(repository.findRetryEventsForUpdate(anyInt()))
+                    .thenReturn(List.of(retryEvent));
+
+            OutboxEventPoller poller = createPoller(5);
+            poller.pollAndProcess();
+
+            assertThat(retryEvent.getStatus()).isEqualTo(OutboxEvent.STATUS_PROCESSED);
+            verify(outboxMetrics).recordProcessed();
+        }
+
+        @Test
+        @DisplayName("재시도 이벤트 실패 시 jitterFactor가 scheduleRetry에 전달된다")
+        void retryEventFailure_usesJitterFactor() {
+            OutboxEvent retryEvent = createStockEvent(1L, "{\"productIds\":[10]}");
+            ReflectionTestUtils.setField(retryEvent, "retryCount", 1);
+            doThrow(new RuntimeException("장애"))
+                    .when(cacheEvictHelper).evictProductDetailCaches(any());
+            when(repository.findRetryEventsForUpdate(anyInt()))
+                    .thenReturn(List.of(retryEvent));
+
+            // jitterFactor=0.0이므로 고정 백오프와 동일하게 동작
+            OutboxEventPoller poller = createPoller(5, 100, 20, 0.0);
+            poller.pollAndProcess();
+
+            assertThat(retryEvent.getRetryCount()).isEqualTo(2);
+            assertThat(retryEvent.getStatus()).isEqualTo(OutboxEvent.STATUS_PENDING);
+            assertThat(retryEvent.getNextRetryAt()).isNotNull();
+            verify(outboxMetrics).recordRetry();
         }
     }
 }

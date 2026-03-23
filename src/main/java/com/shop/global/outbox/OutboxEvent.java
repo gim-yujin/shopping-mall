@@ -2,6 +2,7 @@ package com.shop.global.outbox;
 
 import jakarta.persistence.*;
 import java.time.LocalDateTime;
+import java.util.concurrent.ThreadLocalRandom;
 
 /**
  * Transactional Outbox 이벤트 엔티티.
@@ -143,19 +144,44 @@ public class OutboxEvent {
 
     /**
      * [Phase 15] 처리 실패 시 재시도 횟수를 증가시키고 지수 백오프를 적용한다.
-     *
-     * <p>백오프 공식: baseDelay × 2^(retryCount-1) 초.
-     * 예: baseDelay=10이면 10s → 20s → 40s → 80s → 160s.
-     * 캡은 300초(5분)로 제한하여 과도한 지연을 방지한다.</p>
+     * 지터 없이 고정된 백오프 간격을 사용한다.
      *
      * @param errorMessage 실패 원인 (예외 메시지)
      * @param baseDelaySec 기본 재시도 지연 (초)
+     * @see #scheduleRetry(String, int, double)
      */
     public void scheduleRetry(String errorMessage, int baseDelaySec) {
+        scheduleRetry(errorMessage, baseDelaySec, 0.0);
+    }
+
+    /**
+     * 처리 실패 시 재시도 횟수를 증가시키고 지수 백오프 + 랜덤 지터를 적용한다.
+     *
+     * <h3>지터(Jitter)가 필요한 이유</h3>
+     * <p><b>문제:</b> 외부 서비스 장애로 N개의 이벤트가 동시에 실패하면,
+     * 고정 백오프 간격(10s→20s→40s)에 의해 모든 이벤트가 정확히 같은 시각에
+     * 재시도를 시도한다(Thundering Herd). 이는 복구 직후의 외부 서비스에
+     * 순간 부하 스파이크를 발생시켜 2차 장애를 유발할 수 있다.</p>
+     * <p><b>해결:</b> 백오프 간격에 ±jitterFactor 범위의 랜덤 변동을 추가하여
+     * 재시도 시각을 분산시킨다. 예: jitterFactor=0.25이면 40초 백오프가
+     * 30~50초 사이로 분산된다.</p>
+     *
+     * <p>백오프 공식: min(baseDelay × 2^(retryCount-1), 300) × (1 ± jitterFactor) 초.</p>
+     *
+     * @param errorMessage 실패 원인 (예외 메시지)
+     * @param baseDelaySec 기본 재시도 지연 (초)
+     * @param jitterFactor 지터 비율 (0.0~1.0). 0이면 지터 없음, 0.25이면 ±25% 변동
+     */
+    public void scheduleRetry(String errorMessage, int baseDelaySec, double jitterFactor) {
         this.retryCount++;
         this.lastError = truncateError(errorMessage);
         // 지수 백오프: baseDelay × 2^(retryCount-1), 최대 300초
         long delaySec = Math.min((long) baseDelaySec * (1L << (this.retryCount - 1)), 300L);
+        // 지터 적용: delaySec × (1 - jitterFactor ~ 1 + jitterFactor)
+        if (jitterFactor > 0.0) {
+            double jitter = 1.0 + ThreadLocalRandom.current().nextDouble(-jitterFactor, jitterFactor);
+            delaySec = Math.max(1L, (long) (delaySec * jitter));
+        }
         this.nextRetryAt = LocalDateTime.now().plusSeconds(delaySec);
     }
 

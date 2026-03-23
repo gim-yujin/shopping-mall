@@ -81,6 +81,55 @@ class OutboxEventTest {
 
             assertThat(event.getLastError()).hasSize(500);
         }
+
+        @Test
+        @DisplayName("jitterFactor=0 → 지터 없이 고정 백오프와 동일")
+        void zeroJitter_sameAsFixedBackoff() {
+            OutboxEvent event = new OutboxEvent(OutboxEvent.TYPE_PRODUCT_STOCK_CHANGED, "{}");
+            LocalDateTime before = LocalDateTime.now();
+
+            event.scheduleRetry("에러", 10, 0.0);
+
+            assertThat(event.getRetryCount()).isEqualTo(1);
+            // baseDelay=10 × 2^0 = 10초, 지터 없음
+            assertThat(event.getNextRetryAt()).isAfterOrEqualTo(before.plusSeconds(10));
+            assertThat(event.getNextRetryAt()).isBefore(before.plusSeconds(12));
+        }
+
+        @Test
+        @DisplayName("jitterFactor=0.25 → 백오프 간격이 ±25% 범위 내에서 변동한다")
+        void jitterApplied_withinExpectedRange() {
+            // 100회 반복하여 지터 범위를 통계적으로 검증한다.
+            // baseDelay=100, retryCount=1 → 기본 100초, 지터 ±25% → 75~125초 범위
+            int withinRange = 0;
+            for (int i = 0; i < 100; i++) {
+                OutboxEvent event = new OutboxEvent(OutboxEvent.TYPE_PRODUCT_STOCK_CHANGED, "{}");
+                LocalDateTime before = LocalDateTime.now();
+
+                event.scheduleRetry("에러", 100, 0.25);
+
+                long actualSec = java.time.Duration.between(before, event.getNextRetryAt()).getSeconds();
+                // 허용 범위: 75초 ~ 125초 (±25%), 시간 측정 오차 ±2초
+                if (actualSec >= 73 && actualSec <= 127) {
+                    withinRange++;
+                }
+            }
+            // 100회 중 최소 95회는 범위 내여야 한다
+            assertThat(withinRange).isGreaterThanOrEqualTo(95);
+        }
+
+        @Test
+        @DisplayName("jitter 적용 시 delaySec가 최소 1초 이상 보장된다")
+        void jitter_minimumOneSecond() {
+            // baseDelay=1, retryCount=1 → 기본 1초, jitter=0.99 → 최악의 경우 0.01초
+            // 하지만 Math.max(1L, ...)로 최소 1초 보장
+            OutboxEvent event = new OutboxEvent(OutboxEvent.TYPE_PRODUCT_STOCK_CHANGED, "{}");
+            LocalDateTime before = LocalDateTime.now();
+
+            event.scheduleRetry("에러", 1, 0.99);
+
+            assertThat(event.getNextRetryAt()).isAfterOrEqualTo(before.plusSeconds(1));
+        }
     }
 
     @Nested

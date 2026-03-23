@@ -69,6 +69,8 @@ public class OutboxEventPoller {
     private final int maxRetries;
     private final int batchSize;
     private final int retryBaseDelaySec;
+    private final int retryBudgetPerPoll;
+    private final double jitterFactor;
 
     /**
      * [Phase 6] Strategy 패턴: Spring이 주입한 모든 OutboxEventHandler를
@@ -76,13 +78,22 @@ public class OutboxEventPoller {
      *
      * <p>[Phase 15] OutboxMetrics 의존성 추가: 처리/재시도/Dead Letter 카운터를
      * 기록하여 Prometheus 대시보드에서 Outbox 상태를 모니터링할 수 있다.</p>
+     *
+     * <h3>Retry Budget & Jitter</h3>
+     * <p><b>retryBudgetPerPoll:</b> 한 폴링 주기당 처리할 최대 재시도 이벤트 수.
+     * 외부 서비스 장애 복구 후 대량의 재시도가 한꺼번에 eligible해지는 상황에서,
+     * 신규 이벤트 처리가 밀리지 않도록 재시도 이벤트 처리량을 제한한다.</p>
+     * <p><b>jitterFactor:</b> 지수 백오프에 적용할 랜덤 지터 비율(0.0~1.0).
+     * 동시에 실패한 이벤트들의 재시도 시각을 분산시켜 Thundering Herd를 방지한다.</p>
      */
     public OutboxEventPoller(OutboxEventRepository outboxEventRepository,
                               List<OutboxEventHandler> handlers,
                               OutboxMetrics outboxMetrics,
                               @Value("${app.outbox.max-retries:5}") int maxRetries,
                               @Value("${app.outbox.batch-size:100}") int batchSize,
-                              @Value("${app.outbox.retry-base-delay-sec:10}") int retryBaseDelaySec) {
+                              @Value("${app.outbox.retry-base-delay-sec:10}") int retryBaseDelaySec,
+                              @Value("${app.outbox.retry-budget-per-poll:20}") int retryBudgetPerPoll,
+                              @Value("${app.outbox.jitter-factor:0.25}") double jitterFactor) {
         this.outboxEventRepository = outboxEventRepository;
         this.handlerMap = handlers.stream()
                 .collect(Collectors.toMap(
@@ -92,8 +103,10 @@ public class OutboxEventPoller {
         this.maxRetries = maxRetries;
         this.batchSize = batchSize;
         this.retryBaseDelaySec = retryBaseDelaySec;
-        log.info("Outbox 폴러 초기화 - 등록된 핸들러: {}, maxRetries={}, baseDelay={}s",
-                handlerMap.keySet(), maxRetries, retryBaseDelaySec);
+        this.retryBudgetPerPoll = retryBudgetPerPoll;
+        this.jitterFactor = jitterFactor;
+        log.info("Outbox 폴러 초기화 - 등록된 핸들러: {}, maxRetries={}, baseDelay={}s, retryBudget={}, jitter={}",
+                handlerMap.keySet(), maxRetries, retryBaseDelaySec, retryBudgetPerPoll, jitterFactor);
     }
 
     /**
@@ -112,20 +125,23 @@ public class OutboxEventPoller {
     @Scheduled(fixedDelayString = "${app.outbox.poll-interval-ms:5000}")
     @Transactional
     public void pollAndProcess() {
-        List<OutboxEvent> events;
+        // Retry Budget: 신규 이벤트와 재시도 이벤트를 분리 조회한다.
+        // 재시도 폭증(외부 서비스 복구 후 대량 eligible) 시에도 신규 이벤트 처리가 밀리지 않는다.
+        List<OutboxEvent> firstAttemptEvents;
+        List<OutboxEvent> retryEvents;
         try {
-            events = outboxEventRepository.findPendingEventsForUpdate(batchSize);
+            firstAttemptEvents = outboxEventRepository.findFirstAttemptEventsForUpdate(batchSize);
+            retryEvents = outboxEventRepository.findRetryEventsForUpdate(retryBudgetPerPoll);
         } catch (org.springframework.dao.InvalidDataAccessResourceUsageException e) {
             // [Phase 19] 테스트 환경에서 다수의 @SpringBootTest 컨텍스트가 동일 DB를 공유할 때,
             // 한 컨텍스트가 test-reset.sql(DROP SCHEMA CASCADE)을 실행하는 동안
             // 다른 컨텍스트의 폴러가 outbox_events를 조회하면 "relation does not exist" 발생.
             // 운영 환경에서는 스키마 리셋이 없으므로 이 경로에 도달하지 않는다.
-            // graceful하게 경고 로그만 남기고 다음 폴링까지 대기한다.
             log.warn("Outbox 폴링 건너뜀 — 테이블 접근 불가 (스키마 리셋 중 가능): {}",
                     e.getMessage());
             return;
         }
-        if (events.isEmpty()) {
+        if (firstAttemptEvents.isEmpty() && retryEvents.isEmpty()) {
             return;
         }
 
@@ -133,36 +149,75 @@ public class OutboxEventPoller {
         int deadLettered = 0;
         int retried = 0;
 
-        for (OutboxEvent event : events) {
-            try {
-                processEvent(event);
-                event.markProcessed();
-                outboxMetrics.recordProcessed();
-                processed++;
-            } catch (Exception e) {
-                String errorMsg = e.getMessage();
-                // [Phase 15] 지수 백오프: 재시도 횟수에 따라 대기 시간이 기하급수적으로 증가한다.
-                // MAX_RETRIES 도달 시 DEAD_LETTER로 전이하여 수동 개입을 유도한다.
-                if (event.getRetryCount() + 1 >= maxRetries) {
-                    event.moveToDeadLetter(errorMsg);
-                    outboxMetrics.recordDeadLetter();
-                    deadLettered++;
-                    log.error("Outbox 이벤트 Dead Letter 전이 ({}회 재시도 초과) - eventId={}, type={}, error={}",
-                            maxRetries, event.getEventId(), event.getEventType(), errorMsg, e);
-                } else {
-                    event.scheduleRetry(errorMsg, retryBaseDelaySec);
-                    outboxMetrics.recordRetry();
-                    retried++;
-                    log.warn("Outbox 이벤트 재시도 예약 (시도 {}/{}, 다음 재시도={}) - eventId={}, type={}",
-                            event.getRetryCount(), maxRetries, event.getNextRetryAt(),
-                            event.getEventId(), event.getEventType(), e);
-                }
-            }
+        // 1단계: 신규 이벤트 우선 처리
+        for (OutboxEvent event : firstAttemptEvents) {
+            ProcessResult result = processSingleEvent(event);
+            processed += result.processed;
+            deadLettered += result.deadLettered;
+            retried += result.retried;
         }
 
+        // 2단계: 재시도 이벤트 처리 (budget 범위 내)
+        for (OutboxEvent event : retryEvents) {
+            ProcessResult result = processSingleEvent(event);
+            processed += result.processed;
+            deadLettered += result.deadLettered;
+            retried += result.retried;
+        }
+
+        int total = firstAttemptEvents.size() + retryEvents.size();
         if (processed > 0 || deadLettered > 0 || retried > 0) {
-            log.info("Outbox 폴링 완료 - processed={}, deadLettered={}, retried={}, total={}",
-                    processed, deadLettered, retried, events.size());
+            log.info("Outbox 폴링 완료 - processed={}, deadLettered={}, retried={}, "
+                            + "total={} (신규={}, 재시도={})",
+                    processed, deadLettered, retried, total,
+                    firstAttemptEvents.size(), retryEvents.size());
+        }
+    }
+
+    /**
+     * 단일 이벤트를 처리하고 결과를 반환한다.
+     *
+     * <p>성공 시 PROCESSED로 전이하고, 실패 시 지수 백오프+지터로 재시도를 예약하거나
+     * MAX_RETRIES 초과 시 DEAD_LETTER로 전이한다.</p>
+     */
+    private ProcessResult processSingleEvent(OutboxEvent event) {
+        try {
+            processEvent(event);
+            event.markProcessed();
+            outboxMetrics.recordProcessed();
+            return ProcessResult.PROCESSED;
+        } catch (Exception e) {
+            String errorMsg = e.getMessage();
+            if (event.getRetryCount() + 1 >= maxRetries) {
+                event.moveToDeadLetter(errorMsg);
+                outboxMetrics.recordDeadLetter();
+                log.error("Outbox 이벤트 Dead Letter 전이 ({}회 재시도 초과) - eventId={}, type={}, error={}",
+                        maxRetries, event.getEventId(), event.getEventType(), errorMsg, e);
+                return ProcessResult.DEAD_LETTERED;
+            } else {
+                event.scheduleRetry(errorMsg, retryBaseDelaySec, jitterFactor);
+                outboxMetrics.recordRetry();
+                log.warn("Outbox 이벤트 재시도 예약 (시도 {}/{}, 다음 재시도={}) - eventId={}, type={}",
+                        event.getRetryCount(), maxRetries, event.getNextRetryAt(),
+                        event.getEventId(), event.getEventType(), e);
+                return ProcessResult.RETRIED;
+            }
+        }
+    }
+
+    private static final class ProcessResult {
+        static final ProcessResult PROCESSED = new ProcessResult(1, 0, 0);
+        static final ProcessResult DEAD_LETTERED = new ProcessResult(0, 1, 0);
+        static final ProcessResult RETRIED = new ProcessResult(0, 0, 1);
+
+        final int processed;
+        final int deadLettered;
+        final int retried;
+
+        ProcessResult(int processed, int deadLettered, int retried) {
+            this.processed = processed;
+            this.deadLettered = deadLettered;
+            this.retried = retried;
         }
     }
 

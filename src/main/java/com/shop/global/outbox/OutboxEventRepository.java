@@ -55,6 +55,32 @@ public interface OutboxEventRepository extends JpaRepository<OutboxEvent, Long> 
     List<OutboxEvent> findPendingEventsForUpdate(@Param("batchSize") int batchSize);
 
     /**
+     * 최초 시도(next_retry_at이 NULL) PENDING 이벤트를 잠금과 함께 조회한다.
+     *
+     * <p>Retry Budget 패턴에서 신규 이벤트와 재시도 이벤트를 분리 조회하여,
+     * 재시도 폭증 시에도 신규 이벤트 처리가 지연되지 않도록 한다.</p>
+     */
+    @Query(value = "SELECT * FROM outbox_events WHERE status = 'PENDING' "
+            + "AND next_retry_at IS NULL "
+            + "ORDER BY created_at ASC LIMIT :batchSize "
+            + "FOR UPDATE SKIP LOCKED",
+            nativeQuery = true)
+    List<OutboxEvent> findFirstAttemptEventsForUpdate(@Param("batchSize") int batchSize);
+
+    /**
+     * 재시도 대상(next_retry_at이 현재 시각 이하) PENDING 이벤트를 잠금과 함께 조회한다.
+     *
+     * <p>Retry Budget으로 조회량을 제한하여, 대량 재시도가 한 폴링 주기에
+     * 몰려도 폴러 과부하와 외부 서비스 부하 스파이크를 방지한다.</p>
+     */
+    @Query(value = "SELECT * FROM outbox_events WHERE status = 'PENDING' "
+            + "AND next_retry_at IS NOT NULL AND next_retry_at <= NOW() "
+            + "ORDER BY next_retry_at ASC LIMIT :budgetSize "
+            + "FOR UPDATE SKIP LOCKED",
+            nativeQuery = true)
+    List<OutboxEvent> findRetryEventsForUpdate(@Param("budgetSize") int budgetSize);
+
+    /**
      * [Phase 15] DEAD_LETTER 상태의 이벤트를 최신순으로 조회한다.
      *
      * <p>관리자가 실패 원인(lastError)을 확인하고, 장애 해소 후

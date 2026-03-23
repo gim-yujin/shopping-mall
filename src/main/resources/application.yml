@@ -154,6 +154,14 @@ app:
     cleanup-batch-size: 5000 # 정리 스케줄러 1회당 삭제 배치 크기
     # [Phase 15] 지수 백오프 기본 지연: 10s → 20s → 40s → 80s → 160s (cap=300s)
     retry-base-delay-sec: 10
+    # Retry Budget: 한 폴링 주기당 처리할 최대 재시도 이벤트 수.
+    # 외부 서비스 복구 후 대량의 재시도가 한꺼번에 eligible해져도
+    # 신규 이벤트 처리가 밀리지 않도록 제한한다.
+    retry-budget-per-poll: 20
+    # Retry Jitter: 지수 백오프에 적용할 랜덤 변동 비율 (0.0~1.0).
+    # 동시 실패한 이벤트들의 재시도 시각을 분산시켜 Thundering Herd를 방지한다.
+    # 0.25 = ±25% 변동 (예: 40초 백오프 → 30~50초 사이로 분산)
+    jitter-factor: 0.25
     # [Phase 15] Dead Letter 보존 기간: 원인 분석을 위해 PROCESSED보다 긴 30일 보존
     dead-letter-retention-days: 30
   # [Phase 19] 검색 로그 배치 쓰기 설정
