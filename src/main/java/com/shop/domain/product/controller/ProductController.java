@@ -69,7 +69,7 @@ public class ProductController {
                                 @RequestParam(defaultValue = "0") int reviewPage,
                                 Model model) {
         // [P0 FIX] 조회수 증가를 캐시 메서드 밖에서 호출하여 매 요청마다 정확히 증가시킨다.
-        // 기존: findByIdAndIncrementView() → @Cacheable 내부에서 increment → 캐시 히트 시 조회수 누락
+        // 기존: 상세 조회 메서드 내부에서 조회수 증가를 함께 처리 → 캐시 히트 시 조회수 누락
         // 수정: findByIdCached(캐시 조회) + incrementAsync(매 요청 비동기 증가) 분리
         // [P2-7] findByIdCached가 이제 CachedProductDetail 불변 DTO를 반환한다.
         CachedProductDetail product = productQueryService.findByIdCached(productId);

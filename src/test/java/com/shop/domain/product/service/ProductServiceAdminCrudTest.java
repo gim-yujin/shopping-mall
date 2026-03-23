@@ -28,7 +28,6 @@ class ProductServiceAdminCrudTest {
 
     @Mock private ProductRepository productRepository;
     @Mock private ProductImageRepository productImageRepository;
-    @Mock private ViewCountService viewCountService;
     @Mock private CategoryService categoryService;
     // [P1 FIX] 상품 수정 시 재고 변경분 이력 기록을 위해 추가
     @Mock private InventoryAdjustmentPort inventoryAdjustmentPort;
@@ -37,7 +36,7 @@ class ProductServiceAdminCrudTest {
 
     @BeforeEach
     void setUp() {
-        productService = new ProductService(productRepository, productImageRepository, viewCountService, categoryService, inventoryAdjustmentPort);
+        productService = new ProductService(productRepository, productImageRepository, categoryService, inventoryAdjustmentPort);
     }
 
     private AdminProductRequest buildRequest() {

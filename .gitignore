@@ -10,5 +10,7 @@ optimization/
 load-test/
 # Log files
 *.log
+# Local env files
+.env
 # Local compressed files
 *.zip

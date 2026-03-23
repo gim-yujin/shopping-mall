@@ -25,7 +25,7 @@ import java.time.LocalDateTime;
  *   - 캐시 직렬화(Redis 등 외부 캐시 전환 시) 호환성 확보
  *   - Thymeleaf 템플릿에서 record 컴포넌트를 프로퍼티처럼 접근 가능
  *
- * @see com.shop.domain.product.service.ProductService#findByIdCached
+ * @see com.shop.domain.product.service.ProductQueryService#findByIdCached
  */
 public record CachedProductDetail(
         Long productId,

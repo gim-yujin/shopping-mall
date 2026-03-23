@@ -28,18 +28,15 @@ public class ProductService {
 
     private final ProductRepository productRepository;
     private final ProductImageRepository productImageRepository;
-    private final ViewCountService viewCountService;
     private final CategoryService categoryService;
     private final InventoryAdjustmentPort inventoryAdjustmentPort;
 
     public ProductService(ProductRepository productRepository,
                           ProductImageRepository productImageRepository,
-                          ViewCountService viewCountService,
                           CategoryService categoryService,
                           InventoryAdjustmentPort inventoryAdjustmentPort) {
         this.productRepository = productRepository;
         this.productImageRepository = productImageRepository;
-        this.viewCountService = viewCountService;
         this.categoryService = categoryService;
         this.inventoryAdjustmentPort = inventoryAdjustmentPort;
     }
@@ -61,15 +58,6 @@ public class ProductService {
      * </ul>
      * <p>@CacheEvict는 캐시 이름으로 동작하므로 이 서비스에 그대로 남아 있다.</p>
      */
-
-    /** @deprecated Phase 18에서 ProductQueryService.findByIdCached()로 대체됨. */
-    @Deprecated(since = "Phase 18", forRemoval = true)
-    public Product findByIdAndIncrementView(Long productId) {
-        Product product = productRepository.findByIdWithCategory(productId)
-                .orElseThrow(() -> new ResourceNotFoundException("상품", productId));
-        viewCountService.incrementAsync(productId);
-        return product;
-    }
 
     @Transactional
     @CacheEvict(value = "productDetail", key = "#productId")

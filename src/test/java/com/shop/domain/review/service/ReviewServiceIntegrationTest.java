@@ -1,6 +1,7 @@
 package com.shop.domain.review.service;
 
-import com.shop.domain.product.entity.Product;
+import com.shop.domain.product.dto.CachedProductDetail;
+import com.shop.domain.product.service.ProductQueryService;
 import com.shop.domain.product.service.ProductService;
 import com.shop.domain.review.dto.ReviewCreateRequest;
 import com.shop.domain.review.entity.Review;
@@ -49,6 +50,9 @@ class ReviewServiceIntegrationTest {
 
     @Autowired
     private ProductService productService;
+
+    @Autowired
+    private ProductQueryService productQueryService;
 
     @Autowired
     private EntityManagerFactory entityManagerFactory;
@@ -261,15 +265,15 @@ class ReviewServiceIntegrationTest {
     @Test
     @DisplayName("createReview 직후 productDetail 캐시가 evict되어 상세 평점/리뷰수가 즉시 반영된다")
     void createReview_evictsProductDetailCacheImmediately() {
-        Product before = productService.findByIdAndIncrementView(testProductId);
-        int beforeReviewCount = before.getReviewCount();
+        CachedProductDetail before = productQueryService.findByIdCached(testProductId);
+        int beforeReviewCount = before.reviewCount();
 
         Review review = reviewService.createReview(testUserId,
                 reviewRequest(testUserId, testProductId, 5, "캐시반영", "생성 직후 반영"));
         createdReviewIds.add(review.getReviewId());
 
-        Product after = productService.findByIdAndIncrementView(testProductId);
-        assertThat(after.getReviewCount()).isEqualTo(beforeReviewCount + 1);
+        CachedProductDetail after = productQueryService.findByIdCached(testProductId);
+        assertThat(after.reviewCount()).isEqualTo(beforeReviewCount + 1);
     }
 
     @Test
@@ -424,14 +428,14 @@ class ReviewServiceIntegrationTest {
                 reviewRequest(testUserId, testProductId, 5, "삭제캐시", "삭제 직후 반영"));
         createdReviewIds.add(review.getReviewId());
 
-        Product cachedAfterCreate = productService.findByIdAndIncrementView(testProductId);
-        int countAfterCreate = cachedAfterCreate.getReviewCount();
+        CachedProductDetail cachedAfterCreate = productQueryService.findByIdCached(testProductId);
+        int countAfterCreate = cachedAfterCreate.reviewCount();
 
         reviewService.deleteReview(review.getReviewId(), testUserId);
         createdReviewIds.remove(review.getReviewId());
 
-        Product afterDelete = productService.findByIdAndIncrementView(testProductId);
-        assertThat(afterDelete.getReviewCount()).isEqualTo(countAfterCreate - 1);
+        CachedProductDetail afterDelete = productQueryService.findByIdCached(testProductId);
+        assertThat(afterDelete.reviewCount()).isEqualTo(countAfterCreate - 1);
     }
 
     @Test

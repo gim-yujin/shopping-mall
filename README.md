@@ -154,10 +154,14 @@ CREATE DATABASE shopping_mall_db;
 
 애플리케이션은 DB 접속 정보를 파일 기본값으로 갖지 않습니다. 아래 환경변수를 설정하세요.
 
+가장 간단한 방법은 저장소 루트의 `.env.example`을 기반으로 로컬 `.env`를 준비한 뒤 셸에 로드하는 것입니다.
+
 ```bash
-export SPRING_DATASOURCE_URL='jdbc:postgresql://localhost:5432/shopping_mall_db?stringtype=unspecified&socketTimeout=30'
-export SPRING_DATASOURCE_USERNAME='postgres'
-export SPRING_DATASOURCE_PASSWORD='your-password'
+cp .env.example .env
+$EDITOR .env
+set -a
+source .env
+set +a
 ```
 
 ### 6-5. 실행
@@ -168,6 +172,12 @@ export SPRING_DATASOURCE_PASSWORD='your-password'
 
 - 앱 접속: http://localhost:8080
 - 메트릭: http://localhost:8080/actuator/prometheus
+
+빠른 점검:
+
+```bash
+pg_isready -h localhost -p 5432 -U "$SPRING_DATASOURCE_USERNAME" -d shopping_mall_db
+```
 
 ---
 

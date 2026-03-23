@@ -42,7 +42,6 @@ import static org.mockito.Mockito.*;
  * - saveProductImages: 빈 리스트, null URL, blank URL, 썸네일(i==0) vs 일반(i>0)
  * - createProduct: imageUrls 포함 요청
  * - findByIdCached: 정상 조회 / not found
- * - findByIdAndIncrementView: 정상 조회 / not found
  * - findByIdForAdmin: not found
  * - getProductImages: 위임 확인
  */
@@ -51,7 +50,6 @@ class ProductServiceBranchCoverageTest {
 
     @Mock private ProductRepository productRepository;
     @Mock private ProductImageRepository productImageRepository;
-    @Mock private ViewCountService viewCountService;
     @Mock private CategoryService categoryService;
     @Mock private InventoryAdjustmentPort inventoryAdjustmentPort;
 
@@ -64,7 +62,7 @@ class ProductServiceBranchCoverageTest {
     void setUp() {
         productService = new ProductService(
                 productRepository, productImageRepository,
-                viewCountService, categoryService, inventoryAdjustmentPort
+                categoryService, inventoryAdjustmentPort
         );
         // [Phase 18] CQRS 읽기 서비스 — ProductRepository만 주입
         productQueryService = new ProductQueryService(productRepository);
@@ -145,44 +143,7 @@ class ProductServiceBranchCoverageTest {
     }
 
     // =====================================================
-    // 3. findByIdAndIncrementView — deprecated 메서드 분기
-    // =====================================================
-
-    @Nested
-    @DisplayName("findByIdAndIncrementView (deprecated)")
-    class FindByIdAndIncrementView {
-
-        @Test
-        @DisplayName("정상 조회 → 상품 반환 + 비동기 조회수 증가 호출")
-        void findByIdAndIncrementView_success() {
-            // given: deprecated 메서드지만 기존 호출처 호환을 위해 유지 중.
-            // findByIdCached + ViewCountService 조합으로 대체 권장.
-            Product product = mock(Product.class);
-            when(productRepository.findByIdWithCategory(1L)).thenReturn(Optional.of(product));
-
-            // when
-            Product result = productService.findByIdAndIncrementView(1L);
-
-            // then
-            assertThat(result).isSameAs(product);
-            verify(viewCountService).incrementAsync(1L);
-        }
-
-        @Test
-        @DisplayName("존재하지 않는 상품 → ResourceNotFoundException, 조회수 증가 미호출")
-        void findByIdAndIncrementView_notFound_throwsException() {
-            // given
-            when(productRepository.findByIdWithCategory(999L)).thenReturn(Optional.empty());
-
-            // when & then
-            assertThatThrownBy(() -> productService.findByIdAndIncrementView(999L))
-                    .isInstanceOf(ResourceNotFoundException.class);
-            verify(viewCountService, never()).incrementAsync(anyLong());
-        }
-    }
-
-    // =====================================================
-    // 4. findByIdForAdmin — not found 분기
+    // 3. findByIdForAdmin — not found 분기
     // =====================================================
 
     @Test
@@ -197,7 +158,7 @@ class ProductServiceBranchCoverageTest {
     }
 
     // =====================================================
-    // 5. updateProduct — stockDelta==0 분기
+    // 4. updateProduct — stockDelta==0 분기
     // =====================================================
 
     @Test
