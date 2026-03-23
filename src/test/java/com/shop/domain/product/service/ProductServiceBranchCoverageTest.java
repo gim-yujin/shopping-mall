@@ -95,6 +95,14 @@ class ProductServiceBranchCoverageTest {
         assertThat(result).isEmpty();
     }
 
+    @Test
+    @DisplayName("normalizeSearchKeyword — 앞뒤 공백 제거, 내부 공백 축소, 대소문자 통일")
+    void normalizeSearchKeyword_trimCollapseAndLowercase() {
+        assertThat(productQueryService.normalizeSearchKeyword(" Hello  World ")).isEqualTo("hello world");
+        assertThat(productQueryService.normalizeSearchKeyword("UPPER")).isEqualTo("upper");
+        assertThat(productQueryService.normalizeSearchKeyword("")).isEmpty();
+    }
+
     // =====================================================
     // 2. findByIdCached — 캐시 조회 성공/실패 분기
     // =====================================================
