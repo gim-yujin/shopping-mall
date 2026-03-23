@@ -52,7 +52,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 @SpringBootTest
 @TestPropertySource(properties = {
-        "spring.datasource.hikari.maximum-pool-size=30",
+        "spring.datasource.hikari.maximum-pool-size=20",
         "logging.level.org.hibernate.SQL=WARN"
 })
 @SuppressWarnings("PMD.CloseResource")

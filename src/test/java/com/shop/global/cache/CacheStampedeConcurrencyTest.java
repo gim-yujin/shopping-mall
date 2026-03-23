@@ -52,7 +52,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 @SpringBootTest
 @TestPropertySource(properties = {
-        "spring.datasource.hikari.maximum-pool-size=30",
+        "spring.datasource.hikari.maximum-pool-size=20",
         // [Phase 10] Hibernate 통계를 활성화하여 실제 DB 쿼리 실행 횟수를 측정한다.
         // sync=true가 없으면 20개 스레드 모두 DB 쿼리를 실행하므로 queryCount ≈ 20,
         // sync=true가 있으면 1개만 실행하므로 queryCount ≈ 1.

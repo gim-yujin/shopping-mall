@@ -23,7 +23,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  */
 @SpringBootTest
 @TestPropertySource(properties = {
-        "spring.datasource.hikari.maximum-pool-size=50",
+        "spring.datasource.hikari.maximum-pool-size=20",
         "logging.level.org.hibernate.SQL=WARN"
 })
 class OrderCouponDoubleUseTest {

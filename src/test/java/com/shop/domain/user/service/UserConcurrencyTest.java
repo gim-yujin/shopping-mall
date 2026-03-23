@@ -28,7 +28,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 @SpringBootTest
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 @TestPropertySource(properties = {
-        "spring.datasource.hikari.maximum-pool-size=50",
+        "spring.datasource.hikari.maximum-pool-size=20",
         "logging.level.org.hibernate.SQL=WARN"
 })
 @SuppressWarnings("PMD.CloseResource")

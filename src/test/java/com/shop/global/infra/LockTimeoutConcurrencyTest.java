@@ -51,7 +51,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
  */
 @SpringBootTest
 @TestPropertySource(properties = {
-        "spring.datasource.hikari.maximum-pool-size=30",
+        "spring.datasource.hikari.maximum-pool-size=5",
         // [Phase 11] 테스트 전용: 3초 잠금 타임아웃으로 빠른 검증.
         // 운영(5초)보다 짧게 설정하여 테스트 실행 시간을 단축한다.
         "spring.datasource.hikari.connection-init-sql=SET lock_timeout = '3s'",

@@ -45,7 +45,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 @TestPropertySource(properties = {
         // StockRaceConcurrencyTest와 동일한 설정으로 Spring context를 공유한다.
         // 별도 context를 생성하면 HikariPool이 추가되어 PostgreSQL max_connections를 소진할 수 있다.
-        "spring.datasource.hikari.maximum-pool-size=30",
+        "spring.datasource.hikari.maximum-pool-size=20",
         "logging.level.org.hibernate.SQL=WARN"
 })
 @SuppressWarnings("PMD.CloseResource")

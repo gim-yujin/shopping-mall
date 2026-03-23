@@ -52,7 +52,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 @SpringBootTest
 @TestPropertySource(properties = {
         // 동시 10스레드가 각각 커넥션을 잡으므로 풀 크기를 넉넉히 설정
-        "spring.datasource.hikari.maximum-pool-size=30",
+        "spring.datasource.hikari.maximum-pool-size=20",
         "logging.level.org.hibernate.SQL=WARN"
 })
 @SuppressWarnings("PMD.CloseResource")
