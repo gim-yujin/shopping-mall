@@ -14,6 +14,10 @@ import com.shop.domain.user.repository.UserRepository;
 import com.shop.global.exception.BusinessException;
 import com.shop.global.exception.ResourceNotFoundException;
 import com.shop.global.metrics.OrderMetrics;
+import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
+import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -39,10 +43,25 @@ import java.util.UUID;
  * <p><b>해결:</b> createOrder()는 고수준 오케스트레이터로 유지하고,
  * 장바구니 선택/재고 처리/후처리는 전담 협력 클래스로 분리한다.
  * 쿠폰 할인과 포인트 사용처럼 주문 생성 문맥에 밀접한 계산만 이 서비스에 남긴다.</p>
+ *
+ * <h3>[Resilience4j] 주문 생성 서킷 브레이커</h3>
+ * <p>{@code @CircuitBreaker(name = "orderCreation")}으로 전체 주문 생성 플로우에
+ * 서킷 브레이커를 적용한다. DB 장애, 커넥션 풀 고갈 등 인프라 수준의 연속 실패가
+ * 발생하면 서킷을 OPEN하여:</p>
+ * <ul>
+ *   <li>이미 장애 상태인 DB에 불필요한 주문 요청이 누적되는 것을 방지한다.</li>
+ *   <li>사용자에게 즉시 "일시적 장애" 메시지를 반환하여 대기 시간을 줄인다.</li>
+ *   <li>DB 복구 후 HALF_OPEN 시험 호출을 통해 자동으로 정상 상태로 복귀한다.</li>
+ * </ul>
+ * <p>쓰기 경로이므로 TimeLimiter 대신 DB 레벨 타임아웃(socketTimeout=30s,
+ * lock_timeout=5s)에 의존하고, slowCallDurationThreshold(5s)로
+ * 느린 호출을 감지하여 서킷 개방 여부를 판단한다.</p>
  */
 @Service
 @Transactional(readOnly = true)
 public class OrderCreationService {
+
+    private static final Logger log = LoggerFactory.getLogger(OrderCreationService.class);
 
     private final OrderRepository orderRepository;
     private final UserRepository userRepository;
@@ -79,7 +98,14 @@ public class OrderCreationService {
      *
      * <p>[Phase 3 코드 품질] 고수준 오케스트레이터로 재구성.
      * 각 단계가 명확한 이름의 메서드로 분리되어 전체 흐름을 한눈에 파악할 수 있다.</p>
+     *
+     * <p>[Resilience4j] {@code orderCreation} 서킷 브레이커 적용.
+     * 어노테이션 기반이므로 Spring AOP 프록시를 통해 호출될 때만 동작한다.
+     * 서킷이 OPEN이면 @Transactional이 시작되기 전에 즉시 실패하여
+     * DB 커넥션을 소비하지 않는다.
+     * (AOP 우선순위: CircuitBreaker → @Transactional → 비즈니스 로직)</p>
      */
+    @CircuitBreaker(name = "orderCreation", fallbackMethod = "createOrderFallback")
     @Transactional
     public Order createOrder(Long userId, OrderCreateRequest request) {
         // [Phase 13] 주문 생성 전체 소요 시간을 측정한다.
@@ -272,6 +298,43 @@ public class OrderCreationService {
         String datePart = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMddHHmmssSSS"));
         String randomPart = UUID.randomUUID().toString().replace("-", "").substring(0, 12).toUpperCase(Locale.ROOT);
         return datePart + "-" + randomPart;
+    }
+
+    // ── Resilience4j 폴백 ──────────────────────────────────────
+
+    /**
+     * [Resilience4j] 주문 생성 서킷 브레이커 폴백 메서드.
+     *
+     * <p>서킷이 OPEN 상태일 때 호출된다. 주문 생성은 핵심 비즈니스 기능이므로
+     * 대체 결과를 반환할 수 없다. 대신 사용자에게 일시적 장애를 알리는
+     * BusinessException을 던져 명확한 에러 메시지를 전달한다.</p>
+     *
+     * <p>비즈니스 예외(재고 부족, 쿠폰 만료 등)는 서킷 브레이커의
+     * {@code ignoreExceptions}에 등록되어 있으므로 이 폴백에 도달하지 않고
+     * 원래 예외가 그대로 전파된다. 이 폴백은 인프라 장애
+     * (DB 커넥션 실패, 타임아웃 등)에 의해 서킷이 OPEN된 경우에만 실행된다.</p>
+     *
+     * @param userId  사용자 ID (폴백 메서드 시그니처는 원본과 동일해야 함)
+     * @param request 주문 요청 (폴백 메서드 시그니처는 원본과 동일해야 함)
+     * @param e       서킷 브레이커가 전달하는 예외 (CallNotPermittedException 등)
+     * @return 반환하지 않음 — 항상 BusinessException을 던진다
+     */
+    private Order createOrderFallback(Long userId, OrderCreateRequest request, Exception e) {
+        // CallNotPermittedException: 서킷이 OPEN 상태여서 호출이 차단된 경우
+        if (e instanceof CallNotPermittedException) {
+            log.warn("[CircuitBreaker] 주문 생성 서킷 OPEN — 주문 차단. userId={}", userId);
+            throw new BusinessException("SERVICE_UNAVAILABLE",
+                    "주문 서비스가 일시적으로 불안정합니다. 잠시 후 다시 시도해주세요.");
+        }
+
+        // 인프라 장애(DB 타임아웃, 커넥션 실패 등)는 원본 예외를 전파한다.
+        // 서킷 브레이커가 이 실패를 기록하여 누적 시 서킷을 OPEN한다.
+        log.error("[CircuitBreaker] 주문 생성 실패 — 폴백 실행. userId={}, error={}",
+                userId, e.getMessage());
+        if (e instanceof RuntimeException runtimeException) {
+            throw runtimeException;
+        }
+        throw new RuntimeException(e);
     }
 
     // ── 내부 DTO ─────────────────────────────────────────────

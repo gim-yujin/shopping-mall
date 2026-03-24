@@ -106,16 +106,137 @@ management:
   endpoints:
     web:
       exposure:
-        include: health,info,metrics,caches,prometheus
+        include: health,info,metrics,caches,prometheus,circuitbreakers,circuitbreakerevents
   endpoint:
     health:
       show-details: when-authorized  # 인증된 사용자만 상세 정보 표시
+  health:
+    circuitbreakers:
+      enabled: true  # /actuator/health에 서킷 브레이커 상태(CLOSED/OPEN/HALF_OPEN) 포함
   metrics:
     tags:
       application: ${spring.application.name}
     distribution:
       percentiles-histogram:
         http.server.requests: true
+
+# ── Resilience4j 장애 격리 설정 ────────────────────────────────────
+# 서비스 간(cross-domain) 호출에 Circuit Breaker + Timeout을 적용하여
+# 하나의 도메인 서비스 장애가 다른 도메인으로 전파(cascading failure)되는 것을 방지한다.
+#
+# 동작 원리:
+#   1) Circuit Breaker — 최근 N건의 호출 결과를 추적하여 실패율이 임계값을 초과하면
+#      서킷을 OPEN하여 즉시 실패(fail-fast)를 반환한다.
+#      OPEN → (waitDuration) → HALF_OPEN → 시험 호출 성공 시 → CLOSED 순환.
+#   2) TimeLimiter — 비동기(CompletableFuture) 호출에 타임아웃을 적용한다.
+#      지정 시간 내 응답이 없으면 TimeoutException을 발생시켜 스레드 점유를 해제한다.
+#   3) slowCallDurationThreshold — 동기 호출에서 Timeout 역할을 겸한다.
+#      지정 시간을 초과한 호출을 "느린 호출"로 기록하고, 느린 호출 비율이
+#      임계값을 넘으면 서킷을 OPEN하여 더 이상의 스레드 누적을 방지한다.
+resilience4j:
+  circuitbreaker:
+    configs:
+      # ── 기본(default) 서킷 브레이커 설정 ──
+      # 모든 인스턴스의 기본값. 개별 인스턴스에서 필요한 항목만 오버라이드한다.
+      default:
+        # 슬라이딩 윈도우 타입: COUNT_BASED = 최근 N건 기준.
+        # TIME_BASED(최근 N초)는 호출량이 적은 서비스에서 윈도우가 비어
+        # 서킷이 제대로 동작하지 않을 수 있으므로 COUNT_BASED를 기본으로 한다.
+        slidingWindowType: COUNT_BASED
+        # 슬라이딩 윈도우 크기: 최근 10건의 호출 결과로 실패율을 계산한다.
+        slidingWindowSize: 10
+        # 최소 호출 횟수: 이 횟수 미만에서는 실패율을 계산하지 않는다.
+        # 서비스 시작 직후나 저트래픽 시간대에 오탐(false positive)을 방지한다.
+        minimumNumberOfCalls: 5
+        # 실패율 임계값(%): 이 비율 이상 실패하면 서킷이 OPEN된다.
+        # 50% = 최근 10건 중 5건 이상 인프라 장애 시 서킷 개방.
+        failureRateThreshold: 50
+        # OPEN → HALF_OPEN 대기 시간: 서킷 개방 후 이 시간이 지나면
+        # HALF_OPEN으로 전환하여 시험 호출을 허용한다.
+        waitDurationInOpenState: 30s
+        # HALF_OPEN에서 허용할 시험 호출 수:
+        # 이 호출들의 결과로 서킷을 다시 닫을지(CLOSED) 열어둘지(OPEN) 결정한다.
+        permittedNumberOfCallsInHalfOpenState: 3
+        # [Timeout 역할] 느린 호출 기준 시간:
+        # 이 시간을 초과하면 "느린 호출"로 기록한다.
+        # DB 잠금 대기, 쿼리 지연 등 성능 저하를 감지하는 Timeout 메커니즘이다.
+        slowCallDurationThreshold: 3s
+        # [Timeout 역할] 느린 호출 비율 임계값(%):
+        # 느린 호출이 이 비율을 초과하면 서킷을 OPEN한다.
+        # → 대기 중인 스레드가 누적되어 Tomcat 스레드 풀이 고갈되는 것을 방지.
+        slowCallRateThreshold: 80
+        # OPEN → HALF_OPEN 자동 전환: true이면 waitDuration 후 자동 전환.
+        # false이면 다음 호출 시도가 있어야 전환된다.
+        automaticTransitionFromOpenToHalfOpenEnabled: true
+        # 실패로 기록할 예외: 인프라/일시적 장애만 카운트한다.
+        recordExceptions:
+          - java.io.IOException
+          - java.util.concurrent.TimeoutException
+          - org.springframework.dao.DataAccessException
+        # 무시할 예외: 비즈니스 로직에 의한 정상적인 거절은 카운트하지 않는다.
+        # (예: "재고 부족", "쿠폰 만료" 등은 시스템 장애가 아니다)
+        ignoreExceptions:
+          - com.shop.global.exception.BusinessException
+          - com.shop.global.exception.ResourceNotFoundException
+
+    instances:
+      # ── 장바구니 서비스 ──
+      # 체크아웃 시 장바구니 항목 조회에 사용.
+      cartService:
+        baseConfig: default
+
+      # ── 사용자 서비스 ──
+      # 사용자 정보/등급 조회에 사용. 단순 PK 조회이므로 느린 호출 기준을 짧게 설정.
+      userService:
+        baseConfig: default
+        slowCallDurationThreshold: 2s
+
+      # ── 쿠폰 서비스 ──
+      # 사용 가능한 쿠폰 목록 조회. 비필수(non-critical) 서비스이므로
+      # 장애 시 빈 목록을 폴백으로 반환하여 체크아웃을 계속 진행할 수 있다.
+      # 따라서 더 관대한 임계값을 적용한다.
+      couponService:
+        baseConfig: default
+        failureRateThreshold: 60
+
+      # ── 주문 생성 ──
+      # 전체 주문 생성 플로우를 감싸는 서킷.
+      # 핵심 비즈니스 기능이므로 보수적인 설정을 적용한다:
+      # - 넓은 윈도우(20건)와 높은 최소 호출(10건)으로 충분한 표본 확보 후 판단
+      # - 높은 실패율 임계값(70%)으로 일시적 장애에 과민 반응 방지
+      # - 짧은 대기 시간(15s)으로 빠른 복구 시도
+      # - 비관적 잠금 대기를 감안하여 느린 호출 기준을 여유 있게 설정(5s)
+      orderCreation:
+        baseConfig: default
+        slidingWindowSize: 20
+        minimumNumberOfCalls: 10
+        failureRateThreshold: 70
+        waitDurationInOpenState: 15s
+        slowCallDurationThreshold: 5s
+        slowCallRateThreshold: 90
+
+  timelimiter:
+    configs:
+      # ── 기본 TimeLimiter 설정 ──
+      # ResilientCallExecutor에서 CompletableFuture 기반 비동기 래핑 시 적용된다.
+      # 읽기 전용(read-only) 크로스 도메인 호출에 사용한다.
+      default:
+        # 타임아웃 시간: 이 시간 내 응답이 없으면 TimeoutException 발생.
+        timeoutDuration: 3s
+        # 타임아웃 시 워커 스레드에 interrupt 신호를 보낼지 여부.
+        # JDBC 호출은 일반적으로 interrupt에 반응하지 않으므로,
+        # DB 레벨 타임아웃(socketTimeout=30s)이 최종 안전망 역할을 한다.
+        cancelRunningFuture: true
+    instances:
+      cartService:
+        baseConfig: default
+        timeoutDuration: 3s
+      userService:
+        baseConfig: default
+        timeoutDuration: 2s
+      couponService:
+        baseConfig: default
+        timeoutDuration: 3s
 
 logging:
   level:

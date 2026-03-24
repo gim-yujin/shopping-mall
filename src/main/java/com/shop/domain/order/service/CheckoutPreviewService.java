@@ -8,11 +8,15 @@ import com.shop.domain.coupon.service.CouponService;
 import com.shop.domain.order.dto.CheckoutPreview;
 import com.shop.domain.user.entity.User;
 import com.shop.domain.user.service.UserService;
+import com.shop.global.resilience.ResilientCallExecutor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.text.NumberFormat;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -35,24 +39,42 @@ import java.util.Map;
  * <p><b>해결:</b> 체크아웃 프리뷰 조합 로직을 이 서비스로 이동하고,
  * 결과를 {@link CheckoutPreview} DTO로 반환한다. 컨트롤러는 이 서비스 하나만
  * 호출하여 모델에 바인딩하면 된다.</p>
+ *
+ * <h3>[Resilience4j] 크로스 도메인 호출 장애 격리</h3>
+ * <p>{@link ResilientCallExecutor}를 사용하여 장바구니·사용자·쿠폰 서비스 호출에
+ * 개별 서킷 브레이커 + 타임아웃을 적용한다.
+ * 각 서비스가 독립적인 서킷을 가지므로, 쿠폰 서비스 장애가
+ * 장바구니/사용자 서비스 호출에 영향을 주지 않는다.</p>
+ * <ul>
+ *   <li><b>장바구니/사용자</b>: 필수 데이터이므로 폴백 없이 예외를 전파한다.</li>
+ *   <li><b>쿠폰</b>: 비필수 데이터이므로 장애 시 빈 목록으로 폴백하여
+ *       쿠폰 없이 체크아웃을 계속 진행할 수 있다.</li>
+ * </ul>
  */
 @Service
 @Transactional(readOnly = true)
 public class CheckoutPreviewService {
+
+    private static final Logger log = LoggerFactory.getLogger(CheckoutPreviewService.class);
 
     private final CartService cartService;
     private final UserService userService;
     private final CouponService couponService;
     private final ShippingFeeCalculator shippingFeeCalculator;
 
+    /** 크로스 도메인 호출에 Timeout + Circuit Breaker를 적용하는 실행기 */
+    private final ResilientCallExecutor resilientCallExecutor;
+
     public CheckoutPreviewService(CartService cartService,
                                    UserService userService,
                                    CouponService couponService,
-                                   ShippingFeeCalculator shippingFeeCalculator) {
+                                   ShippingFeeCalculator shippingFeeCalculator,
+                                   ResilientCallExecutor resilientCallExecutor) {
         this.cartService = cartService;
         this.userService = userService;
         this.couponService = couponService;
         this.shippingFeeCalculator = shippingFeeCalculator;
+        this.resilientCallExecutor = resilientCallExecutor;
     }
 
     /**
@@ -66,19 +88,38 @@ public class CheckoutPreviewService {
      * @return 체크아웃 프리뷰 데이터, 장바구니가 비어있으면 null
      */
     public CheckoutPreview getPreview(Long userId, List<Long> cartItemIds) {
-        List<Cart> items = cartService.getSelectedCartItems(userId, cartItemIds);
+        // [Resilience4j] 장바구니 서비스 호출 — Timeout(3s) + CircuitBreaker 적용.
+        // 장바구니는 체크아웃의 필수 데이터이므로 폴백 없이 예외를 전파한다.
+        // 서킷 OPEN 시 CallNotPermittedException이 컨트롤러까지 전파되어
+        // GlobalExceptionHandler에서 "서비스 일시 불안정" 응답을 반환한다.
+        List<Cart> items = resilientCallExecutor.execute("cartService",
+                () -> cartService.getSelectedCartItems(userId, cartItemIds));
         if (items.isEmpty()) {
             return null;
         }
 
-        User user = userService.findById(userId);
+        // [Resilience4j] 사용자 서비스 호출 — Timeout(2s) + CircuitBreaker 적용.
+        // 사용자 등급 정보는 배송비/할인 계산에 필수이므로 폴백 없이 예외를 전파한다.
+        User user = resilientCallExecutor.execute("userService",
+                () -> userService.findById(userId));
         BigDecimal totalPrice = cartService.calculateTotal(items);
         BigDecimal estimatedShippingFee = shippingFeeCalculator.calculateShippingFee(
                 user.getTier(), totalPrice);
         BigDecimal estimatedFinalAmount = shippingFeeCalculator.calculateFinalAmount(
                 totalPrice, BigDecimal.ZERO, estimatedShippingFee);
 
-        List<UserCoupon> availableCoupons = couponService.getAvailableCoupons(userId);
+        // [Resilience4j] 쿠폰 서비스 호출 — Timeout(3s) + CircuitBreaker + 폴백 적용.
+        // 쿠폰 목록은 비필수(non-critical) 데이터이므로, 장애 시 빈 목록으로 폴백하여
+        // 체크아웃 페이지를 쿠폰 없이 정상 표시할 수 있다.
+        // 이를 통해 쿠폰 서비스 장애가 전체 체크아웃 플로우를 중단시키지 않는다.
+        List<UserCoupon> availableCoupons = resilientCallExecutor.executeWithFallback(
+                "couponService",
+                () -> couponService.getAvailableCoupons(userId),
+                ex -> {
+                    log.warn("[CheckoutPreview] 쿠폰 서비스 장애 — 쿠폰 없이 체크아웃 진행. userId={}, error={}",
+                            userId, ex.getMessage());
+                    return Collections.emptyList();
+                });
         Map<Long, String> couponDisplayNames = buildCouponDisplayNames(availableCoupons);
 
         return new CheckoutPreview(

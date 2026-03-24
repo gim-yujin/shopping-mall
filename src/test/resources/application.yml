@@ -97,6 +97,38 @@ app:
       batch-size: 500
       max-buffer-size: 10000
 
+# ── Resilience4j 테스트 설정 ────────────────────────────────────
+# 테스트 환경에서는 서킷 브레이커가 테스트 결과에 영향을 주지 않도록
+# 매우 관대한 설정을 적용한다.
+# - 높은 minimumNumberOfCalls(100)로 서킷이 사실상 열리지 않게 한다.
+# - 높은 failureRateThreshold(100%)로 모든 실패를 허용한다.
+# - 넉넉한 타임아웃(30s)으로 느린 테스트 환경(CI)에서도 타임아웃이 발생하지 않게 한다.
+resilience4j:
+  circuitbreaker:
+    configs:
+      default:
+        slidingWindowType: COUNT_BASED
+        slidingWindowSize: 100
+        minimumNumberOfCalls: 100
+        failureRateThreshold: 100
+        slowCallDurationThreshold: 30s
+        slowCallRateThreshold: 100
+        waitDurationInOpenState: 1s
+        permittedNumberOfCallsInHalfOpenState: 100
+        automaticTransitionFromOpenToHalfOpenEnabled: true
+        recordExceptions:
+          - java.io.IOException
+          - java.util.concurrent.TimeoutException
+          - org.springframework.dao.DataAccessException
+        ignoreExceptions:
+          - com.shop.global.exception.BusinessException
+          - com.shop.global.exception.ResourceNotFoundException
+  timelimiter:
+    configs:
+      default:
+        timeoutDuration: 30s
+        cancelRunningFuture: true
+
 logging:
   level:
     root: INFO

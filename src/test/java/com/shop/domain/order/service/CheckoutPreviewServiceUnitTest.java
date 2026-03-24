@@ -11,6 +11,7 @@ import com.shop.domain.product.entity.Product;
 import com.shop.domain.user.entity.User;
 import com.shop.domain.user.entity.UserTier;
 import com.shop.domain.user.service.UserService;
+import com.shop.global.resilience.ResilientCallExecutor;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -25,6 +26,8 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Function;
+import java.util.function.Supplier;
 
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
@@ -43,14 +46,26 @@ class CheckoutPreviewServiceUnitTest {
     @Mock private UserService userService;
     @Mock private CouponService couponService;
     @Mock private ShippingFeeCalculator shippingFeeCalculator;
+    @Mock private ResilientCallExecutor resilientCallExecutor;
 
     private CheckoutPreviewService service;
 
     private static final Long USER_ID = 1L;
 
     @BeforeEach
+    @SuppressWarnings("unchecked")
     void setUp() {
-        service = new CheckoutPreviewService(cartService, userService, couponService, shippingFeeCalculator);
+        // ResilientCallExecutor를 패스스루로 설정: 서킷 브레이커/타임아웃 없이
+        // supplier를 그대로 실행하여 기존 비즈니스 로직 테스트에 영향을 주지 않는다.
+        // lenient(): 빈 장바구니 테스트 등 일부 경로에서 호출되지 않을 수 있으므로
+        // Mockito strict stubbing 예외를 방지한다.
+        lenient().when(resilientCallExecutor.execute(anyString(), any(Supplier.class)))
+                .thenAnswer(inv -> ((Supplier<?>) inv.getArgument(1)).get());
+        lenient().when(resilientCallExecutor.executeWithFallback(anyString(), any(Supplier.class), any(Function.class)))
+                .thenAnswer(inv -> ((Supplier<?>) inv.getArgument(1)).get());
+
+        service = new CheckoutPreviewService(cartService, userService, couponService,
+                shippingFeeCalculator, resilientCallExecutor);
     }
 
     // ── 픽스처 헬퍼 ──────────────────────────────────────────
