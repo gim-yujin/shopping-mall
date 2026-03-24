@@ -9,7 +9,10 @@ import java.util.Optional;
 
 public interface CartRepository extends JpaRepository<Cart, Long> {
 
-    @Query("SELECT c FROM Cart c JOIN FETCH c.product WHERE c.userId = :userId ORDER BY c.updatedAt DESC")
+    // [Phase 20] Product.images를 함께 JOIN FETCH하여
+    // CartItemResponse 변환 시 getThumbnailUrl()이 실제 썸네일을 반환하도록 한다.
+    // List 반환이므로 컬렉션 JOIN FETCH의 페이징 문제가 없다.
+    @Query("SELECT DISTINCT c FROM Cart c JOIN FETCH c.product p LEFT JOIN FETCH p.images WHERE c.userId = :userId ORDER BY c.updatedAt DESC")
     List<Cart> findByUserIdWithProduct(@Param("userId") Long userId);
 
     /**
@@ -18,7 +21,7 @@ public interface CartRepository extends JpaRepository<Cart, Long> {
      * userId 조건을 함께 걸어 다른 사용자의 장바구니를 조회하는 것을 방지한다.
      * JOIN FETCH로 Product를 즉시 로드하여 N+1 문제를 방지한다.
      */
-    @Query("SELECT c FROM Cart c JOIN FETCH c.product WHERE c.userId = :userId AND c.cartId IN :cartIds ORDER BY c.updatedAt DESC")
+    @Query("SELECT DISTINCT c FROM Cart c JOIN FETCH c.product p LEFT JOIN FETCH p.images WHERE c.userId = :userId AND c.cartId IN :cartIds ORDER BY c.updatedAt DESC")
     List<Cart> findByUserIdAndCartIdIn(@Param("userId") Long userId, @Param("cartIds") List<Long> cartIds);
 
     Optional<Cart> findByUserIdAndProduct_ProductId(Long userId, Long productId);

@@ -101,7 +101,10 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
          + "WHERE p.productId = :id AND p.stockQuantity >= :quantity")
     int decreaseStockAtomic(@Param("id") Long id, @Param("quantity") int quantity);
 
-    @Query("SELECT p FROM Product p LEFT JOIN FETCH p.category WHERE p.productId = :id")
+    // [Phase 20] images도 함께 JOIN FETCH하여 getThumbnailUrl() 호출 시
+    // Lazy 프록시 미초기화로 인한 placeholder 반환 문제를 해결한다.
+    // 상품 상세는 단건 조회이므로 images JOIN FETCH의 Cartesian product 부담이 없다.
+    @Query("SELECT p FROM Product p LEFT JOIN FETCH p.category LEFT JOIN FETCH p.images WHERE p.productId = :id")
     Optional<Product> findByIdWithCategory(@Param("id") Long id);
 
     Page<Product> findByIsActiveTrue(Pageable pageable);

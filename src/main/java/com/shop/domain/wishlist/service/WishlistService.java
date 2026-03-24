@@ -4,6 +4,7 @@ import com.shop.domain.product.repository.ProductRepository;
 import com.shop.domain.wishlist.entity.Wishlist;
 import com.shop.domain.wishlist.repository.WishlistRepository;
 import com.shop.global.exception.ResourceNotFoundException;
+import org.hibernate.Hibernate;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -21,8 +22,16 @@ public class WishlistService {
         this.productRepository = productRepository;
     }
 
+    // [Phase 20] Wishlist는 Page 반환이므로 컬렉션 JOIN FETCH를 사용할 수 없다.
+    // (Hibernate가 페이징을 인메모리로 수행하여 전체 데이터를 로딩하게 됨)
+    // 대신 트랜잭션 내에서 images를 명시적으로 초기화하여
+    // OSIV=off 환경에서도 getThumbnailUrl()이 실제 썸네일을 반환하도록 한다.
+    // Product.images에 @BatchSize(size=30)가 적용되어 있으므로
+    // 페이지 내 모든 상품의 이미지가 1회 IN 쿼리로 일괄 로딩된다.
     public Page<Wishlist> getWishlist(Long userId, Pageable pageable) {
-        return wishlistRepository.findByUserIdWithProduct(userId, pageable);
+        Page<Wishlist> page = wishlistRepository.findByUserIdWithProduct(userId, pageable);
+        page.getContent().forEach(w -> Hibernate.initialize(w.getProduct().getImages()));
+        return page;
     }
 
     public boolean isWishlisted(Long userId, Long productId) {

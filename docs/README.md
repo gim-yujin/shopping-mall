@@ -17,6 +17,7 @@
 
 | 문서 | Purpose | Last updated | Status |
 |---|---|---|---|
+| [`docs/query-optimization.md`](./query-optimization.md) | N+1 해결 전략 종합 정리: JOIN FETCH, 2-쿼리 패턴, CQRS 플랫 프로젝션, @BatchSize 등 | 2026-03-24 | SSOT |
 | [`docs/implementation-details.md`](./implementation-details.md) | 아키텍처, 주문 처리, 데이터 모델의 구현 세부를 정리 | 2026-03-14 | Reference |
 | [`docs/order-invariant-checks.md`](./order-invariant-checks.md) | 주문 도메인 무결성 점검 규칙과 운영 확인 절차 제공 | 2026-03-14 | SSOT |
 | [`docs/search-log-ops-policy.md`](./search-log-ops-policy.md) | 검색 로그 저장/정리 정책과 운영 기준 정의 | 2026-03-14 | SSOT |

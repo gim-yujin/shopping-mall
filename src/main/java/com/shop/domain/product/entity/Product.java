@@ -4,6 +4,8 @@ import com.shop.domain.category.entity.Category;
 import jakarta.persistence.*;
 import org.hibernate.Hibernate;
 
+import org.hibernate.annotations.BatchSize;
+
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -82,8 +84,12 @@ public class Product {
     @Column(name = "version", nullable = false)
     private Integer version;
 
+    // [Phase 20] @BatchSize: Wishlist 등 Page 반환 쿼리에서 컬렉션 JOIN FETCH를 사용할 수 없을 때,
+    // Hibernate가 images 초기화 시 IN 절로 최대 30개 상품의 이미지를 한 번에 로딩한다.
+    // 개별 Lazy 로딩 N회 → ceil(N/30)회로 쿼리 수를 줄인다.
     @OneToMany(mappedBy = "product", fetch = FetchType.LAZY, cascade = CascadeType.ALL)
     @OrderBy("imageOrder ASC")
+    @BatchSize(size = 30)
     private List<ProductImage> images = new ArrayList<>();
 
     protected Product() {}
