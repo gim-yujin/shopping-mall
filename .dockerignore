@@ -1,0 +1,12 @@
+.git
+.github
+.gradle
+build
+node_modules
+load-test
+monitoring
+docs
+*.md
+!README.md
+.env
+.env.*

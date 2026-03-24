@@ -11,8 +11,9 @@ on:
       - develop
 
 jobs:
+  # ── Job 1: 정적검사 & 테스트 ─────────────────────────────
   ci:
-    name: ci
+    name: Static Analysis & Test
     runs-on: ubuntu-latest
     env:
       JDK_JAVA_OPTIONS: --enable-native-access=ALL-UNNAMED
@@ -108,3 +109,40 @@ jobs:
             build/reports/pmd/**
             build/reports/spotbugs/**
             build/test-results/test/**
+
+  # ── Job 2: Docker 이미지 빌드 & GHCR 푸시 ────────────────
+  # main 브랜치 push 시에만 실행되며, ci job 통과 후 시작된다.
+  docker:
+    name: Docker Build & Push
+    runs-on: ubuntu-latest
+    needs: ci
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}:latest
+            ghcr.io/${{ github.repository }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
