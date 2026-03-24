@@ -1,0 +1,37 @@
+# Raw k6 test output directories (large, reproducible)
+test_0/
+test_1/
+test_2/
+test_3/
+test_4/
+test_5/
+test_6_re/
+test_7/
+test_8/
+test_9_baseline/
+test_10_no_cache/
+test_11_no_cache_no_index/
+test_12_OSIV_on/
+test_13_Async_off/
+arrival-rate-test/
+cache-miss-test/
+
+# Raw JSON result (large, generated on each run)
+load-test-result.json
+*.zip
+
+# Script backup/history files
+*_0.txt
+*_1.txt
+*_2.txt
+
+# Scratch/working notes
+go-to-the-end.txt
+
+# Korean txt reports (redundant with .md reports)
+부하_테스트_결과_분석_보고서.txt
+캐시_끄고_부하_테스트_결과_분석_보고서.txt
+
+# Schema copies (authoritative source is src/main/resources/schema.sql)
+schema.sql
+live_schema.sql

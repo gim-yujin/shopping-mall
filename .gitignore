@@ -7,7 +7,7 @@ build/
 csv_data/
 experiment_results/
 optimization/
-load-test/
+# load-test/ 내부 .gitignore에서 raw 데이터만 제외
 # Log files
 *.log
 # Local env files

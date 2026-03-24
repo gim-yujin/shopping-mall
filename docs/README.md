@@ -33,6 +33,12 @@
 | [`docs/adr/ADR-0002-point-accrual-on-delivery-and-cancel-policy.md`](./adr/ADR-0002-point-accrual-on-delivery-and-cancel-policy.md) | 포인트 적립 시점과 취소/반품 정산 정책 결정 기록 | 2026-03-14 | SSOT |
 | [`docs/adr/template.md`](./adr/template.md) | ADR 문서 신규 작성 시 사용하는 표준 템플릿 | 2026-03-14 | Reference |
 
+## Benchmark
+
+| 문서 | Purpose | Last updated | Status |
+|---|---|---|---|
+| [`docs/load-test-benchmark.md`](./load-test-benchmark.md) | k6 부하 테스트 최적화 Before/After 비교 (5가지 조건, 4개 시나리오) | 2026-03-24 | SSOT |
+
 ## Analysis
 
 | 문서 | Purpose | Last updated | Status |

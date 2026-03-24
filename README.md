@@ -18,7 +18,7 @@
 ### 코드베이스 스냅샷
 
 - 메인 코드: `src/main/java` 기준 **193개 Java 파일**
-- 테스트 코드: `src/test/java` 기준 **170개 Java 파일**
+- 테스트 코드: `src/test/java` 기준 **174개 Java 파일**
 - 템플릿: `src/main/resources/templates` 기준 **30개 HTML 파일**
 - DB 스키마: **19개 테이블**, **57개 인덱스** (일반 54 + UNIQUE 3)
 
@@ -107,6 +107,29 @@ src/main/java/com/shop
   - 리뷰 helpful_count 정합성 보정
   - 사용자 연간 구매액 기반 등급 재산정
 
+### 부하 테스트 결과 (k6)
+
+Grafana k6로 4개 시나리오(browse/shopping/coupon_rush/mixed)를 시나리오별 3회 반복 측정했습니다.
+최적화(캐시/인덱스/OSIV OFF/Async)가 모두 적용된 Baseline 결과:
+
+| 시나리오 | 최대 VU | 처리량(req/s) | HTTP p95 | HTTP 실패율 | 주요 결과 |
+|:---------|------:|------:|------:|------:|:----------|
+| browse | 100 | 44.1 | **10ms** | 0% | 캐시 히트율 99.4% |
+| shopping | 50 | 31.4 | **11.5ms** | 0% | 주문 2,109건/회, 성공률 100% |
+| coupon_rush | 100 | 980.3 | **14.2ms** | 0% | 정확히 50장 발급, 초과 발급 0건 |
+| mixed | 180 | 104.3 | **9.5ms** | 0% | 전 Threshold PASS |
+
+**최적화 Before/After 비교** — 캐시/인덱스/OSIV/Async를 하나씩 제거하며 영향 측정:
+
+| 최적화 요소 | 제거 시 영향 (browse p95 기준) |
+|:-----------|:-------------------------------|
+| Caffeine 캐시 | 10ms → 4,979ms (**×498**) |
+| DB 인덱스 | 4,979ms → 12,750ms (실패율 91%) |
+| OSIV OFF → ON | p95 개선처럼 보이나 실패율 0→6.77% |
+| @Async 검색 로그 | p95 2,840ms → 5,010ms (**+76%**) |
+
+> 상세 분석: [`docs/load-test-benchmark.md`](docs/load-test-benchmark.md) / 테스트 스크립트: [`load-test/`](load-test/)
+
 세부 문서:
 
 - `docs/README.md`: docs 문서 인덱스(카테고리/상태 태그)
@@ -115,6 +138,8 @@ src/main/java/com/shop
 - `docs/search-log-ops-policy.md`: 검색 로그 운영 정책
 - `docs/adr/ADR-0001-tier-criteria-cumulative-total-spent.md`: 등급 산정 기준(누적 `total_spent`) 결정 배경
 - `docs/adr/ADR-0002-point-accrual-on-delivery-and-cancel-policy.md`: 포인트 적립 시점/취소·반품 정산 정책
+- `docs/load-test-benchmark.md`: 부하 테스트 최적화 Before/After 비교 (5가지 조건)
+- `docs/query-optimization.md`: N+1 해결 전략 종합 정리
 
 ---
 
