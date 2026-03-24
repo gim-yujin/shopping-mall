@@ -16,6 +16,7 @@ import com.shop.global.exception.ResourceNotFoundException;
 import com.shop.global.metrics.OrderMetrics;
 import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
 import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
+import io.github.resilience4j.retry.annotation.Retry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -99,12 +100,19 @@ public class OrderCreationService {
      * <p>[Phase 3 코드 품질] 고수준 오케스트레이터로 재구성.
      * 각 단계가 명확한 이름의 메서드로 분리되어 전체 흐름을 한눈에 파악할 수 있다.</p>
      *
-     * <p>[Resilience4j] {@code orderCreation} 서킷 브레이커 적용.
-     * 어노테이션 기반이므로 Spring AOP 프록시를 통해 호출될 때만 동작한다.
-     * 서킷이 OPEN이면 @Transactional이 시작되기 전에 즉시 실패하여
-     * DB 커넥션을 소비하지 않는다.
-     * (AOP 우선순위: CircuitBreaker → @Transactional → 비즈니스 로직)</p>
+     * <p>[Resilience4j] {@code orderCreation} 서킷 브레이커 + 리트라이 적용.
+     * 어노테이션 기반이므로 Spring AOP 프록시를 통해 호출될 때만 동작한다.</p>
+     *
+     * <p>AOP 실행 순서 (외부 → 내부):
+     * {@code @Retry → @CircuitBreaker → @Transactional → 비즈니스 로직}
+     * <ul>
+     *   <li>일시적 실패 시: @Transactional 롤백 → CB 실패 기록 → @Retry가 재시도</li>
+     *   <li>서킷 OPEN 시: CB가 CallNotPermittedException → @Retry의 ignoreExceptions에
+     *       등록되어 재시도 없이 즉시 폴백 실행</li>
+     *   <li>재시도 소진 시: 최종 예외가 호출자에게 전파</li>
+     * </ul></p>
      */
+    @Retry(name = "orderCreation")
     @CircuitBreaker(name = "orderCreation", fallbackMethod = "createOrderFallback")
     @Transactional
     public Order createOrder(Long userId, OrderCreateRequest request) {

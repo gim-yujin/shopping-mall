@@ -2,6 +2,7 @@ package com.shop.global.resilience;
 
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
+import io.github.resilience4j.retry.RetryRegistry;
 import io.github.resilience4j.timelimiter.TimeLimiterRegistry;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
@@ -23,11 +24,12 @@ class Resilience4jConfigTest {
     void init_stateTransition_handledWithoutError() {
         CircuitBreakerRegistry cbRegistry = CircuitBreakerRegistry.ofDefaults();
         TimeLimiterRegistry tlRegistry = TimeLimiterRegistry.ofDefaults();
+        RetryRegistry retryRegistry = RetryRegistry.ofDefaults();
         MeterRegistry meterRegistry = new SimpleMeterRegistry();
 
         // 서킷 브레이커 생성 후 Config 초기화 → 이벤트 리스너 부착
         CircuitBreaker cb = cbRegistry.circuitBreaker("testCb");
-        Resilience4jConfig config = new Resilience4jConfig(cbRegistry, tlRegistry, meterRegistry);
+        Resilience4jConfig config = new Resilience4jConfig(cbRegistry, tlRegistry, retryRegistry, meterRegistry);
         config.init();
 
         // 상태 전이를 강제로 발생시킨다.
@@ -47,12 +49,13 @@ class Resilience4jConfigTest {
     void init_bindsCircuitBreakerMetrics() {
         CircuitBreakerRegistry cbRegistry = CircuitBreakerRegistry.ofDefaults();
         TimeLimiterRegistry tlRegistry = TimeLimiterRegistry.ofDefaults();
+        RetryRegistry retryRegistry = RetryRegistry.ofDefaults();
         SimpleMeterRegistry meterRegistry = new SimpleMeterRegistry();
 
         // 최소 1개의 서킷 브레이커가 있어야 메트릭이 등록된다.
         cbRegistry.circuitBreaker("metricsTestCb");
 
-        Resilience4jConfig config = new Resilience4jConfig(cbRegistry, tlRegistry, meterRegistry);
+        Resilience4jConfig config = new Resilience4jConfig(cbRegistry, tlRegistry, retryRegistry, meterRegistry);
         config.init();
 
         // TaggedCircuitBreakerMetrics가 등록한 메트릭이 존재해야 한다.
@@ -72,10 +75,11 @@ class Resilience4jConfigTest {
     void init_dynamicInstance_getsEventListener() {
         CircuitBreakerRegistry cbRegistry = CircuitBreakerRegistry.ofDefaults();
         TimeLimiterRegistry tlRegistry = TimeLimiterRegistry.ofDefaults();
+        RetryRegistry retryRegistry = RetryRegistry.ofDefaults();
         MeterRegistry meterRegistry = new SimpleMeterRegistry();
 
         // Config 초기화 (이 시점에는 서킷 브레이커 인스턴스가 없다)
-        Resilience4jConfig config = new Resilience4jConfig(cbRegistry, tlRegistry, meterRegistry);
+        Resilience4jConfig config = new Resilience4jConfig(cbRegistry, tlRegistry, retryRegistry, meterRegistry);
         config.init();
 
         // init() 이후에 동적으로 생성된 서킷 브레이커

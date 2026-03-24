@@ -238,6 +238,59 @@ resilience4j:
         baseConfig: default
         timeoutDuration: 3s
 
+  retry:
+    configs:
+      # ── 기본 Retry 설정 ──
+      # 일시적(transient) 인프라 장애에 대한 자동 재시도.
+      # 서킷 브레이커와 조합하여 사용한다:
+      #   Retry(외부) → CircuitBreaker → TimeLimiter → 실제 호출
+      # → 실패 시 Retry가 재시도하고, 각 시도(성공/실패)가 CircuitBreaker에 기록된다.
+      # → 재시도를 포함한 최종 실패율이 임계값을 초과하면 서킷이 OPEN된다.
+      default:
+        # 최대 시도 횟수 (첫 시도 포함): 3 = 첫 시도 + 재시도 2회.
+        maxAttempts: 3
+        # 재시도 간 대기 시간 (지수 백오프 적용 전 기본값).
+        waitDuration: 200ms
+        # 지수 백오프 활성화: 재시도마다 대기 시간이 기하급수적으로 증가한다.
+        # 200ms → 400ms → 800ms (multiplier=2)
+        # 동시 재시도들이 같은 시점에 다시 충돌하는 Thundering Herd를 방지한다.
+        enableExponentialBackoff: true
+        exponentialBackoffMultiplier: 2
+        # 재시도할 예외: 일시적 인프라 장애만 재시도한다.
+        # DB 커넥션 풀 일시 고갈, 네트워크 끊김, 쿼리 타임아웃 등이 해당된다.
+        retryExceptions:
+          - java.io.IOException
+          - java.util.concurrent.TimeoutException
+          - org.springframework.dao.DataAccessException
+        # 재시도하지 않을 예외: 비즈니스 로직에 의한 정상 거절과
+        # 서킷 OPEN 상태는 재시도해도 결과가 같으므로 즉시 실패한다.
+        # BusinessException: "재고 부족", "쿠폰 만료" 등 비즈니스 규칙 위반
+        # ResourceNotFoundException: "상품을 찾을 수 없습니다" 등
+        # CallNotPermittedException: 서킷 OPEN 상태에서의 호출 차단
+        ignoreExceptions:
+          - com.shop.global.exception.BusinessException
+          - com.shop.global.exception.ResourceNotFoundException
+          - io.github.resilience4j.circuitbreaker.CallNotPermittedException
+
+    instances:
+      # 장바구니/사용자/쿠폰 서비스: 읽기 전용 호출이므로 부작용 없이 재시도 가능.
+      cartService:
+        baseConfig: default
+      userService:
+        baseConfig: default
+      couponService:
+        baseConfig: default
+
+      # 주문 생성: 쓰기 작업이므로 재시도를 최소화한다.
+      # @Transactional 롤백 후 재시도하므로 데이터 정합성은 보장되지만,
+      # 비관적 잠금 경합이 심한 상황에서 과도한 재시도는 오히려 부하를 가중시킨다.
+      # maxAttempts=2: 첫 시도 + 재시도 1회로 제한.
+      # waitDuration=500ms: DB 복구 시간을 확보하기 위해 기본값보다 길게 설정.
+      orderCreation:
+        baseConfig: default
+        maxAttempts: 2
+        waitDuration: 500ms
+
 logging:
   level:
     root: INFO

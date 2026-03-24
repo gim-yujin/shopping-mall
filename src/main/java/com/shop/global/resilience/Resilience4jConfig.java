@@ -3,7 +3,10 @@ package com.shop.global.resilience;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
 import io.github.resilience4j.micrometer.tagged.TaggedCircuitBreakerMetrics;
+import io.github.resilience4j.micrometer.tagged.TaggedRetryMetrics;
 import io.github.resilience4j.micrometer.tagged.TaggedTimeLimiterMetrics;
+import io.github.resilience4j.retry.Retry;
+import io.github.resilience4j.retry.RetryRegistry;
 import io.github.resilience4j.timelimiter.TimeLimiterRegistry;
 import io.micrometer.core.instrument.MeterRegistry;
 import jakarta.annotation.PostConstruct;
@@ -12,13 +15,14 @@ import org.slf4j.LoggerFactory;
 import org.springframework.context.annotation.Configuration;
 
 /**
- * Resilience4j 서킷 브레이커 & 타임리미터 설정.
+ * Resilience4j 서킷 브레이커 & 타임리미터 & 리트라이 설정.
  *
  * <h3>역할</h3>
  * <ul>
- *   <li><b>이벤트 로깅</b>: 서킷 상태 전이(CLOSED → OPEN → HALF_OPEN)를 로그로 기록하여
+ *   <li><b>이벤트 로깅</b>: 서킷 상태 전이(CLOSED → OPEN → HALF_OPEN)와
+ *       리트라이 이벤트(재시도/최종 실패)를 로그로 기록하여
  *       장애 격리 동작을 모니터링할 수 있게 한다.</li>
- *   <li><b>Micrometer 메트릭 바인딩</b>: 서킷 브레이커와 타임리미터의 호출 통계를
+ *   <li><b>Micrometer 메트릭 바인딩</b>: 서킷 브레이커, 타임리미터, 리트라이의 호출 통계를
  *       Prometheus/Grafana에서 조회할 수 있도록 메트릭 레지스트리에 등록한다.</li>
  * </ul>
  *
@@ -32,6 +36,7 @@ import org.springframework.context.annotation.Configuration;
  *   resilience4j_circuitbreaker_state{name="orderCreation"}          → 0/1/2 (CLOSED/OPEN/HALF_OPEN)
  *   resilience4j_circuitbreaker_calls_seconds_count{name="cartService", kind="successful"}
  *   resilience4j_timelimiter_calls_total{name="couponService", kind="timeout"}
+ *   resilience4j_retry_calls_total{name="cartService", kind="successful_without_retry"}
  * </pre>
  */
 @Configuration
@@ -41,13 +46,16 @@ public class Resilience4jConfig {
 
     private final CircuitBreakerRegistry circuitBreakerRegistry;
     private final TimeLimiterRegistry timeLimiterRegistry;
+    private final RetryRegistry retryRegistry;
     private final MeterRegistry meterRegistry;
 
     public Resilience4jConfig(CircuitBreakerRegistry circuitBreakerRegistry,
                               TimeLimiterRegistry timeLimiterRegistry,
+                              RetryRegistry retryRegistry,
                               MeterRegistry meterRegistry) {
         this.circuitBreakerRegistry = circuitBreakerRegistry;
         this.timeLimiterRegistry = timeLimiterRegistry;
+        this.retryRegistry = retryRegistry;
         this.meterRegistry = meterRegistry;
     }
 
@@ -66,6 +74,7 @@ public class Resilience4jConfig {
     @PostConstruct
     void init() {
         registerCircuitBreakerEventListeners();
+        registerRetryEventListeners();
         bindMetrics();
     }
 
@@ -103,6 +112,53 @@ public class Resilience4jConfig {
                 ));
     }
 
+    // ── Retry 이벤트 리스너 ─────────────────────────────────────
+
+    /**
+     * 모든 Retry 인스턴스에 재시도/실패 이벤트 리스너를 등록한다.
+     *
+     * <p>기존 인스턴스와 이후 동적으로 생성되는 인스턴스 모두에 적용된다.</p>
+     * <ul>
+     *   <li><b>onRetry</b>: 재시도가 발생할 때마다 로그를 기록한다.
+     *       어떤 예외로 인해 몇 번째 재시도인지 확인할 수 있다.</li>
+     *   <li><b>onError</b>: 모든 재시도를 소진한 후 최종 실패 시 로그를 기록한다.
+     *       이 로그가 빈번히 발생하면 인프라 장애가 지속 중임을 의미한다.</li>
+     * </ul>
+     */
+    private void registerRetryEventListeners() {
+        // 기존 인스턴스에 리스너 부착
+        retryRegistry.getAllRetries()
+                .forEach(this::addRetryLogger);
+
+        // 동적으로 생성되는 인스턴스에도 자동 부착
+        retryRegistry.getEventPublisher()
+                .onEntryAdded(event -> addRetryLogger(event.getAddedEntry()));
+    }
+
+    /**
+     * 개별 Retry 인스턴스에 재시도/실패 로거를 부착한다.
+     *
+     * <p>onRetry는 WARN 레벨: 일시적 장애가 발생했지만 아직 재시도 중임을 나타낸다.
+     * onError는 ERROR 레벨: 모든 재시도를 소진한 최종 실패로, 즉각적인 조치가 필요하다.</p>
+     */
+    private void addRetryLogger(Retry retry) {
+        retry.getEventPublisher()
+                .onRetry(event -> log.warn(
+                        "[Retry] '{}' 재시도 #{} — 원인: {}",
+                        event.getName(),
+                        event.getNumberOfRetryAttempts(),
+                        event.getLastThrowable().getMessage()
+                ))
+                .onError(event -> log.error(
+                        "[Retry] '{}' 재시도 소진 ({}회) — 최종 실패: {}",
+                        event.getName(),
+                        event.getNumberOfRetryAttempts(),
+                        event.getLastThrowable().getMessage()
+                ));
+    }
+
+    // ── Micrometer 메트릭 바인딩 ──────────────────────────────
+
     /**
      * Resilience4j 메트릭을 Micrometer 레지스트리에 바인딩한다.
      *
@@ -118,6 +174,8 @@ public class Resilience4jConfig {
         TaggedCircuitBreakerMetrics.ofCircuitBreakerRegistry(circuitBreakerRegistry)
                 .bindTo(meterRegistry);
         TaggedTimeLimiterMetrics.ofTimeLimiterRegistry(timeLimiterRegistry)
+                .bindTo(meterRegistry);
+        TaggedRetryMetrics.ofRetryRegistry(retryRegistry)
                 .bindTo(meterRegistry);
     }
 }

@@ -5,6 +5,8 @@ import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
 import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerConfig;
 import io.github.resilience4j.circuitbreaker.CircuitBreakerRegistry;
+import io.github.resilience4j.retry.RetryConfig;
+import io.github.resilience4j.retry.RetryRegistry;
 import io.github.resilience4j.timelimiter.TimeLimiterConfig;
 import io.github.resilience4j.timelimiter.TimeLimiterRegistry;
 import org.junit.jupiter.api.AfterEach;
@@ -41,6 +43,7 @@ class ResilientCallExecutorTest {
 
     private CircuitBreakerRegistry cbRegistry;
     private TimeLimiterRegistry tlRegistry;
+    private RetryRegistry retryRegistry;
     private ResilientCallExecutor executor;
 
     @BeforeEach
@@ -65,7 +68,14 @@ class ResilientCallExecutorTest {
                 .build();
         tlRegistry = TimeLimiterRegistry.of(tlConfig);
 
-        executor = new ResilientCallExecutor(cbRegistry, tlRegistry);
+        // 리트라이: 기존 테스트에서는 재시도를 비활성화(maxAttempts=1)하여
+        // 서킷 브레이커/타임리미터 동작만 독립적으로 검증한다.
+        RetryConfig retryConfig = RetryConfig.custom()
+                .maxAttempts(1)
+                .build();
+        retryRegistry = RetryRegistry.of(retryConfig);
+
+        executor = new ResilientCallExecutor(cbRegistry, tlRegistry, retryRegistry);
     }
 
     @AfterEach
@@ -243,7 +253,7 @@ class ResilientCallExecutorTest {
                     .ignoreExceptions(BusinessException.class)
                     .build();
             CircuitBreakerRegistry customRegistry = CircuitBreakerRegistry.of(configWithIgnore);
-            ResilientCallExecutor customExecutor = new ResilientCallExecutor(customRegistry, tlRegistry);
+            ResilientCallExecutor customExecutor = new ResilientCallExecutor(customRegistry, tlRegistry, retryRegistry);
 
             try {
                 String name = "ignoreTest";
@@ -288,6 +298,125 @@ class ResilientCallExecutorTest {
 
             assertThat(result).isEqualTo("fallback");
             assertThat(fallbackCount.get()).isEqualTo(1);
+        }
+    }
+
+    // ── 리트라이 (Retry) ──────────────────────────────────────
+
+    @Nested
+    @DisplayName("리트라이 (Retry)")
+    class RetryBehavior {
+
+        /**
+         * 리트라이 전용 executor를 생성한다.
+         * maxAttempts=3, 대기 시간 없음(테스트 속도)으로 설정.
+         */
+        private ResilientCallExecutor retryExecutor() {
+            RetryConfig retryConfig = RetryConfig.custom()
+                    .maxAttempts(3)
+                    .waitDuration(Duration.ofMillis(0))
+                    .retryExceptions(RuntimeException.class)
+                    .build();
+            RetryRegistry localRetryRegistry = RetryRegistry.of(retryConfig);
+
+            // 서킷 브레이커는 관대한 설정으로 리트라이 동작만 검증한다.
+            CircuitBreakerConfig cbConfig = CircuitBreakerConfig.custom()
+                    .slidingWindowSize(100)
+                    .minimumNumberOfCalls(100)
+                    .failureRateThreshold(100)
+                    .build();
+            CircuitBreakerRegistry localCbRegistry = CircuitBreakerRegistry.of(cbConfig);
+
+            return new ResilientCallExecutor(localCbRegistry, tlRegistry, localRetryRegistry);
+        }
+
+        @Test
+        @DisplayName("일시적 실패 후 성공 → 재시도로 정상 결과를 반환한다")
+        void transientFailure_thenSuccess_returnsResult() {
+            ResilientCallExecutor retryExec = retryExecutor();
+            try {
+                // 2번 실패 후 3번째에 성공 (maxAttempts=3이므로 성공)
+                AtomicInteger attempt = new AtomicInteger(0);
+
+                String result = retryExec.execute("retrySuccessTest", () -> {
+                    if (attempt.incrementAndGet() <= 2) {
+                        throw new RuntimeException("일시적 장애 #" + attempt.get());
+                    }
+                    return "recovered";
+                });
+
+                assertThat(result).isEqualTo("recovered");
+                assertThat(attempt.get()).isEqualTo(3);
+            } finally {
+                retryExec.shutdown();
+            }
+        }
+
+        @Test
+        @DisplayName("모든 재시도 소진 → 최종 예외가 전파된다")
+        void allRetriesExhausted_throwsFinalException() {
+            ResilientCallExecutor retryExec = retryExecutor();
+            try {
+                AtomicInteger attempt = new AtomicInteger(0);
+
+                // maxAttempts=3인데 3번 모두 실패 → 최종 예외 전파
+                assertThatThrownBy(() -> retryExec.execute("retryExhaustTest", () -> {
+                    attempt.incrementAndGet();
+                    throw new RuntimeException("영구 장애");
+                })).isInstanceOf(RuntimeException.class)
+                        .hasMessageContaining("영구 장애");
+
+                // 첫 시도 + 재시도 2회 = 총 3회 호출
+                assertThat(attempt.get()).isEqualTo(3);
+            } finally {
+                retryExec.shutdown();
+            }
+        }
+
+        @Test
+        @DisplayName("재시도 소진 + executeWithFallback() → 폴백 결과를 반환한다")
+        void allRetriesExhausted_withFallback_returnsFallback() {
+            ResilientCallExecutor retryExec = retryExecutor();
+            try {
+                String result = retryExec.executeWithFallback("retryFallbackTest",
+                        () -> {
+                            throw new RuntimeException("영구 장애");
+                        },
+                        ex -> "retry-exhausted-fallback");
+
+                assertThat(result).isEqualTo("retry-exhausted-fallback");
+            } finally {
+                retryExec.shutdown();
+            }
+        }
+
+        @Test
+        @DisplayName("ignoreExceptions에 등록된 BusinessException → 재시도하지 않는다")
+        void businessException_notRetried() {
+            // BusinessException을 ignoreExceptions에 등록한 리트라이 설정
+            RetryConfig retryConfig = RetryConfig.custom()
+                    .maxAttempts(3)
+                    .waitDuration(Duration.ofMillis(0))
+                    .retryExceptions(RuntimeException.class)
+                    .ignoreExceptions(BusinessException.class)
+                    .build();
+            RetryRegistry localRetryRegistry = RetryRegistry.of(retryConfig);
+            ResilientCallExecutor retryExec = new ResilientCallExecutor(cbRegistry, tlRegistry, localRetryRegistry);
+
+            try {
+                AtomicInteger attempt = new AtomicInteger(0);
+
+                // BusinessException은 ignoreExceptions이므로 재시도 없이 즉시 전파
+                assertThatThrownBy(() -> retryExec.execute("retryIgnoreTest", () -> {
+                    attempt.incrementAndGet();
+                    throw new BusinessException("VALIDATION", "비즈니스 오류");
+                })).isInstanceOf(BusinessException.class);
+
+                // 재시도 없이 1회만 호출되어야 한다
+                assertThat(attempt.get()).isEqualTo(1);
+            } finally {
+                retryExec.shutdown();
+            }
         }
     }
 
