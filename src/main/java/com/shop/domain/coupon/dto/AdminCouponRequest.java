@@ -50,6 +50,20 @@ public class AdminCouponRequest {
     @DateTimeFormat(pattern = "yyyy-MM-dd'T'HH:mm")
     private LocalDateTime validUntil;
 
+    /**
+     * 유효 종료일이 시작일보다 이후인지 교차 검증한다.
+     * Bean Validation 단계에서 BindingResult에 필드 에러로 포함되어
+     * 다른 필드 검증(@NotNull 등)과 함께 폼에 표시된다.
+     * 서비스 레벨의 validateCouponDates()는 방어적 이중 검증으로 유지한다.
+     */
+    @AssertTrue(message = "유효 종료일은 시작일 이후여야 합니다.")
+    public boolean isValidDateRange() {
+        if (validFrom == null || validUntil == null) {
+            return true; // null 검증은 @NotNull이 담당
+        }
+        return validUntil.isAfter(validFrom);
+    }
+
     public AdminCouponRequest() {}
 
     // ── Getters / Setters ──────────────────────────
