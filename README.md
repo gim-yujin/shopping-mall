@@ -1,5 +1,7 @@
 # 🛒 Shopping Mall
 
+[![CI](https://github.com/gim-yujin/shopping-mall/actions/workflows/ci.yml/badge.svg)](https://github.com/gim-yujin/shopping-mall/actions/workflows/ci.yml)
+
 대규모 트래픽과 동시성 이슈를 고려해 설계한 **Spring Boot 기반 이커머스 웹 애플리케이션**입니다.  
 서버 사이드 렌더링(Thymeleaf)과 일부 REST API를 함께 사용하며, 주문/재고/쿠폰/포인트/반품 등 실제 쇼핑몰 핵심 시나리오를 중심으로 구현되어 있습니다.
 

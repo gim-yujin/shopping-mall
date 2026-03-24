@@ -10,11 +10,22 @@ on:
       - main
       - develop
 
+# 같은 브랜치에 연속 push 시 이전 워크플로우를 자동 취소하여 러너 낭비를 방지한다.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   # ── Job 1: 정적검사 & 테스트 ─────────────────────────────
   ci:
     name: Static Analysis & Test
     runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      checks: write        # 테스트 결과 요약 어노테이션
+      pull-requests: write  # JaCoCo 커버리지 PR 코멘트
+
     env:
       JDK_JAVA_OPTIONS: --enable-native-access=ALL-UNNAMED
       ORG_GRADLE_JVMARGS: -Xmx2g -Dfile.encoding=UTF-8 --enable-native-access=ALL-UNNAMED
@@ -97,6 +108,24 @@ jobs:
           TEST_DB_USERNAME: postgres
           TEST_DB_PASSWORD: 4321
         run: ./gradlew test --stacktrace # 임시로 스택 트레이스 출력
+
+      - name: Test result summary
+        if: always()
+        uses: dorny/test-reporter@v1
+        with:
+          name: JUnit Results
+          path: build/test-results/test/*.xml
+          reporter: java-junit
+
+      - name: JaCoCo coverage comment on PR
+        if: github.event_name == 'pull_request'
+        uses: madrapps/jacoco-report@v1.7.1
+        with:
+          paths: build/reports/jacoco/test/jacocoTestReport.xml
+          token: ${{ secrets.GITHUB_TOKEN }}
+          min-coverage-overall: 60
+          title: "## JaCoCo Coverage Report"
+          update-comment: true
 
       - name: Upload static analysis reports
         if: always()
