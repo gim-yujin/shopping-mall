@@ -145,9 +145,31 @@ Grafana k6로 4개 시나리오(browse/shopping/coupon_rush/mixed)를 시나리�
 
 ---
 
-## 6) 로컬 실행 가이드
+## 6) 실행 가이드
 
-### 6-1. 사전 요구사항
+### Docker Compose 원클릭 실행 (권장)
+
+Docker만 설치되어 있으면 DB + App + 모니터링을 한 번에 띄울 수 있습니다.
+
+```bash
+docker compose up -d --build
+```
+
+| 서비스 | 주소 |
+|--------|------|
+| 애플리케이션 | http://localhost:8080 |
+| Prometheus | http://localhost:9090 |
+| Grafana | http://localhost:3000 (admin / admin) |
+
+종료 및 데이터 초기화:
+
+```bash
+docker compose down -v
+```
+
+### 로컬 직접 실행
+
+#### 6-1. 사전 요구사항
 
 - JDK 21
 - PostgreSQL 14.x

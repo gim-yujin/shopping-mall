@@ -1,0 +1,68 @@
+services:
+  # ── PostgreSQL ────────────────────────────────────────────
+  db:
+    image: postgres:14
+    container_name: shopping-mall-db
+    environment:
+      POSTGRES_DB: shopping_mall_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      # 초기화 스크립트 — 컨테이너 최초 생성 시 schema + migration 자동 적용
+      - ./infra/postgres/init.sh:/docker-entrypoint-initdb.d/init.sh:ro
+      - ./src/main/resources/schema.sql:/sql/schema.sql:ro
+      - ./src/main/resources/migration:/sql/migration:ro
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d shopping_mall_db"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # ── Spring Boot App ──────────────────────────────────────
+  app:
+    build: .
+    container_name: shopping-mall-app
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://db:5432/shopping_mall_db?stringtype=unspecified&socketTimeout=30
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: postgres
+      JAVA_TOOL_OPTIONS: -Xmx512m
+    ports:
+      - "8080:8080"
+
+  # ── Prometheus ───────────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    container_name: shopping-mall-prometheus
+    depends_on:
+      - app
+    volumes:
+      - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/prometheus/rules:/etc/prometheus/rules:ro
+    ports:
+      - "9090:9090"
+
+  # ── Grafana ──────────────────────────────────────────────
+  grafana:
+    image: grafana/grafana:11.3.1
+    container_name: shopping-mall-grafana
+    depends_on:
+      - prometheus
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+    volumes:
+      - ./monitoring/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./monitoring/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "3000:3000"
+
+volumes:
+  pgdata:
