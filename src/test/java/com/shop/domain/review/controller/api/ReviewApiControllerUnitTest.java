@@ -1,6 +1,7 @@
 package com.shop.domain.review.controller.api;
 
 import com.shop.domain.review.dto.ReviewCreateRequest;
+import com.shop.domain.review.dto.ReviewListReadModel;
 import com.shop.domain.review.entity.Review;
 import com.shop.domain.review.service.ReviewService;
 import com.shop.global.security.CustomUserPrincipal;
@@ -92,10 +93,12 @@ class ReviewApiControllerUnitTest {
         @Test
         @DisplayName("리뷰가 있으면 페이징된 목록을 반환한다")
         void getProductReviews_returnsPagedList() throws Exception {
-            // given: 상품 200번에 리뷰 1건 존재
-            Review review = createReview(10L);
-            Page<Review> page = new PageImpl<>(List.of(review), PageRequest.of(0, 10), 1);
-            when(reviewService.getProductReviews(eq(200L), any(PageRequest.class))).thenReturn(page);
+            // given: 상품 200번에 리뷰 1건 존재 (CQRS 플랫 프로젝션)
+            ReviewListReadModel readModel = new ReviewListReadModel(
+                    10L, 200L, USER_ID, "tester", 5, "좋아요", "매우 만족합니다", 0,
+                    java.time.LocalDateTime.now(), java.time.LocalDateTime.now());
+            Page<ReviewListReadModel> page = new PageImpl<>(List.of(readModel), PageRequest.of(0, 10), 1);
+            when(reviewService.getProductReviewsFlat(eq(200L), any(PageRequest.class))).thenReturn(page);
 
             // when & then: PageResponse 구조 확인
             mockMvc.perform(get("/api/v1/products/{productId}/reviews", 200L)
@@ -112,8 +115,8 @@ class ReviewApiControllerUnitTest {
         @DisplayName("리뷰가 없으면 빈 목록을 반환한다")
         void getProductReviews_empty() throws Exception {
             // given
-            Page<Review> page = new PageImpl<>(Collections.emptyList(), PageRequest.of(0, 10), 0);
-            when(reviewService.getProductReviews(eq(200L), any(PageRequest.class))).thenReturn(page);
+            Page<ReviewListReadModel> page = new PageImpl<>(Collections.emptyList(), PageRequest.of(0, 10), 0);
+            when(reviewService.getProductReviewsFlat(eq(200L), any(PageRequest.class))).thenReturn(page);
 
             // when & then
             mockMvc.perform(get("/api/v1/products/{productId}/reviews", 200L))

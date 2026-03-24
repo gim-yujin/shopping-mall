@@ -1,6 +1,7 @@
 package com.shop.domain.review.controller.api;
 
 import com.shop.domain.review.dto.ReviewCreateRequest;
+import com.shop.domain.review.dto.ReviewListReadModel;
 import com.shop.domain.review.dto.ReviewResponse;
 import com.shop.domain.review.entity.Review;
 import com.shop.domain.review.service.ReviewService;
@@ -43,7 +44,7 @@ public class ReviewApiController {
             @PathVariable Long productId,
             @RequestParam(defaultValue = "0") int page) {
         int normalizedPage = PagingParams.normalizePage(page);
-        Page<Review> reviews = reviewService.getProductReviews(productId,
+        Page<ReviewListReadModel> reviews = reviewService.getProductReviewsFlat(productId,
                 PageRequest.of(normalizedPage, PageDefaults.DEFAULT_LIST_SIZE));
         return ApiResponse.ok(PageResponse.from(reviews, ReviewResponse::from));
     }

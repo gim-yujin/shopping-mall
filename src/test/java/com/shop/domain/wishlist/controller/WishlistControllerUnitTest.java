@@ -63,7 +63,7 @@ class WishlistControllerUnitTest {
     @Test
     @DisplayName("GET /wishlist — 위시리스트 페이지 렌더링")
     void wishlistPage_rendersCorrectView() throws Exception {
-        when(wishlistService.getWishlist(eq(1L), any(PageRequest.class)))
+        when(wishlistService.getWishlistFlat(eq(1L), any(PageRequest.class)))
                 .thenReturn(new PageImpl<>(Collections.emptyList()));
 
         mockMvc.perform(get("/wishlist"))
@@ -71,13 +71,13 @@ class WishlistControllerUnitTest {
                 .andExpect(view().name("wishlist/index"))
                 .andExpect(model().attributeExists("wishlists"));
 
-        verify(wishlistService).getWishlist(eq(1L), any(PageRequest.class));
+        verify(wishlistService).getWishlistFlat(eq(1L), any(PageRequest.class));
     }
 
     @Test
     @DisplayName("GET /wishlist?page=2 — 페이지 파라미터가 전달된다")
     void wishlistPage_withPageParam() throws Exception {
-        when(wishlistService.getWishlist(eq(1L), any(PageRequest.class)))
+        when(wishlistService.getWishlistFlat(eq(1L), any(PageRequest.class)))
                 .thenReturn(new PageImpl<>(Collections.emptyList()));
 
         mockMvc.perform(get("/wishlist").param("page", "2"))
@@ -88,7 +88,7 @@ class WishlistControllerUnitTest {
     @Test
     @DisplayName("GET /wishlist?page=-1 — 음수 페이지는 0으로 보정된다")
     void wishlistPage_negativePageNormalized() throws Exception {
-        when(wishlistService.getWishlist(eq(1L), any(PageRequest.class)))
+        when(wishlistService.getWishlistFlat(eq(1L), any(PageRequest.class)))
                 .thenReturn(new PageImpl<>(Collections.emptyList()));
 
         // PagingParams.normalizePage(-1) → 0

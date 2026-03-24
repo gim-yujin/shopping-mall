@@ -4,9 +4,9 @@ import com.shop.domain.category.service.CategoryService;
 import com.shop.domain.product.dto.CachedProductDetail;
 import com.shop.domain.product.service.ProductQueryService;
 import com.shop.domain.product.service.ViewCountService;
+import com.shop.domain.review.dto.ReviewListReadModel;
 import com.shop.domain.review.service.ReviewService;
 import com.shop.domain.order.entity.OrderItem;
-import com.shop.domain.review.entity.Review;
 import com.shop.domain.wishlist.service.WishlistService;
 import com.shop.global.backpressure.BackpressureDetector;
 import com.shop.global.common.PageDefaults;
@@ -80,7 +80,7 @@ public class ProductController {
             viewCountService.incrementAsync(productId);
         }
         int normalizedReviewPage = PagingParams.normalizePage(reviewPage);
-        Page<Review> reviews = reviewService.getProductReviews(productId, PageRequest.of(normalizedReviewPage, PageDefaults.DEFAULT_LIST_SIZE));
+        Page<ReviewListReadModel> reviews = reviewService.getProductReviewsFlat(productId, PageRequest.of(normalizedReviewPage, PageDefaults.DEFAULT_LIST_SIZE));
 
         model.addAttribute("product", product);
         model.addAttribute("reviews", reviews);
@@ -92,7 +92,7 @@ public class ProductController {
             model.addAttribute("isWishlisted", wishlistService.isWishlisted(userId, productId));
 
             Set<Long> reviewIds = reviews.getContent().stream()
-                    .map(Review::getReviewId)
+                    .map(ReviewListReadModel::reviewId)
                     .collect(Collectors.toSet());
             model.addAttribute("helpedReviewIds", reviewService.getHelpedReviewIds(userId, reviewIds));
 

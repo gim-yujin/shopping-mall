@@ -7,6 +7,7 @@ import com.shop.domain.order.entity.OrderItem;
 import com.shop.domain.order.entity.OrderStatus;
 import com.shop.domain.order.repository.OrderItemRepository;
 import com.shop.domain.review.dto.ReviewCreateRequest;
+import com.shop.domain.review.dto.ReviewListReadModel;
 import com.shop.domain.review.dto.ReviewUpdateRequest;
 import com.shop.domain.review.entity.Review;
 import com.shop.domain.review.repository.ReviewRepository;
@@ -312,5 +313,26 @@ public class ReviewService {
 
     public Page<Review> getUserReviews(Long userId, Pageable pageable) {
         return reviewRepository.findByUserIdOrderByCreatedAtDesc(userId, pageable);
+    }
+
+    // ── CQRS 플랫 프로젝션 읽기 메서드 ──
+
+    /**
+     * [Phase 22] 상품별 리뷰 목록 — CQRS 플랫 프로젝션.
+     * v_review_list 뷰에서 username을 포함한 플랫 데이터를 반환한다.
+     */
+    @Cacheable(value = PRODUCT_REVIEW_CACHE,
+            key = "#root.target.productReviewCacheKey(#productId, #pageable)", sync = true)
+    public Page<ReviewListReadModel> getProductReviewsFlat(Long productId, Pageable pageable) {
+        return reviewRepository.findByProductIdFlat(productId, pageable)
+                .map(ReviewListReadModel::fromNativeRow);
+    }
+
+    /**
+     * [Phase 22] 사용자별 리뷰 목록 — CQRS 플랫 프로젝션.
+     */
+    public Page<ReviewListReadModel> getUserReviewsFlat(Long userId, Pageable pageable) {
+        return reviewRepository.findByUserIdFlat(userId, pageable)
+                .map(ReviewListReadModel::fromNativeRow);
     }
 }

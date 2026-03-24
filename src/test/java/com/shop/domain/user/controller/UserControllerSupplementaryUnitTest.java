@@ -244,7 +244,7 @@ class UserControllerSupplementaryUnitTest {
         @DisplayName("GET /mypage/reviews — 내 리뷰 목록을 조회한다")
         void myReviews() throws Exception {
             // given
-            when(reviewService.getUserReviews(eq(USER_ID), any(Pageable.class)))
+            when(reviewService.getUserReviewsFlat(eq(USER_ID), any(Pageable.class)))
                     .thenReturn(new PageImpl<>(Collections.emptyList()));
 
             // when & then

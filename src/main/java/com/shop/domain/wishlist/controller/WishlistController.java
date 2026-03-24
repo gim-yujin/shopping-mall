@@ -25,7 +25,7 @@ public class WishlistController {
     public String wishlistPage(@RequestParam(defaultValue = "0") int page, Model model) {
         Long userId = SecurityUtil.getCurrentUserId().orElseThrow();
         int normalizedPage = PagingParams.normalizePage(page);
-        model.addAttribute("wishlists", wishlistService.getWishlist(userId, PageRequest.of(normalizedPage, PageDefaults.LARGE_LIST_SIZE)));
+        model.addAttribute("wishlists", wishlistService.getWishlistFlat(userId, PageRequest.of(normalizedPage, PageDefaults.LARGE_LIST_SIZE)));
         return "wishlist/index";
     }
 

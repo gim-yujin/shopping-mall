@@ -4,7 +4,7 @@ import com.shop.domain.category.service.CategoryService;
 import com.shop.domain.product.dto.CachedProductDetail;
 import com.shop.domain.product.service.ProductQueryService;
 import com.shop.domain.product.service.ViewCountService;
-import com.shop.domain.review.entity.Review;
+import com.shop.domain.review.dto.ReviewListReadModel;
 import com.shop.domain.review.service.ReviewService;
 import com.shop.domain.wishlist.service.WishlistService;
 import com.shop.global.backpressure.BackpressureDetector;
@@ -145,12 +145,12 @@ class ProductControllerUnitTest {
         @DisplayName("비인증 사용자 — 상품 상세 렌더링 + 조회수 증가 (백프레셔 정상)")
         void productDetail_anonymous_rendersDetail() throws Exception {
             CachedProductDetail product = createCachedProduct(10);
-            Page<Review> reviews = new PageImpl<>(Collections.emptyList());
+            Page<ReviewListReadModel> reviews = new PageImpl<>(Collections.emptyList());
 
             when(productQueryService.findByIdCached(1L)).thenReturn(product);
             // 백프레셔 정상 → 조회수 증가 실행
             when(backpressureDetector.shouldShedNonCritical()).thenReturn(false);
-            when(reviewService.getProductReviews(eq(1L), any(PageRequest.class)))
+            when(reviewService.getProductReviewsFlat(eq(1L), any(PageRequest.class)))
                     .thenReturn(reviews);
             when(categoryService.getBreadcrumb(10)).thenReturn(Collections.emptyList());
 
@@ -170,12 +170,12 @@ class ProductControllerUnitTest {
         @DisplayName("백프레셔 CRITICAL — 조회수 증가를 건너뛴다")
         void productDetail_criticalBackpressure_skipsViewCount() throws Exception {
             CachedProductDetail product = createCachedProduct(10);
-            Page<Review> reviews = new PageImpl<>(Collections.emptyList());
+            Page<ReviewListReadModel> reviews = new PageImpl<>(Collections.emptyList());
 
             when(productQueryService.findByIdCached(1L)).thenReturn(product);
             // 백프레셔 CRITICAL → shouldShedNonCritical()이 true 반환
             when(backpressureDetector.shouldShedNonCritical()).thenReturn(true);
-            when(reviewService.getProductReviews(eq(1L), any(PageRequest.class)))
+            when(reviewService.getProductReviewsFlat(eq(1L), any(PageRequest.class)))
                     .thenReturn(reviews);
             when(categoryService.getBreadcrumb(10)).thenReturn(Collections.emptyList());
 
@@ -192,11 +192,11 @@ class ProductControllerUnitTest {
         void productDetail_authenticated_setsUserSpecificAttributes() throws Exception {
             authenticateUser(5L);
             CachedProductDetail product = createCachedProduct(10);
-            Page<Review> reviews = new PageImpl<>(Collections.emptyList());
+            Page<ReviewListReadModel> reviews = new PageImpl<>(Collections.emptyList());
 
             when(productQueryService.findByIdCached(1L)).thenReturn(product);
             when(backpressureDetector.shouldShedNonCritical()).thenReturn(false);
-            when(reviewService.getProductReviews(eq(1L), any(PageRequest.class)))
+            when(reviewService.getProductReviewsFlat(eq(1L), any(PageRequest.class)))
                     .thenReturn(reviews);
             when(wishlistService.isWishlisted(5L, 1L)).thenReturn(true);
             when(reviewService.getHelpedReviewIds(eq(5L), any(Set.class)))
@@ -220,11 +220,11 @@ class ProductControllerUnitTest {
         void productDetail_nullCategory_skipsBreadcrumb() throws Exception {
             // categoryId가 null인 상품 (카테고리 미분류)
             CachedProductDetail product = createCachedProduct(null);
-            Page<Review> reviews = new PageImpl<>(Collections.emptyList());
+            Page<ReviewListReadModel> reviews = new PageImpl<>(Collections.emptyList());
 
             when(productQueryService.findByIdCached(1L)).thenReturn(product);
             when(backpressureDetector.shouldShedNonCritical()).thenReturn(false);
-            when(reviewService.getProductReviews(eq(1L), any(PageRequest.class)))
+            when(reviewService.getProductReviewsFlat(eq(1L), any(PageRequest.class)))
                     .thenReturn(reviews);
 
             mockMvc.perform(get("/products/1"))
@@ -239,19 +239,19 @@ class ProductControllerUnitTest {
         @DisplayName("리뷰 페이지 음수 → 0으로 보정된다")
         void productDetail_negativeReviewPage_normalizedToZero() throws Exception {
             CachedProductDetail product = createCachedProduct(null);
-            Page<Review> reviews = new PageImpl<>(Collections.emptyList());
+            Page<ReviewListReadModel> reviews = new PageImpl<>(Collections.emptyList());
 
             when(productQueryService.findByIdCached(1L)).thenReturn(product);
             when(backpressureDetector.shouldShedNonCritical()).thenReturn(false);
             // normalizePage(-1) → 0 → PageRequest.of(0, ...)
-            when(reviewService.getProductReviews(eq(1L), eq(PageRequest.of(0, 10))))
+            when(reviewService.getProductReviewsFlat(eq(1L), eq(PageRequest.of(0, 10))))
                     .thenReturn(reviews);
 
             mockMvc.perform(get("/products/1").param("reviewPage", "-1"))
                     .andExpect(status().isOk());
 
             // 보정된 페이지(0)로 리뷰 조회가 호출됨
-            verify(reviewService).getProductReviews(eq(1L), eq(PageRequest.of(0, 10)));
+            verify(reviewService).getProductReviewsFlat(eq(1L), eq(PageRequest.of(0, 10)));
         }
     }
 }

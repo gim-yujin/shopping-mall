@@ -762,6 +762,54 @@ SELECT
      ORDER BY oi2.order_item_id LIMIT 1) AS first_product_name
 FROM orders o;
 
+-- [Phase 22] 리뷰 목록 읽기 전용 뷰 — CQRS 읽기 모델 분리.
+--
+-- 문제: ReviewService.getProductReviews()가 Review 엔티티만 반환하므로
+-- 리뷰 작성자명(username)을 표시하려면 별도 User 조회가 필요하다.
+--
+-- 해결: users JOIN으로 username을 미리 포함시켜 단일 쿼리로 처리.
+CREATE OR REPLACE VIEW v_review_list AS
+SELECT
+    r.review_id,
+    r.product_id,
+    r.user_id,
+    u.username,
+    r.rating,
+    r.title,
+    r.content,
+    r.helpful_count,
+    r.created_at,
+    r.updated_at
+FROM reviews r
+JOIN users u ON u.user_id = r.user_id;
+
+-- [Phase 22] 위시리스트 목록 읽기 전용 뷰 — CQRS 읽기 모델 분리.
+--
+-- 문제: WishlistService.getWishlist()가 JOIN FETCH + Hibernate.initialize()로
+-- 상품 이미지 컬렉션을 수동 초기화하는 우회 패턴을 사용하였다.
+-- @BatchSize(size=30)로 IN 쿼리를 줄였지만, JPA 프록시 기반 접근 자체가 비효율적이다.
+--
+-- 해결: products JOIN + 썸네일 서브쿼리로 필요 컬럼만 플랫 프로젝션.
+-- Hibernate 프록시/컬렉션 초기화 없이 순수 SQL로 처리.
+CREATE OR REPLACE VIEW v_wishlist_list AS
+SELECT
+    w.wishlist_id,
+    w.user_id,
+    p.product_id,
+    p.product_name,
+    p.price,
+    p.original_price,
+    COALESCE(
+        (SELECT pi.image_url FROM product_images pi
+         WHERE pi.product_id = p.product_id AND pi.is_thumbnail = true
+         LIMIT 1),
+        '/images/product-placeholder.svg'
+    ) AS thumbnail_url,
+    p.stock_quantity,
+    w.created_at
+FROM wishlists w
+JOIN products p ON p.product_id = w.product_id;
+
 -- ============================================================================
 -- 스키마 생성 완료
 -- ============================================================================

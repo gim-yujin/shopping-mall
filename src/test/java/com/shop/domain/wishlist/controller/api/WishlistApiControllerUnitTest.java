@@ -1,7 +1,6 @@
 package com.shop.domain.wishlist.controller.api;
 
-import com.shop.domain.product.entity.Product;
-import com.shop.domain.wishlist.entity.Wishlist;
+import com.shop.domain.wishlist.dto.WishlistListReadModel;
 import com.shop.domain.wishlist.service.WishlistService;
 import com.shop.global.security.CustomUserPrincipal;
 import org.junit.jupiter.api.AfterEach;
@@ -18,7 +17,6 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
@@ -74,24 +72,12 @@ class WishlistApiControllerUnitTest {
 
     // ── 픽스처 ──────────────────────────────────────────────────
 
-    /**
-     * Wishlist 엔티티를 생성한다.
-     * WishlistItemResponse.from(wishlist)은 wishlist.getProduct()를 통해
-     * productId, productName, price, thumbnailUrl, stockQuantity를 읽으므로
-     * Product를 mock으로 구성해야 한다.
-     */
-    private Wishlist createWishlist(Long wishlistId, Long productId) {
-        Product product = mock(Product.class);
-        lenient().when(product.getProductId()).thenReturn(productId);
-        lenient().when(product.getProductName()).thenReturn("위시리스트 상품 " + productId);
-        lenient().when(product.getPrice()).thenReturn(new BigDecimal("25000"));
-        lenient().when(product.getThumbnailUrl()).thenReturn("/img/wish" + productId + ".jpg");
-        // 재고가 있는 상태로 설정 → inStock=true
-        lenient().when(product.getStockQuantity()).thenReturn(10);
-
-        Wishlist wishlist = new Wishlist(USER_ID, product);
-        ReflectionTestUtils.setField(wishlist, "wishlistId", wishlistId);
-        return wishlist;
+    private WishlistListReadModel createWishlistReadModel(Long wishlistId, Long productId) {
+        return new WishlistListReadModel(
+                wishlistId, USER_ID, productId, "위시리스트 상품 " + productId,
+                new BigDecimal("25000"), new BigDecimal("30000"),
+                "/img/wish" + productId + ".jpg", true,
+                java.time.LocalDateTime.now());
     }
 
     // ── GET /api/v1/wishlist ────────────────────────────────────
@@ -103,10 +89,10 @@ class WishlistApiControllerUnitTest {
         @Test
         @DisplayName("위시리스트에 상품이 있으면 페이징된 목록을 반환한다")
         void getWishlist_withItems() throws Exception {
-            // given: 위시리스트에 상품 1건
-            Wishlist item = createWishlist(1L, 500L);
-            Page<Wishlist> page = new PageImpl<>(List.of(item), PageRequest.of(0, 20), 1);
-            when(wishlistService.getWishlist(eq(USER_ID), any(PageRequest.class))).thenReturn(page);
+            // given: 위시리스트에 상품 1건 (CQRS 플랫 프로젝션)
+            WishlistListReadModel item = createWishlistReadModel(1L, 500L);
+            Page<WishlistListReadModel> page = new PageImpl<>(List.of(item), PageRequest.of(0, 20), 1);
+            when(wishlistService.getWishlistFlat(eq(USER_ID), any(PageRequest.class))).thenReturn(page);
 
             // when & then: PageResponse 구조 + 상품 정보 확인
             mockMvc.perform(get("/api/v1/wishlist").param("page", "0"))
@@ -123,8 +109,8 @@ class WishlistApiControllerUnitTest {
         @DisplayName("위시리스트가 비어있으면 빈 목록을 반환한다")
         void getWishlist_empty() throws Exception {
             // given
-            Page<Wishlist> page = new PageImpl<>(Collections.emptyList(), PageRequest.of(0, 20), 0);
-            when(wishlistService.getWishlist(eq(USER_ID), any(PageRequest.class))).thenReturn(page);
+            Page<WishlistListReadModel> page = new PageImpl<>(Collections.emptyList(), PageRequest.of(0, 20), 0);
+            when(wishlistService.getWishlistFlat(eq(USER_ID), any(PageRequest.class))).thenReturn(page);
 
             // when & then
             mockMvc.perform(get("/api/v1/wishlist"))

@@ -14,6 +14,15 @@ public interface WishlistRepository extends JpaRepository<Wishlist, Long> {
     @Query("SELECT w FROM Wishlist w JOIN FETCH w.product WHERE w.userId = :userId ORDER BY w.createdAt DESC")
     Page<Wishlist> findByUserIdWithProduct(@Param("userId") Long userId, Pageable pageable);
 
+    // ── CQRS 플랫 프로젝션 (v_wishlist_list 뷰) ──
+
+    @Query(value = "SELECT wishlist_id, user_id, product_id, product_name, price, original_price, "
+            + "thumbnail_url, stock_quantity, created_at "
+            + "FROM v_wishlist_list WHERE user_id = :userId ORDER BY created_at DESC",
+            countQuery = "SELECT COUNT(*) FROM wishlists WHERE user_id = :userId",
+            nativeQuery = true)
+    Page<Object[]> findByUserIdFlat(@Param("userId") Long userId, Pageable pageable);
+
     Optional<Wishlist> findByUserIdAndProduct_ProductId(Long userId, Long productId);
 
     boolean existsByUserIdAndProduct_ProductId(Long userId, Long productId);

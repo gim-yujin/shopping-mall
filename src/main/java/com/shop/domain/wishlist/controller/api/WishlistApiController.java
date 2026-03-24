@@ -1,7 +1,7 @@
 package com.shop.domain.wishlist.controller.api;
 
 import com.shop.domain.wishlist.dto.WishlistItemResponse;
-import com.shop.domain.wishlist.entity.Wishlist;
+import com.shop.domain.wishlist.dto.WishlistListReadModel;
 import com.shop.domain.wishlist.service.WishlistService;
 import com.shop.global.common.PageDefaults;
 import com.shop.global.common.PagingParams;
@@ -39,7 +39,7 @@ public class WishlistApiController {
             @RequestParam(defaultValue = "0") int page) {
         Long userId = SecurityUtil.getCurrentUserId().orElseThrow();
         int normalizedPage = PagingParams.normalizePage(page);
-        Page<Wishlist> wishlists = wishlistService.getWishlist(userId,
+        Page<WishlistListReadModel> wishlists = wishlistService.getWishlistFlat(userId,
                 PageRequest.of(normalizedPage, PageDefaults.LARGE_LIST_SIZE));
         return ApiResponse.ok(PageResponse.from(wishlists, WishlistItemResponse::from));
     }

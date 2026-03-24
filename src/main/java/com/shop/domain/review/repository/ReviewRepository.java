@@ -13,6 +13,22 @@ public interface ReviewRepository extends JpaRepository<Review, Long> {
 
     Page<Review> findByProductIdOrderByCreatedAtDesc(Long productId, Pageable pageable);
 
+    // ── CQRS 플랫 프로젝션 (v_review_list 뷰) ──
+
+    @Query(value = "SELECT review_id, product_id, user_id, username, rating, title, content, "
+            + "helpful_count, created_at, updated_at "
+            + "FROM v_review_list WHERE product_id = :productId ORDER BY created_at DESC",
+            countQuery = "SELECT COUNT(*) FROM reviews WHERE product_id = :productId",
+            nativeQuery = true)
+    Page<Object[]> findByProductIdFlat(@Param("productId") Long productId, Pageable pageable);
+
+    @Query(value = "SELECT review_id, product_id, user_id, username, rating, title, content, "
+            + "helpful_count, created_at, updated_at "
+            + "FROM v_review_list WHERE user_id = :userId ORDER BY created_at DESC",
+            countQuery = "SELECT COUNT(*) FROM reviews WHERE user_id = :userId",
+            nativeQuery = true)
+    Page<Object[]> findByUserIdFlat(@Param("userId") Long userId, Pageable pageable);
+
     @Query("SELECT AVG(r.rating) FROM Review r WHERE r.productId = :productId")
     Optional<Double> findAverageRatingByProductId(@Param("productId") Long productId);
 

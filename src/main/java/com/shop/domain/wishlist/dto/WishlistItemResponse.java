@@ -29,4 +29,20 @@ public record WishlistItemResponse(
                 wishlist.getCreatedAt()
         );
     }
+
+    /**
+     * [Phase 22] CQRS 읽기 모델에서 응답 DTO 변환.
+     * Hibernate 프록시 없이 플랫 데이터에서 직접 매핑한다.
+     */
+    public static WishlistItemResponse from(WishlistListReadModel readModel) {
+        return new WishlistItemResponse(
+                readModel.wishlistId(),
+                readModel.productId(),
+                readModel.productName(),
+                readModel.price(),
+                readModel.thumbnailUrl(),
+                readModel.inStock(),
+                readModel.addedAt()
+        );
+    }
 }

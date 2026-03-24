@@ -118,7 +118,7 @@ public class MyPageController {
     public String myReviews(@RequestParam(defaultValue = "0") int page, Model model) {
         Long userId = SecurityUtil.getCurrentUserId().orElseThrow();
         int normalizedPage = PagingParams.normalizePage(page);
-        model.addAttribute("reviews", reviewService.getUserReviews(userId, PageRequest.of(normalizedPage, PageDefaults.DEFAULT_LIST_SIZE)));
+        model.addAttribute("reviews", reviewService.getUserReviewsFlat(userId, PageRequest.of(normalizedPage, PageDefaults.DEFAULT_LIST_SIZE)));
         return "mypage/reviews";
     }
 

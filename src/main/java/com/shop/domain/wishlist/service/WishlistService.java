@@ -1,6 +1,7 @@
 package com.shop.domain.wishlist.service;
 
 import com.shop.domain.product.repository.ProductRepository;
+import com.shop.domain.wishlist.dto.WishlistListReadModel;
 import com.shop.domain.wishlist.entity.Wishlist;
 import com.shop.domain.wishlist.repository.WishlistRepository;
 import com.shop.global.exception.ResourceNotFoundException;
@@ -32,6 +33,18 @@ public class WishlistService {
         Page<Wishlist> page = wishlistRepository.findByUserIdWithProduct(userId, pageable);
         page.getContent().forEach(w -> Hibernate.initialize(w.getProduct().getImages()));
         return page;
+    }
+
+    // ── CQRS 플랫 프로젝션 읽기 메서드 ──
+
+    /**
+     * [Phase 22] 위시리스트 목록 — CQRS 플랫 프로젝션.
+     * v_wishlist_list 뷰에서 상품명/가격/썸네일을 포함한 플랫 데이터를 반환한다.
+     * Hibernate.initialize() 우회 없이 순수 SQL로 처리.
+     */
+    public Page<WishlistListReadModel> getWishlistFlat(Long userId, Pageable pageable) {
+        return wishlistRepository.findByUserIdFlat(userId, pageable)
+                .map(WishlistListReadModel::fromNativeRow);
     }
 
     public boolean isWishlisted(Long userId, Long productId) {
