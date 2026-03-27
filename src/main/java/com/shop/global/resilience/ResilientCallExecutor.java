@@ -94,6 +94,18 @@ public class ResilientCallExecutor {
      */
     private final ExecutorService executorService;
 
+    /**
+     * [Phase 20] 병렬 비동기 호출 조율용 가상 스레드 실행기.
+     *
+     * <p>executeAsync()에서 execute()를 비동기로 실행할 때 사용한다.
+     * 가상 스레드는 블로킹 시 캐리어 스레드를 반환하므로,
+     * 다수의 병렬 호출을 최소 리소스로 조율할 수 있다.</p>
+     *
+     * <p>스레드 사용량: 가상 스레드 1개(경량) + 워커 풀 플랫폼 스레드 1개(실제 JDBC 호출)
+     * = execute()의 동기 호출과 동일한 워커 풀 부하.</p>
+     */
+    private final ExecutorService asyncCoordinator;
+
     public ResilientCallExecutor(CircuitBreakerRegistry circuitBreakerRegistry,
                                  TimeLimiterRegistry timeLimiterRegistry,
                                  RetryRegistry retryRegistry) {
@@ -113,6 +125,13 @@ public class ResilientCallExecutor {
                             return thread;
                         }
                 )
+        );
+
+        // [Phase 20] 병렬 비동기 조율용 가상 스레드 실행기.
+        // SecurityContext를 자동 전파하여, 인증 정보가 필요한 서비스 호출도
+        // executeAsync()로 병렬 실행할 수 있다.
+        this.asyncCoordinator = new DelegatingSecurityContextExecutorService(
+                Executors.newVirtualThreadPerTaskExecutor()
         );
     }
 
@@ -167,6 +186,56 @@ public class ResilientCallExecutor {
     }
 
     /**
+     * [Phase 20] execute()의 비동기 버전 — 결과를 CompletableFuture로 반환한다.
+     *
+     * <p>여러 크로스 도메인 호출을 병렬 실행할 때 사용한다.
+     * 가상 스레드에서 execute()를 호출하므로, 동기 호출과 동일한
+     * Retry + CircuitBreaker + TimeLimiter 보호를 받으면서도
+     * 호출자 스레드를 블로킹하지 않는다.</p>
+     *
+     * <p>사용 예시 (3개 서비스 호출을 병렬 실행):</p>
+     * <pre>
+     *   CompletableFuture&lt;A&gt; fa = executor.executeAsync("svcA", () -&gt; svcA.call());
+     *   CompletableFuture&lt;B&gt; fb = executor.executeAsync("svcB", () -&gt; svcB.call());
+     *   CompletableFuture.allOf(fa, fb).join();
+     *   A a = fa.join(); B b = fb.join();
+     * </pre>
+     *
+     * @param instanceName 인스턴스 이름 (application.yml에 정의)
+     * @param supplier     실행할 서비스 호출
+     * @param <T>          반환 타입
+     * @return 서비스 호출 결과를 담은 CompletableFuture
+     */
+    public <T> CompletableFuture<T> executeAsync(String instanceName, Supplier<T> supplier) {
+        return CompletableFuture.supplyAsync(
+                () -> execute(instanceName, supplier),
+                asyncCoordinator
+        );
+    }
+
+    /**
+     * [Phase 20] executeWithFallback()의 비동기 버전.
+     *
+     * <p>비필수(non-critical) 서비스 호출을 병렬 실행할 때 사용한다.
+     * 최종 실패 시 폴백 결과가 CompletableFuture에 담겨 반환되므로,
+     * allOf().join()이 항상 성공한다.</p>
+     *
+     * @param instanceName 인스턴스 이름
+     * @param supplier     실행할 서비스 호출
+     * @param fallback     최종 실패 시 대체 결과를 생성하는 함수
+     * @param <T>          반환 타입
+     * @return 서비스 호출 결과 또는 폴백 결과를 담은 CompletableFuture
+     */
+    public <T> CompletableFuture<T> executeAsyncWithFallback(String instanceName,
+                                                              Supplier<T> supplier,
+                                                              Function<Exception, T> fallback) {
+        return CompletableFuture.supplyAsync(
+                () -> executeWithFallback(instanceName, supplier, fallback),
+                asyncCoordinator
+        );
+    }
+
+    /**
      * Retry + Timeout + Circuit Breaker를 적용하되, 최종 실패 시 폴백으로 대체한다.
      *
      * <p>비필수(non-critical) 서비스 호출에 사용한다.
@@ -214,12 +283,13 @@ public class ResilientCallExecutor {
     }
 
     /**
-     * 애플리케이션 종료 시 워커 스레드 풀을 정리한다.
+     * 애플리케이션 종료 시 스레드 풀을 정리한다.
      * graceful shutdown: 5초 대기 후 미완료 시 강제 종료.
      */
     @PreDestroy
     void shutdown() {
         executorService.shutdown();
+        asyncCoordinator.shutdown();
         try {
             if (!executorService.awaitTermination(5, TimeUnit.SECONDS)) {
                 executorService.shutdownNow();

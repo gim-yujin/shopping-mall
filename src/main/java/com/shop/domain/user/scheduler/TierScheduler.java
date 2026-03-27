@@ -101,6 +101,13 @@ public class TierScheduler {
                 userTierRepository.findByTierLevel(1)
                         .orElseThrow(() -> new RuntimeException("기본 등급이 존재하지 않습니다.")));
 
+        // [Phase 20] 전체 등급을 사전 로딩하여 in-memory 매칭에 사용한다.
+        // 기존: 사용자별 userTierRepository.findFirstByMinSpent... 호출 (청크당 1000 쿼리)
+        // 개선: 전체 등급 1회 로딩 + in-memory 매칭 (청크당 0 추가 쿼리)
+        // 등급 수가 소수(4~5개)이므로 메모리 부담 없이 N+1 문제를 완전히 제거한다.
+        List<UserTier> allTiersBySpentDesc = txReadOnlyTemplate.execute(status ->
+                userTierRepository.findAllByOrderByMinSpentDesc());
+
         TierProcessingResult totalResult = new TierProcessingResult();
         // [BUG FIX] offset 페이징 → keyset(cursor) 페이징으로 교체.
         // offset 방식: PageRequest.of(pageNumber, 1000) → OFFSET 999000이면
@@ -126,9 +133,10 @@ public class TierScheduler {
             long chunkStartedAt = System.nanoTime();
             List<User> chunkUsers = users;
 
+            List<UserTier> tierList = allTiersBySpentDesc;
             TierProcessingResult chunkResult = txTemplate.execute(status -> {
                 try {
-                    return processTierChunk(lastYear, yearlySpentMap, defaultTier, chunkUsers);
+                    return processTierChunk(lastYear, yearlySpentMap, defaultTier, tierList, chunkUsers);
                 } catch (Exception e) {
                     status.setRollbackOnly();
                     log.error("등급 재산정 청크 실패 - chunkNumber={}, cursorId={}", currentChunk, cursorId, e);
@@ -193,6 +201,7 @@ public class TierScheduler {
     protected TierProcessingResult processTierChunk(int lastYear,
                                                     Map<Long, BigDecimal> yearlySpentMap,
                                                     UserTier defaultTier,
+                                                    List<UserTier> allTiersBySpentDesc,
                                                     List<User> users) {
         TierProcessingResult result = new TierProcessingResult();
 
@@ -217,9 +226,10 @@ public class TierScheduler {
                 BigDecimal lastYearSpent = yearlySpentMap.getOrDefault(lockedUser.getUserId(), BigDecimal.ZERO);
                 Integer oldTierId = lockedUser.getTier().getTierId();
 
-                UserTier newTier = userTierRepository
-                        .findFirstByMinSpentLessThanEqualOrderByTierLevelDesc(lockedUser.getTotalSpent())
-                        .orElse(defaultTier);
+                // [Phase 20] 사전 로딩된 등급 목록에서 in-memory 매칭.
+                // 기존: userTierRepository.findFirstByMinSpent...(사용자당 1회 DB 조회)
+                // 개선: minSpent 내림차순으로 정렬된 등급을 순회하며 첫 매칭 반환 (DB 조회 0회)
+                UserTier newTier = determineTier(lockedUser.getTotalSpent(), allTiersBySpentDesc, defaultTier);
 
                 if (!newTier.getTierId().equals(oldTierId)) {
                     int oldLevel = lockedUser.getTier().getTierLevel();
@@ -247,6 +257,28 @@ public class TierScheduler {
         entityManager.flush();
         entityManager.clear();
         return result;
+    }
+
+    /**
+     * [Phase 20] 누적 구매 금액에 해당하는 등급을 in-memory에서 결정한다.
+     *
+     * <p>allTiersBySpentDesc는 minSpent 내림차순으로 정렬되어 있으므로,
+     * 첫 번째로 totalSpent ≥ minSpent인 등급이 해당 사용자의 최고 등급이다.</p>
+     *
+     * @param totalSpent          사용자 누적 구매 금액
+     * @param allTiersBySpentDesc minSpent 내림차순 정렬된 전체 등급 목록
+     * @param defaultTier         매칭되는 등급이 없을 때의 기본 등급
+     * @return 해당 사용자에게 적용할 등급
+     */
+    private UserTier determineTier(BigDecimal totalSpent,
+                                    List<UserTier> allTiersBySpentDesc,
+                                    UserTier defaultTier) {
+        for (UserTier tier : allTiersBySpentDesc) {
+            if (tier.getMinSpent().compareTo(totalSpent) <= 0) {
+                return tier;
+            }
+        }
+        return defaultTier;
     }
 
     private static class TierProcessingResult {

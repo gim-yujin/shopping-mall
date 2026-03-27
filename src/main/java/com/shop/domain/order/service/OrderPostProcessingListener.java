@@ -68,23 +68,30 @@ public class OrderPostProcessingListener {
     public CompletableFuture<Void> handleOrderCompleted(OrderCompletedEvent event) {
         log.info("주문 후처리 시작 - orderId={}, userId={}", event.orderId(), event.userId());
 
-        // 1) 등급 재계산 — 실패해도 알림 발송은 계속 진행
-        try {
-            tierRecalculationService.recalculateTier(event.userId());
-        } catch (Exception e) {
-            log.error("주문 후처리 등급 재계산 실패 - orderId={}, userId={}: {}",
-                    event.orderId(), event.userId(), e.getMessage(), e);
-        }
+        // [Phase 20] 등급 재계산과 알림 발송을 병렬 실행하여 후처리 시간을 단축한다.
+        // 기존: 등급 재계산(~100ms) → 알림 발송(~50ms) = 순차 ~150ms
+        // 개선: max(등급 재계산, 알림 발송) = 병렬 ~100ms
+        // 각 작업은 독립적이며, 개별 try-catch로 실패가 격리된다.
+        CompletableFuture<Void> tierFuture = CompletableFuture.runAsync(() -> {
+            try {
+                tierRecalculationService.recalculateTier(event.userId());
+            } catch (Exception e) {
+                log.error("주문 후처리 등급 재계산 실패 - orderId={}, userId={}: {}",
+                        event.orderId(), event.userId(), e.getMessage(), e);
+            }
+        });
 
-        // 2) 주문 확인 알림 발송
-        try {
-            notificationService.sendOrderConfirmation(
-                    event.orderId(), event.userId(), event.finalAmount());
-        } catch (Exception e) {
-            log.error("주문 후처리 알림 발송 실패 - orderId={}, userId={}: {}",
-                    event.orderId(), event.userId(), e.getMessage(), e);
-        }
+        CompletableFuture<Void> notificationFuture = CompletableFuture.runAsync(() -> {
+            try {
+                notificationService.sendOrderConfirmation(
+                        event.orderId(), event.userId(), event.finalAmount());
+            } catch (Exception e) {
+                log.error("주문 후처리 알림 발송 실패 - orderId={}, userId={}: {}",
+                        event.orderId(), event.userId(), e.getMessage(), e);
+            }
+        });
 
+        CompletableFuture.allOf(tierFuture, notificationFuture).join();
         return CompletableFuture.completedFuture(null);
     }
 
@@ -102,23 +109,26 @@ public class OrderPostProcessingListener {
     public CompletableFuture<Void> handleOrderCancelled(OrderCancelledEvent event) {
         log.info("취소 후처리 시작 - orderId={}, userId={}", event.orderId(), event.userId());
 
-        // 1) 등급 재계산
-        try {
-            tierRecalculationService.recalculateTier(event.userId());
-        } catch (Exception e) {
-            log.error("취소 후처리 등급 재계산 실패 - orderId={}, userId={}: {}",
-                    event.orderId(), event.userId(), e.getMessage(), e);
-        }
+        CompletableFuture<Void> tierFuture = CompletableFuture.runAsync(() -> {
+            try {
+                tierRecalculationService.recalculateTier(event.userId());
+            } catch (Exception e) {
+                log.error("취소 후처리 등급 재계산 실패 - orderId={}, userId={}: {}",
+                        event.orderId(), event.userId(), e.getMessage(), e);
+            }
+        });
 
-        // 2) 취소 알림 발송
-        try {
-            notificationService.sendCancellationNotice(
-                    event.orderId(), event.userId(), event.refundedAmount());
-        } catch (Exception e) {
-            log.error("취소 후처리 알림 발송 실패 - orderId={}, userId={}: {}",
-                    event.orderId(), event.userId(), e.getMessage(), e);
-        }
+        CompletableFuture<Void> notificationFuture = CompletableFuture.runAsync(() -> {
+            try {
+                notificationService.sendCancellationNotice(
+                        event.orderId(), event.userId(), event.refundedAmount());
+            } catch (Exception e) {
+                log.error("취소 후처리 알림 발송 실패 - orderId={}, userId={}: {}",
+                        event.orderId(), event.userId(), e.getMessage(), e);
+            }
+        });
 
+        CompletableFuture.allOf(tierFuture, notificationFuture).join();
         return CompletableFuture.completedFuture(null);
     }
 }

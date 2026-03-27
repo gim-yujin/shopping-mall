@@ -59,18 +59,22 @@ class TierSchedulerUnitTest {
     void recalculateTiers_processesUsersByChunk() {
         UserTier tier = mock(UserTier.class);
         when(tier.getTierId()).thenReturn(1);
+        when(tier.getMinSpent()).thenReturn(BigDecimal.ZERO);
 
         User firstUser = mock(User.class);
         when(firstUser.getUserId()).thenReturn(1L);
         when(firstUser.getTier()).thenReturn(tier);
+        when(firstUser.getTotalSpent()).thenReturn(BigDecimal.ZERO);
 
         User secondUser = mock(User.class);
         when(secondUser.getUserId()).thenReturn(2L);
         when(secondUser.getTier()).thenReturn(tier);
+        when(secondUser.getTotalSpent()).thenReturn(BigDecimal.ZERO);
 
         when(userTierOrderPort.findYearlySpentByUser(any(), any())).thenReturn(Collections.emptyMap());
         when(userTierRepository.findByTierLevel(1)).thenReturn(Optional.of(tier));
-        when(userTierRepository.findFirstByMinSpentLessThanEqualOrderByTierLevelDesc(any())).thenReturn(Optional.of(tier));
+        // [Phase 20] 전체 등급 사전 로딩 mock
+        when(userTierRepository.findAllByOrderByMinSpentDesc()).thenReturn(List.of(tier));
 
         // [BUG FIX] keyset pagination으로 변경됨 — chunkSize=1이므로
         // 첫 호출: lastUserId=0 → firstUser 반환 (1건, chunkSize와 같으므로 다음 청크 존재)
@@ -112,15 +116,16 @@ class TierSchedulerUnitTest {
         when(oldTier.getTierLevel()).thenReturn(1);
         when(newTier.getTierId()).thenReturn(2);
         when(newTier.getTierLevel()).thenReturn(2);
+        // [Phase 20] in-memory 매칭용: newTier의 minSpent가 120000 이하이면 매칭
+        when(newTier.getMinSpent()).thenReturn(new BigDecimal("100000"));
 
-        when(userTierRepository.findFirstByMinSpentLessThanEqualOrderByTierLevelDesc(new BigDecimal("120000")))
-                .thenReturn(Optional.of(newTier));
         when(userRepository.findAllByIdInWithLockAndTierOrderByUserId(List.of(10L)))
                 .thenReturn(List.of(user));
 
-        tierScheduler.processTierChunk(2024, Map.of(10L, new BigDecimal("5000")), defaultTier, List.of(user));
+        // allTiersBySpentDesc: newTier(minSpent=100000)가 첫 번째 → totalSpent 120000에 매칭
+        tierScheduler.processTierChunk(2024, Map.of(10L, new BigDecimal("5000")),
+                defaultTier, List.of(newTier), List.of(user));
 
-        verify(userTierRepository).findFirstByMinSpentLessThanEqualOrderByTierLevelDesc(new BigDecimal("120000"));
         verify(user, never()).setTotalSpent(any());
         verify(user).updateTier(newTier);
     }
@@ -131,6 +136,7 @@ class TierSchedulerUnitTest {
         User user = mock(User.class);
         UserTier welcomeTier = mock(UserTier.class);
         UserTier defaultTier = mock(UserTier.class);
+        UserTier goldTier = mock(UserTier.class);
 
         when(user.getUserId()).thenReturn(11L);
         when(user.getTier()).thenReturn(welcomeTier);
@@ -139,15 +145,18 @@ class TierSchedulerUnitTest {
         // getTierLevel 스터빙 불필요: tierId가 동일(둘 다 1)하여
         // updateTier 분기에 진입하지 않으므로 getTierLevel()이 호출되지 않음
         when(defaultTier.getTierId()).thenReturn(1);
+        when(defaultTier.getMinSpent()).thenReturn(BigDecimal.ZERO);
+        // [Phase 20] goldTier(minSpent=100000)는 totalSpent 1000보다 크므로 매칭 안 됨
+        when(goldTier.getMinSpent()).thenReturn(new BigDecimal("100000"));
 
-        when(userTierRepository.findFirstByMinSpentLessThanEqualOrderByTierLevelDesc(new BigDecimal("1000")))
-                .thenReturn(Optional.of(defaultTier));
         when(userRepository.findAllByIdInWithLockAndTierOrderByUserId(List.of(11L)))
                 .thenReturn(List.of(user));
 
-        tierScheduler.processTierChunk(2024, Map.of(11L, new BigDecimal("9000000")), defaultTier, List.of(user));
+        // allTiersBySpentDesc: goldTier(100000) → defaultTier(0) 순서
+        // totalSpent=1000: goldTier 매칭 실패 → defaultTier 매칭 (tierId=1 = welcomeTier → unchanged)
+        tierScheduler.processTierChunk(2024, Map.of(11L, new BigDecimal("9000000")),
+                defaultTier, List.of(goldTier, defaultTier), List.of(user));
 
-        verify(userTierRepository).findFirstByMinSpentLessThanEqualOrderByTierLevelDesc(new BigDecimal("1000"));
         verify(user, never()).updateTier(any());
         verify(tierHistoryRepository, never()).save(any());
     }

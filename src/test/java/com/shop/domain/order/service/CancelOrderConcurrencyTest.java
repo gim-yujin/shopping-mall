@@ -592,11 +592,14 @@ class CancelOrderConcurrencyTest {
                             .toList();
                     UserTier defaultTier = userTierRepository.findByTierLevel(1)
                             .orElseThrow(() -> new IllegalStateException("기본 등급이 존재하지 않습니다."));
+                    // [Phase 20] processTierChunk 시그니처 변경: allTiersBySpentDesc 파라미터 추가
+                    List<UserTier> allTiersBySpentDesc = userTierRepository.findAllByOrderByMinSpentDesc();
 
                     Method processTierChunk = TierScheduler.class.getDeclaredMethod(
-                            "processTierChunk", int.class, Map.class, UserTier.class, List.class);
+                            "processTierChunk", int.class, Map.class, UserTier.class, List.class, List.class);
                     processTierChunk.setAccessible(true);
-                    processTierChunk.invoke(tierScheduler, Year.now().getValue() - 1, Map.of(), defaultTier, users);
+                    processTierChunk.invoke(tierScheduler, Year.now().getValue() - 1, Map.of(),
+                            defaultTier, allTiersBySpentDesc, users);
                 } catch (Exception e) {
                     throw new RuntimeException(e);
                 }

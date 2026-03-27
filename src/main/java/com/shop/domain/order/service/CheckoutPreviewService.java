@@ -21,6 +21,8 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 
 /**
  * [Phase 3 코드 품질] 체크아웃 페이지 프리뷰 데이터를 조합하는 서비스.
@@ -88,31 +90,25 @@ public class CheckoutPreviewService {
      * @return 체크아웃 프리뷰 데이터, 장바구니가 비어있으면 null
      */
     public CheckoutPreview getPreview(Long userId, List<Long> cartItemIds) {
-        // [Resilience4j] 장바구니 서비스 호출 — Timeout(3s) + CircuitBreaker 적용.
-        // 장바구니는 체크아웃의 필수 데이터이므로 폴백 없이 예외를 전파한다.
-        // 서킷 OPEN 시 CallNotPermittedException이 컨트롤러까지 전파되어
-        // GlobalExceptionHandler에서 "서비스 일시 불안정" 응답을 반환한다.
-        List<Cart> items = resilientCallExecutor.execute("cartService",
+        // [Phase 20] 3개 크로스 도메인 호출을 병렬 실행하여 응답 지연을 단축한다.
+        // 기존: cart(3s) → user(2s) → coupon(3s) = 최대 8s 순차 실행
+        // 개선: max(cart 3s, user 2s, coupon 3s) = 최대 3s 병렬 실행
+        //
+        // 각 호출은 독립적이며(userId만 필요), Resilience4j Timeout + CircuitBreaker가
+        // 개별 적용되므로 한 서비스의 지연이 다른 호출에 영향을 주지 않는다.
+
+        // 장바구니 — 필수 데이터, 예외 전파
+        CompletableFuture<List<Cart>> cartFuture = resilientCallExecutor.executeAsync(
+                "cartService",
                 () -> cartService.getSelectedCartItems(userId, cartItemIds));
-        if (items.isEmpty()) {
-            return null;
-        }
 
-        // [Resilience4j] 사용자 서비스 호출 — Timeout(2s) + CircuitBreaker 적용.
-        // 사용자 등급 정보는 배송비/할인 계산에 필수이므로 폴백 없이 예외를 전파한다.
-        User user = resilientCallExecutor.execute("userService",
+        // 사용자 — 필수 데이터(등급 기반 배송비 계산), 예외 전파
+        CompletableFuture<User> userFuture = resilientCallExecutor.executeAsync(
+                "userService",
                 () -> userService.findById(userId));
-        BigDecimal totalPrice = cartService.calculateTotal(items);
-        BigDecimal estimatedShippingFee = shippingFeeCalculator.calculateShippingFee(
-                user.getTier(), totalPrice);
-        BigDecimal estimatedFinalAmount = shippingFeeCalculator.calculateFinalAmount(
-                totalPrice, BigDecimal.ZERO, estimatedShippingFee);
 
-        // [Resilience4j] 쿠폰 서비스 호출 — Timeout(3s) + CircuitBreaker + 폴백 적용.
-        // 쿠폰 목록은 비필수(non-critical) 데이터이므로, 장애 시 빈 목록으로 폴백하여
-        // 체크아웃 페이지를 쿠폰 없이 정상 표시할 수 있다.
-        // 이를 통해 쿠폰 서비스 장애가 전체 체크아웃 플로우를 중단시키지 않는다.
-        List<UserCoupon> availableCoupons = resilientCallExecutor.executeWithFallback(
+        // 쿠폰 — 비필수 데이터, 장애 시 빈 목록 폴백
+        CompletableFuture<List<UserCoupon>> couponFuture = resilientCallExecutor.executeAsyncWithFallback(
                 "couponService",
                 () -> couponService.getAvailableCoupons(userId),
                 ex -> {
@@ -120,6 +116,28 @@ public class CheckoutPreviewService {
                             userId, ex.getMessage());
                     return Collections.emptyList();
                 });
+
+        // 3개 호출을 병렬 대기 — 필수 호출 실패 시 CompletionException 전파
+        try {
+            CompletableFuture.allOf(cartFuture, userFuture, couponFuture).join();
+        } catch (CompletionException e) {
+            Throwable cause = e.getCause();
+            throw cause instanceof RuntimeException re ? re : new RuntimeException(cause);
+        }
+
+        List<Cart> items = cartFuture.join();
+        if (items.isEmpty()) {
+            return null;
+        }
+
+        User user = userFuture.join();
+        BigDecimal totalPrice = cartService.calculateTotal(items);
+        BigDecimal estimatedShippingFee = shippingFeeCalculator.calculateShippingFee(
+                user.getTier(), totalPrice);
+        BigDecimal estimatedFinalAmount = shippingFeeCalculator.calculateFinalAmount(
+                totalPrice, BigDecimal.ZERO, estimatedShippingFee);
+
+        List<UserCoupon> availableCoupons = couponFuture.join();
         Map<Long, String> couponDisplayNames = buildCouponDisplayNames(availableCoupons);
 
         return new CheckoutPreview(

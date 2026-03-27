@@ -26,6 +26,7 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
@@ -63,6 +64,12 @@ class CheckoutPreviewServiceUnitTest {
                 .thenAnswer(inv -> ((Supplier<?>) inv.getArgument(1)).get());
         lenient().when(resilientCallExecutor.executeWithFallback(anyString(), any(Supplier.class), any(Function.class)))
                 .thenAnswer(inv -> ((Supplier<?>) inv.getArgument(1)).get());
+
+        // [Phase 20] 비동기 병렬 호출 패스스루: CompletableFuture.completedFuture()로 즉시 완료.
+        lenient().when(resilientCallExecutor.executeAsync(anyString(), any(Supplier.class)))
+                .thenAnswer(inv -> CompletableFuture.completedFuture(((Supplier<?>) inv.getArgument(1)).get()));
+        lenient().when(resilientCallExecutor.executeAsyncWithFallback(anyString(), any(Supplier.class), any(Function.class)))
+                .thenAnswer(inv -> CompletableFuture.completedFuture(((Supplier<?>) inv.getArgument(1)).get()));
 
         service = new CheckoutPreviewService(cartService, userService, couponService,
                 shippingFeeCalculator, resilientCallExecutor);
@@ -112,15 +119,16 @@ class CheckoutPreviewServiceUnitTest {
     // ── 빈 장바구니 ──────────────────────────────────────────
 
     @Test
-    @DisplayName("빈 장바구니 → null 반환, 이후 서비스 미호출")
+    @DisplayName("빈 장바구니 → null 반환")
     void emptyCart_returnsNull() {
+        // [Phase 20] 병렬 실행으로 3개 호출이 동시에 발생하므로,
+        // 빈 장바구니에서도 user/coupon 호출은 이미 진행된다.
+        // 결과가 사용되지 않을 뿐 호출 자체는 발생한다.
         when(cartService.getSelectedCartItems(USER_ID, null)).thenReturn(new ArrayList<>());
 
         CheckoutPreview result = service.getPreview(USER_ID, null);
 
         assertThat(result).isNull();
-        verify(userService, never()).findById(anyLong());
-        verify(couponService, never()).getAvailableCoupons(anyLong());
     }
 
     // ── 정상 프리뷰 조합 ─────────────────────────────────────

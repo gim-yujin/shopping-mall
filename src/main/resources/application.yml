@@ -1,4 +1,14 @@
 spring:
+  threads:
+    virtual:
+      # [Phase 20 성능] Java 21 Virtual Threads 활성화.
+      # 문제: Tomcat 기본 스레드 풀(200개 플랫폼 스레드)은 I/O 대기(DB 쿼리, 외부 호출) 시
+      # 스레드가 블로킹되어 동시 요청 처리 용량이 스레드 수에 제한된다.
+      # 해결: 가상 스레드를 활성화하면 요청당 경량 가상 스레드를 생성하여
+      # I/O 대기 시 캐리어 스레드를 반환하고, 수만 개의 동시 요청을 처리할 수 있다.
+      # 주의: AsyncConfig의 플랫폼 스레드 풀(asyncExecutor, orderPostProcessExecutor)은
+      # 격리된 비동기 작업 전용이므로 그대로 유지한다.
+      enabled: true
   application:
     name: shopping-mall
 
