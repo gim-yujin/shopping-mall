@@ -1,9 +1,11 @@
 package com.shop.global.metrics;
 
 import com.shop.domain.search.service.SearchLogBatchAccumulator;
+import com.shop.domain.search.service.SearchLogWalManager;
 import io.micrometer.core.instrument.Gauge;
 import io.micrometer.core.instrument.MeterRegistry;
 import io.micrometer.core.instrument.binder.MeterBinder;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 /**
@@ -23,12 +25,15 @@ import org.springframework.stereotype.Component;
  *   <tr><td>shop.search.log.flushed.total</td><td>Gauge</td><td>누적 DB 저장 건수</td></tr>
  *   <tr><td>shop.search.log.dropped.total</td><td>Gauge</td><td>누적 폐기 건수 (오버플로우 + 저장 실패)</td></tr>
  *   <tr><td>shop.search.log.flush.count</td><td>Gauge</td><td>누적 플러시 횟수</td></tr>
+ *   <tr><td>shop.search.log.wal.bytes.written</td><td>Gauge</td><td>[Phase 20] WAL 누적 기록 바이트</td></tr>
+ *   <tr><td>shop.search.log.wal.recovered.count</td><td>Gauge</td><td>[Phase 20] 기동 시 WAL 복구 건수</td></tr>
  * </table>
  *
  * <p>알림 기준 예시:</p>
  * <ul>
  *   <li>{@code shop.search.log.buffer.fill.ratio > 0.8}: 버퍼 포화 임박 — batch-size 또는 flush-interval 조정 필요</li>
  *   <li>{@code increase(shop.search.log.dropped.total[5m]) > 0}: 로그 유실 발생 — 원인 조사 필요</li>
+ *   <li>{@code shop.search.log.wal.recovered.count > 0}: 이전 프로세스 비정상 종료로 WAL 복구 발생</li>
  * </ul>
  */
 @Component
@@ -36,8 +41,14 @@ public class SearchLogBatchMeterBinder implements MeterBinder {
 
     private final SearchLogBatchAccumulator accumulator;
 
-    public SearchLogBatchMeterBinder(SearchLogBatchAccumulator accumulator) {
+    // [Phase 20] WAL 관리자 — null이면 WAL 비활성이므로 WAL 메트릭을 등록하지 않는다.
+    private final SearchLogWalManager walManager;
+
+    public SearchLogBatchMeterBinder(
+            SearchLogBatchAccumulator accumulator,
+            @Autowired(required = false) SearchLogWalManager walManager) {
         this.accumulator = accumulator;
+        this.walManager = walManager;
     }
 
     @Override
@@ -78,5 +89,18 @@ public class SearchLogBatchMeterBinder implements MeterBinder {
                         a -> (double) a.getFlushCount())
                 .description("검색 로그 배치 플러시 횟수")
                 .register(registry);
+
+        // ── [Phase 20] WAL 메트릭 (WAL 활성 시에만 등록) ──
+        if (walManager != null) {
+            Gauge.builder("shop.search.log.wal.bytes.written", walManager,
+                            w -> (double) w.getWalBytesWritten())
+                    .description("검색 로그 WAL 누적 기록 바이트")
+                    .register(registry);
+
+            Gauge.builder("shop.search.log.wal.recovered.count", walManager,
+                            w -> (double) w.getRecoveredCount())
+                    .description("기동 시 WAL에서 복구된 검색 로그 건수")
+                    .register(registry);
+        }
     }
 }

@@ -14,3 +14,5 @@ optimization/
 .env
 # Local compressed files
 *.zip
+# WAL data directory (runtime-generated, not source)
+data/

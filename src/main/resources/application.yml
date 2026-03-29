@@ -358,3 +358,10 @@ app:
       flush-interval-ms: 5000      # 배치 플러시 주기 (밀리초) — 5초마다 버퍼의 로그를 DB에 저장
       batch-size: 500              # 한 번의 플러시에서 처리할 최대 건수
       max-buffer-size: 10000       # 버퍼 최대 크기 — 초과 시 새 로그 폐기 (통계 목적이므로 유실 허용)
+    # [Phase 20] WAL(Write-Ahead Log) 내구성 설정
+    # 프로세스 비정상 종료(kill -9, OOM Killer) 시 인메모리 버퍼 유실을 방지한다.
+    # 활성화하면 add() 시 디스크에 먼저 기록하고, 기동 시 잔존 세그먼트를 DB로 복구한다.
+    wal:
+      enabled: true                  # WAL 활성화 여부 (false면 기존 인메모리 전용 동작)
+      dir: ./data/wal/search-log     # WAL 세그먼트 파일 저장 디렉터리
+      sync-on-append: false          # true: 매 append 후 flush (내구성 우선), false: OS 버퍼링 (처리량 우선)

@@ -113,7 +113,7 @@ class MetricsBranchCoverageTest {
             when(accumulator.getFlushCount()).thenReturn(100L);
 
             MeterRegistry registry = new SimpleMeterRegistry();
-            SearchLogBatchMeterBinder binder = new SearchLogBatchMeterBinder(accumulator);
+            SearchLogBatchMeterBinder binder = new SearchLogBatchMeterBinder(accumulator, null);
 
             // when: Micrometer에 바인딩
             binder.bindTo(registry);
@@ -146,7 +146,7 @@ class MetricsBranchCoverageTest {
             org.mockito.Mockito.lenient().when(accumulator.getBufferSize()).thenReturn(0);
 
             MeterRegistry registry = new SimpleMeterRegistry();
-            SearchLogBatchMeterBinder binder = new SearchLogBatchMeterBinder(accumulator);
+            SearchLogBatchMeterBinder binder = new SearchLogBatchMeterBinder(accumulator, null);
             binder.bindTo(registry);
 
             // then: maxBufferSize > 0 조건 false → 0.0 반환 (0 나누기 방지)
