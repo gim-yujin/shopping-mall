@@ -26,7 +26,6 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
 import java.util.function.Function;
 import java.util.function.Supplier;
 
@@ -60,16 +59,13 @@ class CheckoutPreviewServiceUnitTest {
         // supplier를 그대로 실행하여 기존 비즈니스 로직 테스트에 영향을 주지 않는다.
         // lenient(): 빈 장바구니 테스트 등 일부 경로에서 호출되지 않을 수 있으므로
         // Mockito strict stubbing 예외를 방지한다.
+        //
+        // [Structured Concurrency] StructuredTaskScope.fork()가 가상 스레드에서
+        // execute()/executeWithFallback()을 호출하므로, 동기 패스스루 mock만 필요하다.
         lenient().when(resilientCallExecutor.execute(anyString(), any(Supplier.class)))
                 .thenAnswer(inv -> ((Supplier<?>) inv.getArgument(1)).get());
         lenient().when(resilientCallExecutor.executeWithFallback(anyString(), any(Supplier.class), any(Function.class)))
                 .thenAnswer(inv -> ((Supplier<?>) inv.getArgument(1)).get());
-
-        // [Phase 20] 비동기 병렬 호출 패스스루: CompletableFuture.completedFuture()로 즉시 완료.
-        lenient().when(resilientCallExecutor.executeAsync(anyString(), any(Supplier.class)))
-                .thenAnswer(inv -> CompletableFuture.completedFuture(((Supplier<?>) inv.getArgument(1)).get()));
-        lenient().when(resilientCallExecutor.executeAsyncWithFallback(anyString(), any(Supplier.class), any(Function.class)))
-                .thenAnswer(inv -> CompletableFuture.completedFuture(((Supplier<?>) inv.getArgument(1)).get()));
 
         service = new CheckoutPreviewService(cartService, userService, couponService,
                 shippingFeeCalculator, resilientCallExecutor);
@@ -121,7 +117,7 @@ class CheckoutPreviewServiceUnitTest {
     @Test
     @DisplayName("빈 장바구니 → null 반환")
     void emptyCart_returnsNull() {
-        // [Phase 20] 병렬 실행으로 3개 호출이 동시에 발생하므로,
+        // [Structured Concurrency] 3개 작업이 scope.fork()로 병렬 시작되므로,
         // 빈 장바구니에서도 user/coupon 호출은 이미 진행된다.
         // 결과가 사용되지 않을 뿐 호출 자체는 발생한다.
         when(cartService.getSelectedCartItems(USER_ID, null)).thenReturn(new ArrayList<>());

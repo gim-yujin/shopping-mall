@@ -10,6 +10,7 @@ import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
 
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.StructuredTaskScope;
 
 /**
  * [Phase 6] 주문 후처리 비동기 이벤트 리스너.
@@ -65,33 +66,45 @@ public class OrderPostProcessingListener {
      */
     @Async("orderPostProcessExecutor")
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    @SuppressWarnings("preview")
     public CompletableFuture<Void> handleOrderCompleted(OrderCompletedEvent event) {
         log.info("주문 후처리 시작 - orderId={}, userId={}", event.orderId(), event.userId());
 
-        // [Phase 20] 등급 재계산과 알림 발송을 병렬 실행하여 후처리 시간을 단축한다.
-        // 기존: 등급 재계산(~100ms) → 알림 발송(~50ms) = 순차 ~150ms
-        // 개선: max(등급 재계산, 알림 발송) = 병렬 ~100ms
-        // 각 작업은 독립적이며, 개별 try-catch로 실패가 격리된다.
-        CompletableFuture<Void> tierFuture = CompletableFuture.runAsync(() -> {
-            try {
-                tierRecalculationService.recalculateTier(event.userId());
-            } catch (Exception e) {
-                log.error("주문 후처리 등급 재계산 실패 - orderId={}, userId={}: {}",
-                        event.orderId(), event.userId(), e.getMessage(), e);
-            }
-        });
+        // [Structured Concurrency] 등급 재계산과 알림 발송을 StructuredTaskScope로 병렬 실행한다.
+        //
+        // CompletableFuture.runAsync() 대비 개선점:
+        // 1. 구조적 수명 보장: scope 종료 시 모든 가상 스레드가 정리되어 누수가 없다.
+        //    기존 runAsync()는 ForkJoinPool에 위임하여 스레드 수명 추적이 불가했다.
+        // 2. 스레드 계층: 가상 스레드가 scope의 자식으로 추적되어 디버깅이 용이하다.
+        // 3. 개별 try-catch로 실패 격리를 유지한다 (scope 관점에서 모든 작업이 성공).
+        try (var scope = new StructuredTaskScope<Object>()) {
+            scope.fork(() -> {
+                try {
+                    tierRecalculationService.recalculateTier(event.userId());
+                } catch (Exception e) {
+                    log.error("주문 후처리 등급 재계산 실패 - orderId={}, userId={}: {}",
+                            event.orderId(), event.userId(), e.getMessage(), e);
+                }
+                return null;
+            });
 
-        CompletableFuture<Void> notificationFuture = CompletableFuture.runAsync(() -> {
-            try {
-                notificationService.sendOrderConfirmation(
-                        event.orderId(), event.userId(), event.finalAmount());
-            } catch (Exception e) {
-                log.error("주문 후처리 알림 발송 실패 - orderId={}, userId={}: {}",
-                        event.orderId(), event.userId(), e.getMessage(), e);
-            }
-        });
+            scope.fork(() -> {
+                try {
+                    notificationService.sendOrderConfirmation(
+                            event.orderId(), event.userId(), event.finalAmount());
+                } catch (Exception e) {
+                    log.error("주문 후처리 알림 발송 실패 - orderId={}, userId={}: {}",
+                            event.orderId(), event.userId(), e.getMessage(), e);
+                }
+                return null;
+            });
 
-        CompletableFuture.allOf(tierFuture, notificationFuture).join();
+            scope.join();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            log.error("주문 후처리 인터럽트 - orderId={}", event.orderId(), e);
+        }
+
         return CompletableFuture.completedFuture(null);
     }
 
@@ -106,29 +119,38 @@ public class OrderPostProcessingListener {
      */
     @Async("orderPostProcessExecutor")
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    @SuppressWarnings("preview")
     public CompletableFuture<Void> handleOrderCancelled(OrderCancelledEvent event) {
         log.info("취소 후처리 시작 - orderId={}, userId={}", event.orderId(), event.userId());
 
-        CompletableFuture<Void> tierFuture = CompletableFuture.runAsync(() -> {
-            try {
-                tierRecalculationService.recalculateTier(event.userId());
-            } catch (Exception e) {
-                log.error("취소 후처리 등급 재계산 실패 - orderId={}, userId={}: {}",
-                        event.orderId(), event.userId(), e.getMessage(), e);
-            }
-        });
+        try (var scope = new StructuredTaskScope<Object>()) {
+            scope.fork(() -> {
+                try {
+                    tierRecalculationService.recalculateTier(event.userId());
+                } catch (Exception e) {
+                    log.error("취소 후처리 등급 재계산 실패 - orderId={}, userId={}: {}",
+                            event.orderId(), event.userId(), e.getMessage(), e);
+                }
+                return null;
+            });
 
-        CompletableFuture<Void> notificationFuture = CompletableFuture.runAsync(() -> {
-            try {
-                notificationService.sendCancellationNotice(
-                        event.orderId(), event.userId(), event.refundedAmount());
-            } catch (Exception e) {
-                log.error("취소 후처리 알림 발송 실패 - orderId={}, userId={}: {}",
-                        event.orderId(), event.userId(), e.getMessage(), e);
-            }
-        });
+            scope.fork(() -> {
+                try {
+                    notificationService.sendCancellationNotice(
+                            event.orderId(), event.userId(), event.refundedAmount());
+                } catch (Exception e) {
+                    log.error("취소 후처리 알림 발송 실패 - orderId={}, userId={}: {}",
+                            event.orderId(), event.userId(), e.getMessage(), e);
+                }
+                return null;
+            });
 
-        CompletableFuture.allOf(tierFuture, notificationFuture).join();
+            scope.join();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            log.error("취소 후처리 인터럽트 - orderId={}", event.orderId(), e);
+        }
+
         return CompletableFuture.completedFuture(null);
     }
 }

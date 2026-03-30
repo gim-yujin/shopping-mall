@@ -8,6 +8,7 @@ import com.shop.domain.coupon.service.CouponService;
 import com.shop.domain.order.dto.CheckoutPreview;
 import com.shop.domain.user.entity.User;
 import com.shop.domain.user.service.UserService;
+import com.shop.global.concurrency.StructuredConcurrencyUtils;
 import com.shop.global.resilience.ResilientCallExecutor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,8 +22,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.CompletionException;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.StructuredTaskScope;
+import java.util.concurrent.StructuredTaskScope.Subtask;
 
 /**
  * [Phase 3 코드 품질] 체크아웃 페이지 프리뷰 데이터를 조합하는 서비스.
@@ -89,55 +91,69 @@ public class CheckoutPreviewService {
      * @param cartItemIds 선택 주문 시 장바구니 항목 ID 목록 (null이면 전체 장바구니)
      * @return 체크아웃 프리뷰 데이터, 장바구니가 비어있으면 null
      */
+    @SuppressWarnings("preview")
     public CheckoutPreview getPreview(Long userId, List<Long> cartItemIds) {
-        // [Phase 20] 3개 크로스 도메인 호출을 병렬 실행하여 응답 지연을 단축한다.
-        // 기존: cart(3s) → user(2s) → coupon(3s) = 최대 8s 순차 실행
-        // 개선: max(cart 3s, user 2s, coupon 3s) = 최대 3s 병렬 실행
+        // [Structured Concurrency] 3개 크로스 도메인 호출을 StructuredTaskScope로 병렬 실행한다.
         //
-        // 각 호출은 독립적이며(userId만 필요), Resilience4j Timeout + CircuitBreaker가
-        // 개별 적용되므로 한 서비스의 지연이 다른 호출에 영향을 주지 않는다.
+        // CompletableFuture.allOf().join() 대비 개선점:
+        // 1. ShutdownOnFailure: 필수 호출(cart/user) 실패 시 나머지 작업을 즉시 취소한다.
+        //    기존에는 cart 실패 후에도 user/coupon 호출이 완료될 때까지 대기했다.
+        // 2. 구조적 수명 보장: scope 종료 시 모든 가상 스레드가 정리되어 누수가 없다.
+        // 3. 스레드 계층: fork()된 가상 스레드가 부모 scope의 자식으로 추적되어
+        //    스레드 덤프에서 관계가 명확히 보인다.
 
-        // 장바구니 — 필수 데이터, 예외 전파
-        CompletableFuture<List<Cart>> cartFuture = resilientCallExecutor.executeAsync(
-                "cartService",
-                () -> cartService.getSelectedCartItems(userId, cartItemIds));
+        List<Cart> items;
+        User user;
+        List<UserCoupon> availableCoupons;
 
-        // 사용자 — 필수 데이터(등급 기반 배송비 계산), 예외 전파
-        CompletableFuture<User> userFuture = resilientCallExecutor.executeAsync(
-                "userService",
-                () -> userService.findById(userId));
+        try (var scope = new StructuredTaskScope.ShutdownOnFailure(
+                "checkout-preview",
+                StructuredConcurrencyUtils.propagatingThreadFactory())) {
 
-        // 쿠폰 — 비필수 데이터, 장애 시 빈 목록 폴백
-        CompletableFuture<List<UserCoupon>> couponFuture = resilientCallExecutor.executeAsyncWithFallback(
-                "couponService",
-                () -> couponService.getAvailableCoupons(userId),
-                ex -> {
-                    log.warn("[CheckoutPreview] 쿠폰 서비스 장애 — 쿠폰 없이 체크아웃 진행. userId={}, error={}",
-                            userId, ex.getMessage());
-                    return Collections.emptyList();
-                });
+            // 장바구니 — 필수 데이터, 실패 시 즉시 나머지 작업 취소
+            Subtask<List<Cart>> cartTask = scope.fork(() ->
+                    resilientCallExecutor.execute("cartService",
+                            () -> cartService.getSelectedCartItems(userId, cartItemIds)));
 
-        // 3개 호출을 병렬 대기 — 필수 호출 실패 시 CompletionException 전파
-        try {
-            CompletableFuture.allOf(cartFuture, userFuture, couponFuture).join();
-        } catch (CompletionException e) {
+            // 사용자 — 필수 데이터(등급 기반 배송비 계산), 실패 시 즉시 취소
+            Subtask<User> userTask = scope.fork(() ->
+                    resilientCallExecutor.execute("userService",
+                            () -> userService.findById(userId)));
+
+            // 쿠폰 — 비필수 데이터, 장애 시 빈 목록 폴백 (scope 관점에서 항상 성공)
+            Subtask<List<UserCoupon>> couponTask = scope.fork(() ->
+                    resilientCallExecutor.executeWithFallback("couponService",
+                            () -> couponService.getAvailableCoupons(userId),
+                            ex -> {
+                                log.warn("[CheckoutPreview] 쿠폰 서비스 장애 — "
+                                                + "쿠폰 없이 체크아웃 진행. userId={}, error={}",
+                                        userId, ex.getMessage());
+                                return Collections.emptyList();
+                            }));
+
+            scope.join().throwIfFailed();
+
+            items = cartTask.get();
+            user = userTask.get();
+            availableCoupons = couponTask.get();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException("체크아웃 프리뷰 조회 중단", e);
+        } catch (ExecutionException e) {
             Throwable cause = e.getCause();
             throw cause instanceof RuntimeException re ? re : new RuntimeException(cause);
         }
 
-        List<Cart> items = cartFuture.join();
         if (items.isEmpty()) {
             return null;
         }
 
-        User user = userFuture.join();
         BigDecimal totalPrice = cartService.calculateTotal(items);
         BigDecimal estimatedShippingFee = shippingFeeCalculator.calculateShippingFee(
                 user.getTier(), totalPrice);
         BigDecimal estimatedFinalAmount = shippingFeeCalculator.calculateFinalAmount(
                 totalPrice, BigDecimal.ZERO, estimatedShippingFee);
 
-        List<UserCoupon> availableCoupons = couponFuture.join();
         Map<Long, String> couponDisplayNames = buildCouponDisplayNames(availableCoupons);
 
         return new CheckoutPreview(

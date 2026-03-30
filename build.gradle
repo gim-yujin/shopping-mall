@@ -26,6 +26,8 @@ java {
 tasks.withType(JavaCompile).configureEach {
     // 컴파일/테스트/패키징 산출물의 class file 타깃을 toolchain과 단일화한다.
     options.release = targetJavaVersion
+    // Java 21 Preview: Structured Concurrency (JEP 453) 활성화
+    options.compilerArgs += ['--enable-preview']
 }
 
 repositories {
@@ -174,6 +176,8 @@ tasks.register('printSpotbugsLauncher') {
 
 tasks.named('test') {
     useJUnitPlatform()
+    // Java 21 Preview: 테스트 JVM에서도 Structured Concurrency 활성화
+    jvmArgs += ['--enable-preview']
     // JaCoCo 에이전트를 테스트 실행 시 자동 연결하여 커버리지 데이터를 수집한다.
     finalizedBy tasks.named('jacocoTestReport')
 }
@@ -244,5 +248,5 @@ tasks.named('check') {
 }
 
 tasks.withType(JavaExec).configureEach {
-    jvmArgs += ["-XX:ReservedCodeCacheSize=512m"]
+    jvmArgs += ["-XX:ReservedCodeCacheSize=512m", "--enable-preview"]
 }
