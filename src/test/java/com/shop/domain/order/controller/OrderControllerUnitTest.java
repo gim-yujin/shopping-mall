@@ -34,6 +34,7 @@ import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.validation.beanvalidation.LocalValidatorFactoryBean;
 
@@ -45,7 +46,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
-import static org.hamcrest.Matchers.*;
+import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
@@ -276,7 +277,7 @@ class OrderControllerUnitTest {
             when(checkoutPreviewService.getPreview(USER_ID, null)).thenReturn(preview);
 
             // when & then: checkout 뷰와 주문에 필요한 모든 모델 속성이 존재하는지 검증
-            mockMvc.perform(get("/orders/checkout"))
+            MvcResult result = mockMvc.perform(get("/orders/checkout"))
                     .andExpect(status().isOk())
                     .andExpect(view().name("order/checkout"))
                     .andExpect(model().attributeExists(
@@ -287,9 +288,11 @@ class OrderControllerUnitTest {
                     .andExpect(model().attribute("totalPrice", preview.totalPrice()))
                     .andExpect(model().attribute("estimatedShippingFee", preview.estimatedShippingFee()))
                     .andExpect(model().attribute("estimatedFinalAmount", preview.estimatedFinalAmount()))
-                    // paymentMethods에 PaymentMethod enum 전체가 포함되어야 한다
-                    .andExpect(model().attribute("paymentMethods",
-                            hasSize(PaymentMethod.values().length)));
+                    .andReturn();
+
+            // paymentMethods에 PaymentMethod enum 전체가 포함되어야 한다
+            assertThat((java.util.Collection<?>) result.getModelAndView().getModel().get("paymentMethods"))
+                    .hasSize(PaymentMethod.values().length);
         }
 
         @Test
@@ -817,12 +820,17 @@ class OrderControllerUnitTest {
             when(checkoutPreviewService.getPreview(USER_ID, null)).thenReturn(preview);
 
             // when & then: couponDisplayNames 맵이 모델에 그대로 바인딩되는지 검증
-            mockMvc.perform(get("/orders/checkout"))
+            MvcResult result = mockMvc.perform(get("/orders/checkout"))
                     .andExpect(status().isOk())
-                    .andExpect(model().attribute("couponDisplayNames",
-                            hasEntry(equalTo(10L), containsString("10%"))))
-                    .andExpect(model().attribute("couponDisplayNames",
-                            hasEntry(equalTo(11L), containsString("3,000원"))));
+                    .andReturn();
+
+            @SuppressWarnings("unchecked")
+            Map<Long, String> actualDisplayNames = (Map<Long, String>)
+                    result.getModelAndView().getModel().get("couponDisplayNames");
+            assertThat(actualDisplayNames).containsKey(10L);
+            assertThat(actualDisplayNames.get(10L)).contains("10%");
+            assertThat(actualDisplayNames).containsKey(11L);
+            assertThat(actualDisplayNames.get(11L)).contains("3,000원");
         }
 
         @Test
@@ -833,9 +841,14 @@ class OrderControllerUnitTest {
             when(checkoutPreviewService.getPreview(USER_ID, null)).thenReturn(preview);
 
             // when & then: 빈 맵
-            mockMvc.perform(get("/orders/checkout"))
+            MvcResult result = mockMvc.perform(get("/orders/checkout"))
                     .andExpect(status().isOk())
-                    .andExpect(model().attribute("couponDisplayNames", anEmptyMap()));
+                    .andReturn();
+
+            @SuppressWarnings("unchecked")
+            Map<Long, String> actualDisplayNames = (Map<Long, String>)
+                    result.getModelAndView().getModel().get("couponDisplayNames");
+            assertThat(actualDisplayNames).isEmpty();
         }
     }
 }

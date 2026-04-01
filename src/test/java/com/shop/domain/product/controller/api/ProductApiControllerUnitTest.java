@@ -22,7 +22,6 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.*;
-import static org.hamcrest.Matchers.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -101,10 +100,10 @@ class ProductApiControllerUnitTest {
         // when & then: 기본값 page=0, size=20, sort=best
         mockMvc.perform(get("/api/v1/products"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.success", is(true)))
-                .andExpect(jsonPath("$.data.content", hasSize(2)))
-                .andExpect(jsonPath("$.data.content[0].productId", is(1)))
-                .andExpect(jsonPath("$.data.content[1].productId", is(2)));
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.content.length()").value(2))
+                .andExpect(jsonPath("$.data.content[0].productId").value(1))
+                .andExpect(jsonPath("$.data.content[1].productId").value(2));
 
         verify(productQueryService).findAllSorted(0, 20, "best");
     }
@@ -122,7 +121,7 @@ class ProductApiControllerUnitTest {
                         .param("size", "10")
                         .param("sort", "price_asc"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.success", is(true)));
+                .andExpect(jsonPath("$.success").value(true));
 
         // PagingParams.normalizeProductSort("price_asc") → "price_asc" (유효한 값)
         verify(productQueryService).findAllSorted(1, 10, "price_asc");
@@ -140,10 +139,10 @@ class ProductApiControllerUnitTest {
         // when & then
         mockMvc.perform(get("/api/v1/products/10"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.success", is(true)))
-                .andExpect(jsonPath("$.data.productId", is(10)))
-                .andExpect(jsonPath("$.data.productName", is("테스트 상품")))
-                .andExpect(jsonPath("$.data.inStock", is(true)));
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.data.productId").value(10))
+                .andExpect(jsonPath("$.data.productName").value("테스트 상품"))
+                .andExpect(jsonPath("$.data.inStock").value(true));
 
         // [P0 FIX] 조회수 증가가 캐시 메서드 밖에서 매번 호출되는지 검증
         verify(viewCountService).incrementAsync(10L);
@@ -178,7 +177,7 @@ class ProductApiControllerUnitTest {
 
         mockMvc.perform(get("/api/v1/products/10"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.success", is(true)));
+                .andExpect(jsonPath("$.success").value(true));
 
         // CRITICAL 상태이므로 조회수 증가가 호출되지 않아야 함
         verify(viewCountService, never()).incrementAsync(anyLong());
@@ -200,6 +199,6 @@ class ProductApiControllerUnitTest {
         // when & then: ProductDetailResponse.from()에서 stockQuantity=0 → inStock=false
         mockMvc.perform(get("/api/v1/products/20"))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.data.inStock", is(false)));
+                .andExpect(jsonPath("$.data.inStock").value(false));
     }
 }
