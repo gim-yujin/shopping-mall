@@ -10,6 +10,7 @@
 1. [현재 최적화 현황 (강점)](#1-현재-최적화-현황-강점)
 2. [추가 최적화 가능 항목](#2-추가-최적화-가능-항목)
 3. [우선순위 매트릭스](#3-우선순위-매트릭스)
+4. [적용 완료: Before/After 벤치마크](#4-적용-완료-beforeafter-벤치마크)
 
 ---
 
@@ -301,6 +302,131 @@ WHERE r.review_id = sub.review_id AND r.helpful_count != sub.actual_count
 
 ### 조치 권장
 
-- **즉시 조치 (항목 1, 2)**: 사용자 요청 경로에서 Full Scan이 발생할 수 있는 쿼리이다. 인덱스 추가로 해결 가능하며, 기존 쿼리 변경 없이 적용할 수 있다.
+- **적용 완료 (항목 1, 2)**: 인덱스 추가로 해결. 기존 쿼리 변경 없이 적용. §4에서 Before/After 벤치마크 확인.
 - **모니터링 후 판단 (항목 3, 4)**: 배치 또는 관리자 경로이므로 실제 실행 시간을 측정한 뒤 필요 시 적용한다.
 - **현행 유지 (항목 5, 6)**: 영향이 작거나 확인 후 판단이 필요하다. EXPLAIN ANALYZE로 검증 후 결정한다.
+
+---
+
+## 4. 적용 완료: Before/After 벤치마크
+
+### 벤치마크 환경
+
+- PostgreSQL 14, search_logs 100,000건, products 5,056건
+- VACUUM ANALYZE 후 측정 (visibility map 갱신 상태)
+
+### 4-1. 항목 1: `findPopularKeywords()` — `idx_search_date_keyword` 추가
+
+**추가 인덱스**: `schema.sql`
+```sql
+CREATE INDEX idx_search_date_keyword ON search_logs(searched_at DESC, search_keyword);
+```
+
+#### Before
+
+```
+Bitmap Heap Scan on search_logs  (cost=446.80..1572.80)  (actual time=2.585..8.785 rows=21617)
+  Recheck Cond: (searched_at > (now() - '7 days'))
+  Heap Blocks: exact=741
+  Buffers: shared hit=807
+  →  Bitmap Index Scan on idx_search_date  (actual time=2.499..2.499 rows=21617)
+        Index Cond: (searched_at > (now() - '7 days'))
+        Buffers: shared hit=66
+→  HashAggregate (group: search_keyword)
+  →  Sort (key: count(*) DESC)
+    →  Limit 10
+
+Execution Time: 12.408 ms
+Buffers: shared hit=810
+```
+
+**병목**: `idx_search_date`로 날짜 범위를 필터링한 뒤 **Bitmap Heap Scan**으로 테이블 heap에 접근하여 `search_keyword`를 읽었다. heap 접근 741 블록이 I/O 비용의 대부분을 차지.
+
+#### After
+
+```
+Index Only Scan using idx_search_date_keyword on search_logs  (cost=0.42..805.42)
+                                                               (actual time=0.016..2.318 rows=21614)
+  Index Cond: (searched_at > (now() - '7 days'))
+  Heap Fetches: 0
+  Buffers: shared hit=105
+→  HashAggregate (group: search_keyword)
+  →  Sort (key: count(*) DESC)
+    →  Limit 10
+
+Execution Time: 5.125 ms
+Buffers: shared hit=105
+```
+
+**개선**: `(searched_at DESC, search_keyword)` 복합 인덱스로 **Index-Only Scan**을 달성. 테이블 heap 접근 0회 (`Heap Fetches: 0`).
+
+#### 성능 비교
+
+| 지표 | Before | After | 변화 |
+|---|---|---|---|
+| Scan 방식 | Bitmap Heap Scan | Index-Only Scan | Heap 접근 제거 |
+| Execution Time | 12.408 ms | 5.125 ms | **-59%** |
+| Buffers (shared hit) | 810 | 105 | **-87%** |
+| Heap Fetches | 741 blocks | 0 | **-100%** |
+| 쿼리 변경 | - | 불필요 | 인덱스만 추가 |
+
+---
+
+### 4-2. 항목 2: `searchByKeywordLikeFlat()` — `pg_trgm` GIN 인덱스 추가
+
+**추가 인덱스**: `schema.sql`
+```sql
+CREATE EXTENSION IF NOT EXISTS pg_trgm;
+CREATE INDEX idx_product_name_trgm ON products USING gin(LOWER(product_name) gin_trgm_ops);
+```
+
+#### Before
+
+```
+Seq Scan on products  (cost=0.00..275.12)  (actual time=0.468..4.891 rows=800)
+  Filter: (is_active AND (lower(product_name) ~~ lower(concat('%', '노트북', '%'))))
+  Rows Removed by Filter: 4256
+  Buffers: shared hit=174
+
+Execution Time: 4.935 ms
+```
+
+**병목**: B-tree 인덱스는 양방향 LIKE(`%keyword%`)를 지원하지 않아 5,056건 전체를 **Seq Scan**. `is_active` 필터와 `LOWER(LIKE)` 필터를 행마다 평가하여 4,256건을 제거.
+
+#### After
+
+```
+Bitmap Heap Scan on products  (cost=17.10..207.44)  (actual time=0.084..1.032 rows=800)
+  Recheck Cond: (lower(product_name) ~~ lower(concat('%', '노트북', '%')))
+  Filter: is_active
+  Heap Blocks: exact=87
+  Buffers: shared hit=90
+  →  Bitmap Index Scan on idx_product_name_trgm  (actual time=0.062..0.062 rows=800)
+        Index Cond: (lower(product_name) ~~ lower(concat('%', '노트북', '%')))
+        Buffers: shared hit=3
+
+Execution Time: 1.118 ms
+```
+
+**개선**: `pg_trgm` GIN 인덱스로 `LIKE '%노트북%'`을 **Bitmap Index Scan**으로 처리. trigram 매칭으로 후보 행만 선별한 뒤 heap에서 `is_active` 필터만 적용.
+
+#### 성능 비교
+
+| 지표 | Before | After | 변화 |
+|---|---|---|---|
+| Scan 방식 | Seq Scan (Full Table) | Bitmap Index Scan + Heap | 인덱스 활용 |
+| Execution Time | 4.935 ms | 1.118 ms | **-77%** |
+| Buffers (shared hit) | 174 | 90 | **-48%** |
+| Rows Removed by Filter | 4,256 | 0 (Recheck만) | **필터링 비용 제거** |
+| 쿼리 변경 | - | 불필요 | 인덱스만 추가 |
+
+### 스케일 예측
+
+현재 벤치마크는 소규모 데이터(search_logs 100K, products 5K)에서 수행되었다.
+운영 규모(search_logs 50M, products 1M)에서는 차이가 더 극적이다:
+
+| 지표 | 항목 1 (100K→50M) | 항목 2 (5K→1M) |
+|---|---|---|
+| Seq/Bitmap Heap Scan 비용 | heap 접근 블록 수가 500배 증가 → 수 초 | 전체 테이블 스캔 시간이 200배 증가 → 수 초 |
+| Index-Only/Bitmap Index Scan | 인덱스 크기만 비례 증가, heap 접근 0 | trigram 매칭으로 후보만 접근, 대부분 스킵 |
+| 예상 개선 폭 | **수 초 → 수십~수백 ms** | **수 초 → 수십 ms** |
