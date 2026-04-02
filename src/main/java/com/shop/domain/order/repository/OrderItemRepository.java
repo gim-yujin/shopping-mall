@@ -96,4 +96,16 @@ public interface OrderItemRepository extends JpaRepository<OrderItem, Long> {
      * 전체 테이블 스캔 없이 빠르게 카운트할 수 있다.</p>
      */
     long countByStatus(OrderItemStatus status);
+
+    /**
+     * 반품 대기 건수를 리터럴 조건으로 카운트한다.
+     *
+     * <p>PostgreSQL partial index {@code idx_order_items_status_return_requested}는
+     * {@code WHERE status = 'RETURN_REQUESTED'} 조건에 최적화되어 있다.
+     * 일반 파라미터 바인딩 쿼리는 generic plan에서 partial index 매칭이 불확실할 수 있으므로,
+     * 관리자 대시보드의 고정 집계 경로는 리터럴 네이티브 쿼리로 분리한다.</p>
+     */
+    @Query(value = "SELECT COUNT(*) FROM order_items WHERE status = 'RETURN_REQUESTED'",
+            nativeQuery = true)
+    long countReturnRequested();
 }

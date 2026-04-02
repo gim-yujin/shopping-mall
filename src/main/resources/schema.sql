@@ -606,6 +606,12 @@ CREATE INDEX idx_image_thumbnail ON product_images(product_id) WHERE is_thumbnai
 CREATE INDEX idx_order_user ON orders(user_id, order_date DESC);
 CREATE INDEX idx_order_status ON orders(order_status, order_date);
 CREATE INDEX idx_order_date ON orders(order_date DESC);
+-- TierScheduler 전년도 실적 집계 최적화:
+-- 취소 주문을 제외한 연간 범위 스캔에서 user_id, final_amount를 heap 접근 없이 읽는다.
+CREATE INDEX idx_order_yearly_spent_non_cancelled
+    ON orders(order_date)
+    INCLUDE (user_id, final_amount)
+    WHERE order_status <> 'CANCELLED';
 -- idx_order_number 불필요: order_number UNIQUE 제약이 자동으로 unique index 생성
 
 -- Order_Items 인덱스 ⭐️ 최적화 핵심
@@ -842,4 +848,4 @@ JOIN products p ON p.product_id = w.product_id;
 -- 이로 인해 DO $$ 블록이 여러 개의 불완전한 SQL 조각으로 분리되어
 -- PSQLException (Parser.java) 파싱 에러가 발생한다.
 -- RAISE NOTICE는 디버깅 편의용이었으므로 주석으로 대체한다.
--- 총 19개 테이블, 59개 인덱스 생성됨 (일반 56 + UNIQUE 3)
+-- 총 19개 테이블, 60개 인덱스 생성됨 (일반 57 + UNIQUE 3)

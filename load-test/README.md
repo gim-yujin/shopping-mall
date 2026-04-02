@@ -244,3 +244,46 @@ psql -U postgres -d shopping_mall_db -c "
 
 각 단계의 결과를 기록하고, 병목이 발견되면 개선 후 다시 측정하여 **Before/After 비교**를 만드세요.
 이 비교 데이터가 포트폴리오에서 가장 강력한 근거가 됩니다.
+
+---
+
+## 8. EXPLAIN ANALYZE 벤치마크
+
+Execution Plan 최적화 전후를 재현하려면 아래 스크립트를 사용합니다.
+
+- `load-test/setup-explain-benchmark.sql`
+  - 사용자 30,000명, 주문 600,000건, 주문아이템 1,800,000건 데이터를 생성합니다.
+- `load-test/explain-benchmark-before.sql`
+  - 최적화 전 실행 계획과 실행 시간을 측정합니다.
+- `load-test/explain-benchmark-after.sql`
+  - 최적화 후 실행 계획과 실행 시간을 측정합니다.
+- `load-test/run-explain-benchmark.sh`
+  - 데이터 생성 → before 측정 → 인덱스 적용 → after 측정을 한 번에 수행합니다.
+
+주의:
+- 이 스크립트는 대상 DB의 주요 테이블을 `TRUNCATE ... RESTART IDENTITY CASCADE`로 초기화합니다.
+- 반드시 전용 벤치마크 DB 또는 임시 DB에서만 실행하세요.
+
+예시:
+
+```bash
+PGHOST=/tmp/shopping-mall-explain-run \
+PGPORT=55432 \
+PGUSER=postgres \
+PGDATABASE=shopping_mall_explain \
+PSQL_BIN=/usr/lib/postgresql/16/bin/psql \
+OUTPUT_DIR=/tmp/shopping-mall-explain-run/results \
+BENCHMARK_YEAR=2025 \
+./load-test/run-explain-benchmark.sh
+```
+
+생성 결과:
+- `setup.log`: 데이터셋 크기 확인
+- `before.txt`: 최적화 전 `EXPLAIN (ANALYZE, BUFFERS)`
+- `after.txt`: 최적화 후 `EXPLAIN (ANALYZE, BUFFERS)`
+
+현재 기준 측정 결과 요약:
+- `findYearlySpentByUser()`: `108.014 ms -> 40.589 ms` (`-62%`)
+- `countReturnRequested()`: `83.255 ms -> 1.921 ms` (`-97.7%`)
+
+상세 분석은 `docs/analysis-execution-plan-optimization.md`를 기준 문서로 사용하세요.

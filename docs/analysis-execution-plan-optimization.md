@@ -160,23 +160,27 @@ Index Scan on idx_order_date (range: startDate..endDate)
 
 **완화 요소**: `TierScheduler`에서 연 1회(매년 1월 1일) 배치로 실행되며, 실시간 사용자 요청 경로가 아니다.
 
-**개선 방안**: 커버링 인덱스를 추가하면 Index-Only Scan이 가능하다.
+**개선 방안**: 취소 주문을 제외한 partial covering index를 추가하면 Index-Only Scan이 가능하다.
 
 ```sql
-CREATE INDEX idx_order_yearly_agg
-    ON orders(order_date, order_status)
-    INCLUDE (user_id, final_amount);
+CREATE INDEX idx_order_yearly_spent_non_cancelled
+    ON orders(order_date)
+    INCLUDE (user_id, final_amount)
+    WHERE order_status <> 'CANCELLED';
 ```
 
-이 인덱스로 `order_date` range scan → `order_status` 필터 → `user_id`, `final_amount`를 인덱스에서 직접 읽어 heap 접근 없이 집계할 수 있다.
-다만 1년치가 테이블의 대부분이면 플래너가 Index-Only Scan 대신 Seq Scan을 선택할 수 있으므로, 효과는 데이터 분포에 따라 다르다. 연 1회 배치이므로 우선순위는 낮다.
+이 인덱스로 `order_date` range scan → `user_id`, `final_amount`를 인덱스에서 직접 읽어 heap 접근 없이 집계할 수 있다.
+`order_status <> 'CANCELLED'`는 partial predicate로 인덱스 자체에 흡수되므로, 기존 `idx_order_date` 대비 인덱스 크기를 줄이면서 필터 비용도 제거한다.
+
+**2026-04-02 적용 결과**: `idx_order_yearly_spent_non_cancelled`를 추가했고, 600K orders 벤치마크에서
+`Bitmap Heap Scan → Index Only Scan`, `108.014 ms → 40.589 ms`로 개선됐다. 상세 수치는 §5-3 참고.
 
 ---
 
 ### 2-4. `v_order_list` 뷰 — 상관 서브쿼리 2개
 
 **심각도**: MEDIUM
-**파일**: `schema.sql:744-763`
+**파일**: `schema.sql:773-792`
 
 ```sql
 (SELECT COUNT(*) FROM order_items oi WHERE oi.order_id = o.order_id) AS item_count,
@@ -212,7 +216,7 @@ CREATE INDEX idx_order_yearly_agg
 long countByStatus(OrderItemStatus status);
 ```
 
-**스키마**: `schema.sql:612-614`
+**스키마**: `schema.sql:618-630`
 ```sql
 CREATE INDEX idx_order_items_status_return_requested
     ON order_items (status)
@@ -227,13 +231,18 @@ CREATE INDEX idx_order_items_status_return_requested
 EXPLAIN ANALYZE SELECT COUNT(*) FROM order_items WHERE status = 'RETURN_REQUESTED';
 ```
 
-**개선 방안**: Partial Index가 활용되지 않는다면, `@Query`로 네이티브 쿼리를 작성하여 리터럴 값을 직접 전달한다.
+**개선 방안**: Partial Index가 generic plan에서 활용되지 않는다면, `@Query`로 네이티브 쿼리를 작성하여 리터럴 값을 직접 전달한다.
 
 ```java
 @Query(value = "SELECT COUNT(*) FROM order_items WHERE status = 'RETURN_REQUESTED'",
        nativeQuery = true)
 long countReturnRequested();
 ```
+
+**2026-04-02 적용 결과**: `OrderQueryService.getPendingReturnCount()`를
+`countByStatus(RETURN_REQUESTED)`에서 `countReturnRequested()`로 전환했다.
+1.8M order_items 벤치마크에서 `Parallel Seq Scan → Index Only Scan`,
+`83.255 ms → 1.921 ms`로 개선됐다. 상세 수치는 §5-4 참고.
 
 ---
 
@@ -296,29 +305,34 @@ WHERE r.review_id = sub.review_id AND r.helpful_count != sub.actual_count
 |---|---|---|---|---|---|---|
 | 1 | `findPopularKeywords()` GROUP BY | `SearchLogRepository.java:13` | HIGH | 캐시 미스 시 | 사용자 검색 페이지 | 인덱스 1개 추가 |
 | 2 | `searchByKeywordLikeFlat()` LIKE `%keyword%` | `ProductRepository.java:194` | HIGH | FTS 폴백 시 | 사용자 검색 결과 | pg_trgm + GIN 인덱스 |
-| 3 | `findYearlySpentByUser()` 대량 GROUP BY | `OrderRepository.java:63` | MEDIUM | 연 1회 배치 | TierScheduler | 커버링 인덱스 추가 |
-| 4 | `v_order_list` 상관 서브쿼리 | `schema.sql:759-762` | MEDIUM | 관리자 조회 시 | 관리자 주문 목록 | 현행 유지 가능 |
-| 5 | `countByStatus()` Partial Index 매칭 | `OrderItemRepository.java:98` | LOW | 대시보드 조회 시 | 관리자 대시보드 | EXPLAIN 확인 후 판단 |
+| 3 | `findYearlySpentByUser()` 대량 GROUP BY | `OrderRepository.java:63` | MEDIUM | 연 1회 배치 | TierScheduler | partial covering index 추가 |
+| 4 | `v_order_list` 상관 서브쿼리 | `schema.sql:788-791` | MEDIUM | 관리자 조회 시 | 관리자 주문 목록 | 현행 유지 가능 |
+| 5 | `countByStatus()` Partial Index 매칭 | `OrderItemRepository.java:98` | LOW | 대시보드 조회 시 | 관리자 대시보드 | 리터럴 네이티브 쿼리 분리 |
 | 6 | `syncAllHelpfulCounts()` 전체 GROUP BY | `ReviewRepository.java:80` | LOW | 야간 배치 | ReviewHelpfulSyncScheduler | 현행 유지 가능 |
 
 ### 조치 권장
 
-- **적용 완료 (항목 1, 2)**: 인덱스 추가로 해결. 기존 쿼리 변경 없이 적용. 코드 변경은 §4, 벤치마크 결과는 §5 참고.
-- **모니터링 후 판단 (항목 3, 4)**: 배치 또는 관리자 경로이므로 실제 실행 시간을 측정한 뒤 필요 시 적용한다.
-- **현행 유지 (항목 5, 6)**: 영향이 작거나 확인 후 판단이 필요하다. EXPLAIN ANALYZE로 검증 후 결정한다.
+- **적용 완료 (항목 1, 2, 3, 5)**: 인덱스/쿼리 경로 보강으로 해결. 코드 변경은 §4, 벤치마크 결과는 §5 참고.
+- **모니터링 후 판단 (항목 4)**: 관리자 조회 경로이므로 실제 실행 시간을 측정한 뒤 필요 시 적용한다.
+- **현행 유지 (항목 6)**: 영향이 작고 배치 경로라 현행 유지 가능하다.
 
 ---
 
 ## 4. 적용 완료: 코드 변경사항
 
-항목 1, 2는 **기존 쿼리(Repository 코드)를 변경하지 않고** `schema.sql`에 인덱스만 추가하여 해결하였다.
-인덱스 추가 후 PostgreSQL 플래너가 자동으로 최적 실행 계획을 선택한다.
+항목 1, 2, 3은 `schema.sql`/migration에 인덱스를 추가하여 해결했고,
+항목 5는 Repository/Service 경로를 리터럴 네이티브 쿼리로 분리하여 해결하였다.
 
 ### 변경 파일
 
 | 파일 | 변경 내용 |
 |---|---|
-| `src/main/resources/schema.sql` | 인덱스 2개 + extension 1개 추가 (아래 diff 참고) |
+| `src/main/resources/schema.sql` | 인덱스 3개 + extension 1개 반영 |
+| `src/main/resources/migration/V19__optimize_yearly_spent_and_return_count.sql` | 연간 실적 집계용 partial covering index 추가 |
+| `src/main/java/com/shop/domain/order/repository/OrderItemRepository.java` | `countReturnRequested()` 네이티브 쿼리 추가 |
+| `src/main/java/com/shop/domain/order/service/OrderQueryService.java` | 관리자 대시보드 반품 건수 경로를 리터럴 쿼리로 전환 |
+| `src/test/java/com/shop/domain/order/service/OrderQueryServiceReturnTest.java` | 새 카운트 경로에 맞춰 테스트 갱신 |
+| `load-test/setup-explain-benchmark.sql` 외 3개 | EXPLAIN ANALYZE 재현 데이터/측정 스크립트 추가 |
 
 ### 4-1. 항목 1: `idx_search_date_keyword` 추가
 
@@ -374,24 +388,75 @@ WHERE r.review_id = sub.review_id AND r.helpful_count != sub.actual_count
 - `gin_trgm_ops` operator class: trigram 기반 유사도 연산과 LIKE/ILIKE 패턴 매칭을 지원.
 - 기존 `idx_product_name_gin`(tsvector FTS)과 역할이 다르다. FTS는 단어 단위 매칭, trigram은 부분 문자열 매칭.
 
+### 4-3. 항목 3: `idx_order_yearly_spent_non_cancelled` 추가
+
+**위치**: `schema.sql` — Orders 인덱스 블록
+
+```diff
+  CREATE INDEX idx_order_user ON orders(user_id, order_date DESC);
+  CREATE INDEX idx_order_status ON orders(order_status, order_date);
+  CREATE INDEX idx_order_date ON orders(order_date DESC);
+
++ -- TierScheduler 전년도 실적 집계 최적화:
++ -- 취소 주문을 제외한 연간 범위 스캔에서 user_id, final_amount를 heap 접근 없이 읽는다.
++ CREATE INDEX idx_order_yearly_spent_non_cancelled
++     ON orders(order_date)
++     INCLUDE (user_id, final_amount)
++     WHERE order_status <> 'CANCELLED';
+```
+
+**설계 근거**:
+- 쿼리 predicate가 항상 `order_status <> 'CANCELLED'`이므로 partial index로 인덱스 크기를 줄일 수 있다.
+- 선행 컬럼 `order_date`는 연간 범위 조건의 range scan에 사용된다.
+- `INCLUDE (user_id, final_amount)`로 집계에 필요한 컬럼을 heap 접근 없이 읽어 Index-Only Scan을 유도한다.
+- 연 1회 배치 경로이지만, 사용자 수가 많아질수록 heap 접근 제거 효과가 누적된다.
+
+### 4-4. 항목 5: `countReturnRequested()` 네이티브 쿼리 분리
+
+**위치**: `OrderItemRepository.java`, `OrderQueryService.java`
+
+```diff
+- long countByStatus(OrderItemStatus status);
++ long countByStatus(OrderItemStatus status);
++
++ @Query(value = "SELECT COUNT(*) FROM order_items WHERE status = 'RETURN_REQUESTED'",
++        nativeQuery = true)
++ long countReturnRequested();
+```
+
+```diff
+- return orderItemRepository.countByStatus(OrderItemStatus.RETURN_REQUESTED);
++ return orderItemRepository.countReturnRequested();
+```
+
+**설계 근거**:
+- partial index `idx_order_items_status_return_requested`는 리터럴 조건 `status = 'RETURN_REQUESTED'`에 정확히 대응한다.
+- 파라미터 바인딩 쿼리는 generic plan에서 Partial Index 매칭이 불확실할 수 있다.
+- 관리자 대시보드 집계는 고정된 상태값 하나만 필요하므로, 범용 메서드보다 고정 리터럴 경로가 더 명확하고 빠르다.
+
 ### 인덱스 총 개수 변경
 
 ```diff
 - -- 총 19개 테이블, 57개 인덱스 생성됨 (일반 54 + UNIQUE 3)
-+ -- 총 19개 테이블, 59개 인덱스 생성됨 (일반 56 + UNIQUE 3)
++ -- 총 19개 테이블, 60개 인덱스 생성됨 (일반 57 + UNIQUE 3)
 ```
 
 ### 영향받지 않는 코드
 
-다음 파일들은 변경하지 않았다. 인덱스 추가만으로 플래너가 자동으로 최적 계획을 선택한다.
+항목 1, 2, 3은 인덱스 추가만으로 플래너가 최적 실행 계획을 선택한다.
+항목 5는 관리자 대시보드의 고정 집계 경로만 별도 메서드로 분리했다.
 
 | 파일 | 쿼리 메서드 | 변경 여부 |
 |---|---|---|
 | `SearchLogRepository.java:13` | `findPopularKeywords()` | 변경 없음 |
 | `ProductRepository.java:41` | `searchByKeywordLike()` | 변경 없음 |
 | `ProductRepository.java:194` | `searchByKeywordLikeFlat()` | 변경 없음 |
+| `OrderRepository.java:63-68` | `findYearlySpentByUser()` | 변경 없음 |
+| `OrderItemRepository.java:98` | `countByStatus()` | 유지 |
+| `OrderItemRepository.java:110` | `countReturnRequested()` | 신규 |
 | `ProductQueryService.java:142-150` | `search()` — FTS/LIKE 폴백 로직 | 변경 없음 |
 | `SearchService.java:64-68` | `getPopularKeywords()` — 캐시 래핑 | 변경 없음 |
+| `OrderQueryService.java:177` | `getPendingReturnCount()` | 새 리터럴 쿼리 경로 사용 |
 
 ---
 
@@ -399,8 +464,11 @@ WHERE r.review_id = sub.review_id AND r.helpful_count != sub.actual_count
 
 ### 벤치마크 환경
 
-- PostgreSQL 14, search_logs 100,000건, products 5,056건
-- VACUUM ANALYZE 후 측정 (visibility map 갱신 상태)
+- 항목 1, 2: PostgreSQL 14, search_logs 100,000건, products 5,056건
+- 항목 3, 5: PostgreSQL 16, orders 600,000건, order_items 1,800,000건, `RETURN_REQUESTED` 25,969건
+- 측정 스크립트: `load-test/setup-explain-benchmark.sql`, `load-test/explain-benchmark-before.sql`,
+  `load-test/explain-benchmark-after.sql`, `load-test/run-explain-benchmark.sh`
+- 공통: VACUUM ANALYZE 후 측정 (visibility map 갱신 상태)
 
 ### 5-1. 항목 1: `findPopularKeywords()` — `idx_search_date_keyword` 추가
 
@@ -495,6 +563,96 @@ Execution Time: 1.118 ms
 | Buffers (shared hit) | 174 | 90 | **-48%** |
 | Rows Removed by Filter | 4,256 | 0 (Recheck만) | **필터링 비용 제거** |
 | 쿼리 변경 | - | 불필요 | 인덱스만 추가 |
+
+---
+
+### 5-3. 항목 3: `findYearlySpentByUser()` — partial covering index 추가
+
+#### Before
+
+```
+HashAggregate  (actual time=87.774..106.118 rows=27000)
+  Group Key: user_id
+  Buffers: shared hit=3 read=4247 written=4247
+  ->  Bitmap Heap Scan on orders  (actual time=7.244..50.554 rows=107420)
+        Recheck Cond: (order_date >= '2025-01-01' AND order_date < '2026-01-01')
+        Filter: (order_status <> 'CANCELLED')
+        Rows Removed by Filter: 11972
+        Heap Blocks: exact=3809
+        ->  Bitmap Index Scan on idx_order_date  (actual time=6.927..6.928 rows=119392)
+
+Execution Time: 108.014 ms
+```
+
+**병목**: 날짜 범위를 `idx_order_date`로 찾은 뒤 `order_status`, `user_id`, `final_amount`를 읽기 위해 heap에 3,809블록 접근했다.
+
+#### After
+
+```
+HashAggregate  (actual time=30.578..39.114 rows=27000)
+  Group Key: user_id
+  Buffers: shared hit=1 read=533 written=105
+  ->  Index Only Scan using idx_order_yearly_spent_non_cancelled on orders
+        (actual time=0.030..9.850 rows=107420)
+        Index Cond: (order_date >= '2025-01-01' AND order_date < '2026-01-01')
+        Heap Fetches: 0
+
+Execution Time: 40.589 ms
+```
+
+**개선**: partial covering index로 `Bitmap Heap Scan → Index Only Scan` 전환. 취소 주문 필터와 heap 접근이 모두 제거됐다.
+
+#### 성능 비교
+
+| 지표 | Before | After | 변화 |
+|---|---|---|---|
+| Scan 방식 | Bitmap Heap Scan | Index-Only Scan | Heap 접근 제거 |
+| Execution Time | 108.014 ms | 40.589 ms | **-62%** |
+| Buffers (shared hit + read) | 4,250 | 534 | **-87%** |
+| Heap 접근 | Heap Blocks 3,809 | Heap Fetches 0 | **-100%** |
+| 쿼리 변경 | - | 불필요 | 인덱스만 추가 |
+
+---
+
+### 5-4. 항목 5: `countReturnRequested()` — 리터럴 네이티브 쿼리 분리
+
+#### Before
+
+```
+Finalize Aggregate  (actual time=80.309..83.227 rows=1)
+  ->  Gather
+        ->  Partial Aggregate
+              ->  Parallel Seq Scan on order_items
+                    Filter: (status = $1)
+                    Rows Removed by Filter: 591344
+
+Execution Time: 83.255 ms
+```
+
+**병목**: generic prepared plan이 partial index를 선택하지 못해 1.8M건 전체를 `Parallel Seq Scan`으로 스캔했다.
+
+#### After
+
+```
+Aggregate  (actual time=1.910..1.910 rows=1)
+  ->  Index Only Scan using idx_order_items_status_return_requested on order_items
+        (actual time=0.015..1.126 rows=25969)
+        Heap Fetches: 0
+
+Execution Time: 1.921 ms
+```
+
+**개선**: 리터럴 네이티브 쿼리로 partial index를 정확히 매칭해 `Parallel Seq Scan → Index Only Scan` 전환.
+
+#### 성능 비교
+
+| 지표 | Before | After | 변화 |
+|---|---|---|---|
+| Scan 방식 | Parallel Seq Scan | Index-Only Scan | partial index 활용 |
+| Execution Time | 83.255 ms | 1.921 ms | **-97.7%** |
+| Buffers (shared hit + read) | 31,208 | 23 | **-99.9%** |
+| Heap Fetches | 전체 행 스캔 | 0 | **Heap 접근 제거** |
+| 쿼리 변경 | 파라미터 바인딩 | 리터럴 네이티브 | 관리자 대시보드 경로만 분리 |
 
 ### 스케일 예측
 

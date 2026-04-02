@@ -190,21 +190,21 @@ class OrderQueryServiceReturnTest {
     class GetPendingReturnCount {
 
         @Test
-        @DisplayName("RETURN_REQUESTED 상태로 countByStatus를 호출한다")
-        void callsCountByStatus_withReturnRequested() {
-            when(orderItemRepository.countByStatus(OrderItemStatus.RETURN_REQUESTED))
+        @DisplayName("RETURN_REQUESTED 리터럴 네이티브 카운트 쿼리를 호출한다")
+        void callsCountReturnRequested() {
+            when(orderItemRepository.countReturnRequested())
                     .thenReturn(5L);
 
             long count = service.getPendingReturnCount();
 
             assertThat(count).isEqualTo(5);
-            verify(orderItemRepository).countByStatus(OrderItemStatus.RETURN_REQUESTED);
+            verify(orderItemRepository).countReturnRequested();
         }
 
         @Test
         @DisplayName("반품 대기 건이 없으면 0을 반환한다")
         void noPendingReturns_returnsZero() {
-            when(orderItemRepository.countByStatus(OrderItemStatus.RETURN_REQUESTED))
+            when(orderItemRepository.countReturnRequested())
                     .thenReturn(0L);
 
             long count = service.getPendingReturnCount();

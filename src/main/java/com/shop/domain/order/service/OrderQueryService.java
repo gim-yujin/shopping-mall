@@ -170,11 +170,11 @@ public class OrderQueryService {
     /**
      * 반품 대기 건수를 반환한다 (관리자 대시보드 카드용).
      *
-     * <p>partial index {@code idx_order_items_status_return_requested}를 활용하여
-     * 전체 order_items를 스캔하지 않고 빠르게 카운트한다.</p>
+     * <p>partial index {@code idx_order_items_status_return_requested}와
+     * 리터럴 네이티브 쿼리를 조합하여 generic plan의 partial index 미매칭 가능성을 피한다.</p>
      */
     public long getPendingReturnCount() {
-        return orderItemRepository.countByStatus(OrderItemStatus.RETURN_REQUESTED);
+        return orderItemRepository.countReturnRequested();
     }
 
     // ── 내부 헬퍼 ────────────────────────────────────────────
