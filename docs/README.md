@@ -47,6 +47,7 @@
 | [`docs/tier-policy-decision-log-2026-03-14.md`](./tier-policy-decision-log-2026-03-14.md) | 등급 정책 결정 과정의 논의 로그 보관 | 2026-03-14 | Reference |
 | [`docs/backlog-search-log-durability.md`](./backlog-search-log-durability.md) | 검색 로그 내구성 관련 백로그/검토 항목 분석 | 2026-04-02 | Reference |
 | [`docs/analysis-execution-plan-optimization.md`](./analysis-execution-plan-optimization.md) | Execution Plan 관점 최적화 검토: 6건 개선 항목 식별 및 우선순위 매트릭스 | 2026-04-03 | SSOT |
+| [`docs/analysis-map-cache-concurrency-review-2026-04-03.md`](./analysis-map-cache-concurrency-review-2026-04-03.md) | Map/Cache 사용처와 동시성 안전성 점검 (`HashMap`, `LinkedHashMap`, `ConcurrentHashMap`, `ConcurrentMapCache`, `Hashtable`) | 2026-04-03 | SSOT |
 
 ## Archive
 
