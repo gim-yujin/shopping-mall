@@ -1,5 +1,6 @@
 package com.shop.domain.point.service;
 
+import com.shop.testsupport.TestDataFactory;
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -48,13 +49,16 @@ class PointBalanceConcurrencyTest {
     @Autowired
     private PointConcurrencyHelper helper;
 
+    @Autowired
+    private TestDataFactory testDataFactory;
+
+    private TestDataFactory.FixtureContext fixture;
     private Long testUserId;
 
     @BeforeEach
     void setUp() {
-        testUserId = jdbcTemplate.queryForObject(
-                "SELECT user_id FROM users WHERE is_active = true AND role = 'ROLE_USER' ORDER BY user_id LIMIT 1",
-                Long.class);
+        fixture = testDataFactory.newContext();
+        testUserId = fixture.createActiveUser();
     }
 
     private void setPointBalance(int balance) {
@@ -361,9 +365,6 @@ class PointBalanceConcurrencyTest {
 
     @AfterEach
     void tearDown() {
-        if (testUserId != null) {
-            jdbcTemplate.update("UPDATE users SET point_balance = 0, updated_at = NOW() WHERE user_id = ?",
-                    testUserId);
-        }
+        fixture.cleanup();
     }
 }

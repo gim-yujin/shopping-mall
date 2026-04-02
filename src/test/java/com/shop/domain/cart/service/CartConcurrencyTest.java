@@ -454,11 +454,11 @@ class CartConcurrencyTest {
                 "SELECT quantity FROM carts WHERE user_id = ? AND product_id = ?",
                 Integer.class, testUserId, productId);
 
-        // removeFromCart가 먼저 수행되면 updateQuantity는 조회 시점에 항목을 찾지 못해
-        // ResourceNotFoundException이 발생할 수 있다. 이는 동시성 시나리오에서 허용되는 결과다.
+        // updateQuantity(10)와 addToCart(+1)는 모두 기존 항목을 조회하여 수정하므로
+        // 사용자 락 직렬화 하에서 에러 없이 양쪽 모두 성공해야 한다.
         assertThat(errors)
-                .as("허용되지 않는 예외가 없어야 합니다")
-                .allMatch(error -> error.startsWith("updateQuantity: ResourceNotFoundException"));
+                .as("updateQuantity + addToCart 동시 실행에서 에러가 없어야 합니다: %s", errors)
+                .isEmpty();
 
         assertThat(finalQuantity)
                 .as("최종 수량은 직렬화 결과에 따라 10 또는 11이어야 합니다")
@@ -548,18 +548,6 @@ class CartConcurrencyTest {
             assertThat(finalQuantity)
                     .as("남아 있다면 update 결과 수량(10)이어야 합니다")
                     .isEqualTo(10);
-        }
-    }
-
-    private void shutdownExecutor(ExecutorService executor) {
-        executor.shutdown();
-        try {
-            if (!executor.awaitTermination(5, TimeUnit.SECONDS)) {
-                executor.shutdownNow();
-            }
-        } catch (InterruptedException e) {
-            executor.shutdownNow();
-            Thread.currentThread().interrupt();
         }
     }
 

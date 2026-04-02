@@ -400,16 +400,4 @@ class UserConcurrencyTest {
                 .as("성공 + 중복 = 총 시도 수(2)")
                 .isEqualTo(2);
     }
-    private void shutdownExecutor(ExecutorService executor) {
-        executor.shutdown();
-        try {
-            if (!executor.awaitTermination(5, TimeUnit.SECONDS)) {
-                executor.shutdownNow();
-            }
-        } catch (InterruptedException e) {
-            executor.shutdownNow();
-            Thread.currentThread().interrupt();
-        }
-    }
-
 }

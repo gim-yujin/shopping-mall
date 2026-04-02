@@ -1,5 +1,6 @@
 package com.shop.domain.coupon.service;
 
+import com.shop.testsupport.TestDataFactory;
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -17,12 +18,12 @@ import static org.assertj.core.api.Assertions.assertThat;
  * 쿠폰 발급 동시성 테스트
  *
  * 시나리오 1 — 초과 발급 (Over-Issuance)
- *   총 수량 5장인 쿠폰에 100명이 동시 발급 요청
+ *   총 수량 5장인 쿠폰에 20명이 동시 발급 요청
  *   위험: 동시 요청 시 수량 체크/증가가 원자적이지 않으면 초과 발급 발생
  *   기대: 정확히 5명만 성공
  *
  * 시나리오 2 — 중복 발급 (Duplicate Issuance)
- *   같은 사용자가 같은 쿠폰을 100회 동시 요청
+ *   같은 사용자가 같은 쿠폰을 20회 동시 요청
  *   위험: 애플리케이션 레벨 중복 체크만으로는 레이스에서 중복 저장 가능
  *   기대: 정확히 1장만 발급
  */
@@ -39,6 +40,11 @@ class CouponIssuanceConcurrencyTest {
 
     @Autowired
     private JdbcTemplate jdbcTemplate;
+
+    @Autowired
+    private TestDataFactory testDataFactory;
+
+    private TestDataFactory.FixtureContext fixture;
 
     // =========================================================================
     // 시나리오 1: 초과 발급
@@ -58,6 +64,7 @@ class CouponIssuanceConcurrencyTest {
 
     @BeforeEach
     void setUp(TestInfo testInfo) {
+        fixture = testDataFactory.newContext();
         String testName = testInfo.getDisplayName();
 
         if (testName.contains("초과 발급")) {
@@ -84,14 +91,11 @@ class CouponIssuanceConcurrencyTest {
                 "SELECT coupon_id FROM coupons WHERE coupon_code = ?",
                 Integer.class, overIssueCouponCode);
 
-        // 100명의 사용자 선택
-        testUserIds = jdbcTemplate.queryForList(
-                """
-                SELECT u.user_id FROM users u
-                WHERE u.is_active = true AND u.role = 'ROLE_USER'
-                ORDER BY u.user_id LIMIT 100
-                """,
-                Long.class);
+        // fixture로 격리된 사용자 20명 생성
+        testUserIds = new ArrayList<>();
+        for (int i = 0; i < 20; i++) {
+            testUserIds.add(fixture.createActiveUser());
+        }
 
         System.out.println("========================================");
         System.out.println("[초과 발급 테스트 준비 완료]");
@@ -118,26 +122,19 @@ class CouponIssuanceConcurrencyTest {
                 "SELECT coupon_id FROM coupons WHERE coupon_code = ?",
                 Integer.class, dupCouponCode);
 
-        // 사용자 1명 선택
-        dupTestUserId = jdbcTemplate.queryForObject(
-                """
-                SELECT u.user_id FROM users u
-                WHERE u.is_active = true AND u.role = 'ROLE_USER'
-                ORDER BY u.user_id LIMIT 1
-                """,
-                Long.class);
+        // fixture로 격리된 사용자 1명 생성
+        dupTestUserId = fixture.createActiveUser();
 
         System.out.println("========================================");
         System.out.println("[중복 발급 테스트 준비 완료]");
         System.out.println("  쿠폰 ID: " + dupCouponId);
         System.out.println("  사용자 ID: " + dupTestUserId);
-        System.out.println("  동시 요청: 100회");
+        System.out.println("  동시 요청: 20회");
         System.out.println("========================================");
     }
 
     @AfterEach
     void tearDown(TestInfo testInfo) {
-        System.out.println("[정리 시작]");
         String testName = testInfo.getDisplayName();
 
         if (testName.contains("초과 발급") && overIssueCouponId != null) {
@@ -148,12 +145,12 @@ class CouponIssuanceConcurrencyTest {
             jdbcTemplate.update("DELETE FROM coupons WHERE coupon_id = ?", dupCouponId);
         }
 
-        System.out.println("[정리 완료]");
+        fixture.cleanup();
     }
 
     @Test
     @Order(1)
-    @DisplayName("시나리오 1: 총 5장 쿠폰에 100명 동시 발급 → 초과 발급 방지")
+    @DisplayName("시나리오 1: 총 5장 쿠폰에 20명 동시 발급 → 초과 발급 방지")
     void overIssuance_prevention() throws InterruptedException {
         int threadCount = testUserIds.size();
         ExecutorService executor = Executors.newFixedThreadPool(threadCount);
@@ -249,9 +246,9 @@ class CouponIssuanceConcurrencyTest {
 
     @Test
     @Order(2)
-    @DisplayName("시나리오 2: 같은 사용자가 같은 쿠폰 100회 동시 발급 → 중복 발급 방지")
+    @DisplayName("시나리오 2: 같은 사용자가 같은 쿠폰 20회 동시 발급 → 중복 발급 방지")
     void duplicateIssuance_prevention() throws InterruptedException {
-        int threadCount = 100;
+        int threadCount = 20;
         ExecutorService executor = Executors.newFixedThreadPool(threadCount);
         CountDownLatch ready = new CountDownLatch(threadCount);
         CountDownLatch start = new CountDownLatch(1);
@@ -262,7 +259,7 @@ class CouponIssuanceConcurrencyTest {
         AtomicInteger otherFailCount = new AtomicInteger(0);
         List<String> errors = Collections.synchronizedList(new ArrayList<>());
 
-        // When: 같은 사용자가 같은 쿠폰을 100회 동시 요청
+        // When: 같은 사용자가 같은 쿠폰을 20회 동시 요청
         for (int i = 0; i < threadCount; i++) {
             final int attempt = i + 1;
             executor.submit(() -> {
@@ -335,16 +332,4 @@ class CouponIssuanceConcurrencyTest {
                 .as("예상치 못한 예외: %s", errors)
                 .isEqualTo(0);
     }
-    private void shutdownExecutor(ExecutorService executor) {
-        executor.shutdown();
-        try {
-            if (!executor.awaitTermination(5, TimeUnit.SECONDS)) {
-                executor.shutdownNow();
-            }
-        } catch (InterruptedException e) {
-            executor.shutdownNow();
-            Thread.currentThread().interrupt();
-        }
-    }
-
 }

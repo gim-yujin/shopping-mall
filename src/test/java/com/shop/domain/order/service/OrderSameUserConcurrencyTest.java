@@ -170,16 +170,4 @@ class OrderSameUserConcurrencyTest {
         assertThat(emptyCartFailureCount.get()).isEqualTo(1);
         assertThat(createdOrders).isEqualTo(1);
     }
-    private void shutdownExecutor(ExecutorService executor) {
-        executor.shutdown();
-        try {
-            if (!executor.awaitTermination(5, TimeUnit.SECONDS)) {
-                executor.shutdownNow();
-            }
-        } catch (InterruptedException e) {
-            executor.shutdownNow();
-            Thread.currentThread().interrupt();
-        }
-    }
-
 }
