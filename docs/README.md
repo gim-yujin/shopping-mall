@@ -20,7 +20,7 @@
 | [`docs/query-optimization.md`](./query-optimization.md) | N+1 해결 전략 종합 정리: JOIN FETCH, 2-쿼리 패턴, CQRS 플랫 프로젝션, @BatchSize 등 | 2026-03-24 | SSOT |
 | [`docs/implementation-details.md`](./implementation-details.md) | 아키텍처, 주문 처리, 데이터 모델의 구현 세부를 정리 | 2026-03-14 | Reference |
 | [`docs/order-invariant-checks.md`](./order-invariant-checks.md) | 주문 도메인 무결성 점검 규칙과 운영 확인 절차 제공 | 2026-03-14 | SSOT |
-| [`docs/search-log-ops-policy.md`](./search-log-ops-policy.md) | 검색 로그 저장/정리 정책과 운영 기준 정의 | 2026-03-14 | SSOT |
+| [`docs/search-log-ops-policy.md`](./search-log-ops-policy.md) | 검색 로그 저장/정리 정책과 운영 기준 정의 | 2026-04-02 | SSOT |
 | [`docs/guide-doc-naming-conventions.md`](./guide-doc-naming-conventions.md) | `docs/` 문서 네이밍/분류 컨벤션 관리 | 2026-03-14 | SSOT |
 | [`docs/문서_수치_갱신_규칙.md`](./문서_수치_갱신_규칙.md) | README 수치 검증 및 갱신 절차 가이드 | 2026-03-14 | SSOT |
 | [`docs/pmd-method-naming-conventions-exceptions.md`](./pmd-method-naming-conventions-exceptions.md) | PMD 메서드 네이밍 예외 정책과 적용 기준 정리 | 2026-03-14 | Reference |
@@ -37,7 +37,7 @@
 
 | 문서 | Purpose | Last updated | Status |
 |---|---|---|---|
-| [`docs/load-test-benchmark.md`](./load-test-benchmark.md) | k6 부하 테스트 최적화 Before/After 비교 (5가지 조건, 4개 시나리오) | 2026-03-24 | SSOT |
+| [`docs/load-test-benchmark.md`](./load-test-benchmark.md) | k6 부하 테스트 최적화 Before/After 비교 (5가지 조건, 4개 시나리오) | 2026-04-02 | SSOT |
 
 ## Analysis
 
@@ -45,7 +45,7 @@
 |---|---|---|---|
 | [`docs/facade-overhead.md`](./facade-overhead.md) | 파사드 계층 도입에 따른 비용/효과 분석 | 2026-03-14 | Reference |
 | [`docs/tier-policy-decision-log-2026-03-14.md`](./tier-policy-decision-log-2026-03-14.md) | 등급 정책 결정 과정의 논의 로그 보관 | 2026-03-14 | Reference |
-| [`docs/backlog-search-log-durability.md`](./backlog-search-log-durability.md) | 검색 로그 내구성 관련 백로그/검토 항목 분석 | 2026-03-14 | Reference |
+| [`docs/backlog-search-log-durability.md`](./backlog-search-log-durability.md) | 검색 로그 내구성 관련 백로그/검토 항목 분석 | 2026-04-02 | Reference |
 | [`docs/analysis-execution-plan-optimization.md`](./analysis-execution-plan-optimization.md) | Execution Plan 관점 최적화 검토: 6건 개선 항목 식별 및 우선순위 매트릭스 | 2026-04-02 | SSOT |
 
 ## Archive

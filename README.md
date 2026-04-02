@@ -102,8 +102,8 @@ src/main/java/com/shop
   - 웹 폼 CSRF 활성화, API CSRF 비활성화
   - Actuator 노출 최소화(health/prometheus 외 관리자 권한)
 - **비동기 처리**:
-  - 검색 로그 저장 비동기화(`@Async`) 
-  - graceful shutdown 시 비동기 작업 종료 대기
+  - 검색 로그 배치 누적기(`SearchLogBatchAccumulator`) 기반 비동기 후처리
+  - 선택적 파일 WAL + graceful shutdown flush로 재시작 구간 유실 완화
 - **정기 작업(Scheduler)**:
   - 검색 로그 보존 기간 기반 배치 삭제
   - 리뷰 helpful_count 정합성 보정
@@ -112,7 +112,9 @@ src/main/java/com/shop
 ### 부하 테스트 결과 (k6)
 
 Grafana k6로 4개 시나리오(browse/shopping/coupon_rush/mixed)를 시나리오별 3회 반복 측정했습니다.
-최적화(캐시/인덱스/OSIV OFF/Async)가 모두 적용된 Baseline 결과:
+아래의 `@Async` 비교 항목은 **Phase 6 시점의 역사적 측정값**이며, 현재 검색 로그 구현은
+**Phase 19/20의 배치 누적기 + 선택적 WAL**로 전환되었습니다.
+Phase 6 기준 최적화(캐시/인덱스/OSIV OFF/`@Async`)가 모두 적용된 Baseline 결과:
 
 | 시나리오 | 최대 VU | 처리량(req/s) | HTTP p95 | HTTP 실패율 | 주요 결과 |
 |:---------|------:|------:|------:|------:|:----------|
@@ -121,14 +123,14 @@ Grafana k6로 4개 시나리오(browse/shopping/coupon_rush/mixed)를 시나리�
 | coupon_rush | 100 | 980.3 | **14.2ms** | 0% | 정확히 50장 발급, 초과 발급 0건 |
 | mixed | 180 | 104.3 | **9.5ms** | 0% | 전 Threshold PASS |
 
-**최적화 Before/After 비교** — 캐시/인덱스/OSIV/Async를 하나씩 제거하며 영향 측정:
+**최적화 Before/After 비교** — 캐시/인덱스/OSIV/검색 로그 비동기화(`@Async`, Phase 6)를 하나씩 제거하며 영향 측정:
 
 | 최적화 요소 | 제거 시 영향 (browse p95 기준) |
 |:-----------|:-------------------------------|
 | Caffeine 캐시 | 10ms → 4,979ms (**×498**) |
 | DB 인덱스 | 4,979ms → 12,750ms (실패율 91%) |
 | OSIV OFF → ON | p95 개선처럼 보이나 실패율 0→6.77% |
-| @Async 검색 로그 | p95 2,840ms → 5,010ms (**+76%**) |
+| 검색 로그 비동기화 (`@Async`, Phase 6) | p95 2,840ms → 5,010ms (**+76%**) |
 
 > 상세 분석: [`docs/load-test-benchmark.md`](docs/load-test-benchmark.md) / 테스트 스크립트: [`load-test/`](load-test/)
 
