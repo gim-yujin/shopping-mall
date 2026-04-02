@@ -10,7 +10,8 @@
 1. [현재 최적화 현황 (강점)](#1-현재-최적화-현황-강점)
 2. [추가 최적화 가능 항목](#2-추가-최적화-가능-항목)
 3. [우선순위 매트릭스](#3-우선순위-매트릭스)
-4. [적용 완료: Before/After 벤치마크](#4-적용-완료-beforeafter-벤치마크)
+4. [적용 완료: 코드 변경사항](#4-적용-완료-코드-변경사항)
+5. [적용 완료: Before/After 벤치마크](#5-적용-완료-beforeafter-벤치마크)
 
 ---
 
@@ -302,25 +303,106 @@ WHERE r.review_id = sub.review_id AND r.helpful_count != sub.actual_count
 
 ### 조치 권장
 
-- **적용 완료 (항목 1, 2)**: 인덱스 추가로 해결. 기존 쿼리 변경 없이 적용. §4에서 Before/After 벤치마크 확인.
+- **적용 완료 (항목 1, 2)**: 인덱스 추가로 해결. 기존 쿼리 변경 없이 적용. 코드 변경은 §4, 벤치마크 결과는 §5 참고.
 - **모니터링 후 판단 (항목 3, 4)**: 배치 또는 관리자 경로이므로 실제 실행 시간을 측정한 뒤 필요 시 적용한다.
 - **현행 유지 (항목 5, 6)**: 영향이 작거나 확인 후 판단이 필요하다. EXPLAIN ANALYZE로 검증 후 결정한다.
 
 ---
 
-## 4. 적용 완료: Before/After 벤치마크
+## 4. 적용 완료: 코드 변경사항
+
+항목 1, 2는 **기존 쿼리(Repository 코드)를 변경하지 않고** `schema.sql`에 인덱스만 추가하여 해결하였다.
+인덱스 추가 후 PostgreSQL 플래너가 자동으로 최적 실행 계획을 선택한다.
+
+### 변경 파일
+
+| 파일 | 변경 내용 |
+|---|---|
+| `src/main/resources/schema.sql` | 인덱스 2개 + extension 1개 추가 (아래 diff 참고) |
+
+### 4-1. 항목 1: `idx_search_date_keyword` 추가
+
+**위치**: `schema.sql` — Search_Logs 인덱스 블록 뒤
+
+```diff
+  CREATE INDEX idx_search_user ON search_logs(user_id, searched_at DESC);
+  CREATE INDEX idx_search_date ON search_logs(searched_at DESC);
+
++ -- findPopularKeywords() GROUP BY 최적화: Index-Only Scan용 복합 인덱스.
++ --
++ -- 문제: 기존 idx_search_date(searched_at DESC)는 날짜 범위 필터링에는 활용되지만,
++ -- 필터 후 search_keyword에 대한 GROUP BY에서 Heap 접근이 필요하다.
++ -- 7일치 데이터가 수만~수십만 건이면 Bitmap Heap Scan + HashAggregate 비용이 크다.
++ --
++ -- 해결: (searched_at DESC, search_keyword) 복합 인덱스로 날짜 Range Scan 후
++ -- search_keyword를 인덱스에서 직접 읽어 Heap 접근 없이 Index-Only Scan을 달성한다.
++ -- Bitmap Heap Scan 대비 실행 시간 ~59% 감소, 버퍼 접근 ~87% 감소 확인됨.
++ CREATE INDEX idx_search_date_keyword ON search_logs(searched_at DESC, search_keyword);
++
+  -- Point_History 인덱스
+```
+
+**설계 근거**:
+- 선행 컬럼 `searched_at DESC`: `WHERE searched_at > NOW() - 7 days` 범위 조건의 Range Scan에 활용.
+- 후행 컬럼 `search_keyword`: GROUP BY 대상 컬럼을 인덱스에 포함시켜 Index-Only Scan 달성. 테이블 heap 접근 0.
+- 기존 `idx_search_date(searched_at DESC)`는 제거하지 않는다. 다른 쿼리(`deleteBatchOlderThan` 등)에서 여전히 활용되며, 새 복합 인덱스와 역할이 다르다.
+
+### 4-2. 항목 2: `pg_trgm` + `idx_product_name_trgm` 추가
+
+**위치**: `schema.sql` — Products 인덱스 블록, `idx_product_name_gin` 직후
+
+```diff
+  CREATE INDEX idx_product_name_gin ON products USING gin(to_tsvector('simple', product_name));
+
++ -- searchByKeywordLikeFlat() LIKE '%keyword%' 최적화: pg_trgm GIN 인덱스.
++ --
++ -- 문제: FTS 폴백 시 LOWER(product_name) LIKE '%keyword%' 쿼리가 실행되는데,
++ -- 양방향 LIKE(%...%)는 B-tree 인덱스를 활용할 수 없어 Full Seq Scan이 발생한다.
++ --
++ -- 해결: pg_trgm의 gin_trgm_ops로 trigram 기반 GIN 인덱스를 생성한다.
++ -- LOWER() expression index로 대소문자 비구분 LIKE 조건에서 Bitmap Index Scan을 활용한다.
++ -- Seq Scan 대비 실행 시간 ~77% 감소, 버퍼 접근 ~48% 감소 확인됨.
++ CREATE EXTENSION IF NOT EXISTS pg_trgm;
++ CREATE INDEX idx_product_name_trgm ON products USING gin(LOWER(product_name) gin_trgm_ops);
++
+  CREATE INDEX idx_product_category ON products(category_id, is_active, sales_count DESC);
+```
+
+**설계 근거**:
+- `pg_trgm` extension: 문자열을 3-gram(trigram)으로 분해하여 GIN 인덱스에 저장. `%keyword%` 패턴에서 trigram 매칭으로 후보 행을 선별.
+- `LOWER(product_name)` expression index: 쿼리가 `LOWER(product_name) LIKE LOWER(...)` 패턴이므로 expression이 일치해야 인덱스가 활용된다.
+- `gin_trgm_ops` operator class: trigram 기반 유사도 연산과 LIKE/ILIKE 패턴 매칭을 지원.
+- 기존 `idx_product_name_gin`(tsvector FTS)과 역할이 다르다. FTS는 단어 단위 매칭, trigram은 부분 문자열 매칭.
+
+### 인덱스 총 개수 변경
+
+```diff
+- -- 총 19개 테이블, 57개 인덱스 생성됨 (일반 54 + UNIQUE 3)
++ -- 총 19개 테이블, 59개 인덱스 생성됨 (일반 56 + UNIQUE 3)
+```
+
+### 영향받지 않는 코드
+
+다음 파일들은 변경하지 않았다. 인덱스 추가만으로 플래너가 자동으로 최적 계획을 선택한다.
+
+| 파일 | 쿼리 메서드 | 변경 여부 |
+|---|---|---|
+| `SearchLogRepository.java:13` | `findPopularKeywords()` | 변경 없음 |
+| `ProductRepository.java:41` | `searchByKeywordLike()` | 변경 없음 |
+| `ProductRepository.java:194` | `searchByKeywordLikeFlat()` | 변경 없음 |
+| `ProductQueryService.java:142-150` | `search()` — FTS/LIKE 폴백 로직 | 변경 없음 |
+| `SearchService.java:64-68` | `getPopularKeywords()` — 캐시 래핑 | 변경 없음 |
+
+---
+
+## 5. 적용 완료: Before/After 벤치마크
 
 ### 벤치마크 환경
 
 - PostgreSQL 14, search_logs 100,000건, products 5,056건
 - VACUUM ANALYZE 후 측정 (visibility map 갱신 상태)
 
-### 4-1. 항목 1: `findPopularKeywords()` — `idx_search_date_keyword` 추가
-
-**추가 인덱스**: `schema.sql`
-```sql
-CREATE INDEX idx_search_date_keyword ON search_logs(searched_at DESC, search_keyword);
-```
+### 5-1. 항목 1: `findPopularKeywords()` — `idx_search_date_keyword` 추가
 
 #### Before
 
@@ -372,13 +454,7 @@ Buffers: shared hit=105
 
 ---
 
-### 4-2. 항목 2: `searchByKeywordLikeFlat()` — `pg_trgm` GIN 인덱스 추가
-
-**추가 인덱스**: `schema.sql`
-```sql
-CREATE EXTENSION IF NOT EXISTS pg_trgm;
-CREATE INDEX idx_product_name_trgm ON products USING gin(LOWER(product_name) gin_trgm_ops);
-```
+### 5-2. 항목 2: `searchByKeywordLikeFlat()` — `pg_trgm` GIN 인덱스 추가
 
 #### Before
 

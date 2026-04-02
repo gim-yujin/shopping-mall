@@ -682,7 +682,7 @@ CREATE INDEX idx_search_date ON search_logs(searched_at DESC);
 --
 -- 해결: (searched_at DESC, search_keyword) 복합 인덱스로 날짜 Range Scan 후
 -- search_keyword를 인덱스에서 직접 읽어 Heap 접근 없이 Index-Only Scan을 달성한다.
--- Bitmap Heap Scan 대비 실행 시간 ~54% 감소, 버퍼 접근 ~87% 감소 확인됨.
+-- Bitmap Heap Scan 대비 실행 시간 ~59% 감소, 버퍼 접근 ~87% 감소 확인됨.
 CREATE INDEX idx_search_date_keyword ON search_logs(searched_at DESC, search_keyword);
 
 -- Point_History 인덱스
