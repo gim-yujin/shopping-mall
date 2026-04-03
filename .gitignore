@@ -16,3 +16,5 @@ optimization/
 *.zip
 # WAL data directory (runtime-generated, not source)
 data/
+# Codex local workspace marker
+.codex
