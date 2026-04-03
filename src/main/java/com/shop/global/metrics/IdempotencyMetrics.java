@@ -38,6 +38,7 @@ import org.springframework.stereotype.Component;
 @Component
 public class IdempotencyMetrics {
 
+    private final MeterRegistry registry;
     private final Counter newRequestCounter;
     private final Counter duplicateCompletedCounter;
     private final Counter duplicateProcessingCounter;
@@ -46,6 +47,7 @@ public class IdempotencyMetrics {
     private final Counter staleRecoveredCounter;
 
     public IdempotencyMetrics(MeterRegistry registry) {
+        this.registry = registry;
         this.newRequestCounter = Counter.builder("shop.idempotency.requests.total")
                 .description("멱등성 키 요청 결과별 횟수")
                 .tag("result", "new")
@@ -100,6 +102,16 @@ public class IdempotencyMetrics {
     /** FAILED 레코드 재시도. */
     public void recordRetry() {
         retryCounter.increment();
+    }
+
+    /** 멱등성 키 없이 들어온 주문 쓰기 요청. */
+    public void recordMissingKey(String channel, String operation) {
+        Counter.builder("shop.idempotency.missing_key.total")
+                .description("멱등성 키 없이 들어온 주문 쓰기 요청 수")
+                .tag("channel", channel)
+                .tag("operation", operation)
+                .register(registry)
+                .increment();
     }
 
     /** PROCESSING 고착 → FAILED 자동 복구. count만큼 증가. */

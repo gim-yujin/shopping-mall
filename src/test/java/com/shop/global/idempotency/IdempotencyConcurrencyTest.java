@@ -27,6 +27,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * [Phase 9] 멱등성 키 동시성 스트레스 테스트.
@@ -301,6 +302,57 @@ class IdempotencyConcurrencyTest {
         assertThat(recordCount)
                 .as("멱등성 레코드는 1건만 존재해야 합니다")
                 .isEqualTo(1);
+    }
+
+    @Test
+    @DisplayName("executeWithCompletion은 COMPLETED 전환 실패 시 action에서 저장한 데이터도 롤백한다")
+    void executeWithCompletion_rollsBackActionWhenCompletionFails() {
+        IdempotencyRecord control = idempotencyService.initRecord(
+                testUserId, UUID.randomUUID().toString(), "ORDER_TX_TEST");
+        String actionKey = UUID.randomUUID().toString();
+
+        assertThatThrownBy(() -> idempotencyService.executeWithCompletion(
+                control.getRecordId() + 1_000_000,
+                () -> {
+                    jdbcTemplate.update(
+                            "INSERT INTO idempotency_records (user_id, idempotency_key, status, resource_type, created_at) "
+                                    + "VALUES (?, ?, 'PROCESSING', 'ORDER_TX_TEST', NOW())",
+                            testUserId, actionKey);
+                    return 1L;
+                },
+                value -> value,
+                201))
+                .isInstanceOf(IllegalStateException.class);
+
+        Integer rolledBackCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM idempotency_records WHERE user_id = ? AND idempotency_key = ?",
+                Integer.class, testUserId, actionKey);
+
+        assertThat(rolledBackCount).isZero();
+    }
+
+    @Test
+    @DisplayName("executeAndMarkCompleted는 COMPLETED 전환 실패 시 void action의 저장도 롤백한다")
+    void executeAndMarkCompleted_rollsBackActionWhenCompletionFails() {
+        IdempotencyRecord control = idempotencyService.initRecord(
+                testUserId, UUID.randomUUID().toString(), "ORDER_TX_VOID_TEST");
+        String actionKey = UUID.randomUUID().toString();
+
+        assertThatThrownBy(() -> idempotencyService.executeAndMarkCompleted(
+                control.getRecordId() + 1_000_000,
+                1L,
+                200,
+                () -> jdbcTemplate.update(
+                        "INSERT INTO idempotency_records (user_id, idempotency_key, status, resource_type, created_at) "
+                                + "VALUES (?, ?, 'PROCESSING', 'ORDER_TX_VOID_TEST', NOW())",
+                        testUserId, actionKey)))
+                .isInstanceOf(IllegalStateException.class);
+
+        Integer rolledBackCount = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM idempotency_records WHERE user_id = ? AND idempotency_key = ?",
+                Integer.class, testUserId, actionKey);
+
+        assertThat(rolledBackCount).isZero();
     }
 
     /**

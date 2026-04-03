@@ -7,6 +7,7 @@ import com.shop.domain.order.entity.Order;
 import com.shop.domain.order.service.OrderService;
 import com.shop.global.idempotency.IdempotencyRecord;
 import com.shop.global.idempotency.IdempotencyService;
+import com.shop.global.idempotency.OrderWriteIdempotencyGuard;
 import com.shop.global.metrics.IdempotencyMetrics;
 import com.shop.global.security.CustomUserPrincipal;
 import org.junit.jupiter.api.AfterEach;
@@ -36,6 +37,7 @@ import java.util.List;
 import java.util.Optional;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
@@ -69,6 +71,9 @@ class OrderApiControllerUnitTest {
     private IdempotencyService idempotencyService;
 
     @Mock
+    private OrderWriteIdempotencyGuard orderWriteIdempotencyGuard;
+
+    @Mock
     private IdempotencyMetrics idempotencyMetrics;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -81,7 +86,7 @@ class OrderApiControllerUnitTest {
         objectMapper.findAndRegisterModules();
 
         OrderApiController controller = new OrderApiController(
-                orderService, idempotencyService, idempotencyMetrics, objectMapper);
+                orderService, idempotencyService, orderWriteIdempotencyGuard, idempotencyMetrics, objectMapper);
 
         // @Valid + @RequestBody 조합에서 Bean Validation이 동작하려면
         // LocalValidatorFactoryBean을 standaloneSetup에 등록해야 한다.
@@ -124,6 +129,26 @@ class OrderApiControllerUnitTest {
         );
         ReflectionTestUtils.setField(order, "orderId", ORDER_ID);
         return order;
+    }
+
+    private void stubExecuteWithCompletion(Long recordId) {
+        doAnswer(invocation -> {
+            java.util.function.Supplier<Order> action = invocation.getArgument(1);
+            return action.get();
+        }).when(idempotencyService).executeWithCompletion(
+                eq(recordId),
+                org.mockito.ArgumentMatchers.<java.util.function.Supplier<Order>>any(),
+                org.mockito.ArgumentMatchers.<java.util.function.Function<Order, Long>>any(),
+                eq(201));
+    }
+
+    private void stubExecuteAndMarkCompleted(Long recordId, Long resourceId, int httpStatus) {
+        doAnswer(invocation -> {
+            Runnable action = invocation.getArgument(3);
+            action.run();
+            return null;
+        }).when(idempotencyService).executeAndMarkCompleted(
+                eq(recordId), eq(resourceId), eq(httpStatus), any(Runnable.class));
     }
 
     // ── POST /api/v1/orders ─────────────────────────────────────
@@ -399,6 +424,7 @@ class OrderApiControllerUnitTest {
             when(idempotencyService.findExisting(USER_ID, key)).thenReturn(Optional.empty());
             when(idempotencyService.initRecord(USER_ID, key, "ORDER")).thenReturn(record);
             when(orderService.createOrder(eq(USER_ID), any())).thenReturn(order);
+            stubExecuteWithCompletion(100L);
 
             mockMvc.perform(post("/api/v1/orders")
                             .contentType(MediaType.APPLICATION_JSON)
@@ -407,8 +433,11 @@ class OrderApiControllerUnitTest {
                     .andExpect(status().isCreated())
                     .andExpect(jsonPath("$.success").value(true));
 
-            // markCompleted에 orderId, 직렬화된 JSON, HTTP 201이 전달되는지 검증
-            verify(idempotencyService).markCompleted(eq(100L), eq(ORDER_ID), any(String.class), eq(201));
+            verify(idempotencyService).executeWithCompletion(
+                    eq(100L),
+                    org.mockito.ArgumentMatchers.<java.util.function.Supplier<Order>>any(),
+                    org.mockito.ArgumentMatchers.<java.util.function.Function<Order, Long>>any(),
+                    eq(201));
             verify(idempotencyMetrics).recordNew();
         }
 
@@ -535,6 +564,7 @@ class OrderApiControllerUnitTest {
             when(idempotencyService.findExisting(USER_ID, key)).thenReturn(Optional.of(failed));
             when(idempotencyService.retryAfterFailure(USER_ID, key, "ORDER")).thenReturn(newRecord);
             when(orderService.createOrder(eq(USER_ID), any())).thenReturn(order);
+            stubExecuteWithCompletion(200L);
 
             mockMvc.perform(post("/api/v1/orders")
                             .contentType(MediaType.APPLICATION_JSON)
@@ -573,7 +603,11 @@ class OrderApiControllerUnitTest {
 
             when(idempotencyService.findExisting(USER_ID, key)).thenReturn(Optional.empty());
             when(idempotencyService.initRecord(USER_ID, key, "ORDER")).thenReturn(record);
-            when(orderService.createOrder(eq(USER_ID), any()))
+            when(idempotencyService.executeWithCompletion(
+                    eq(300L),
+                    org.mockito.ArgumentMatchers.<java.util.function.Supplier<Order>>any(),
+                    org.mockito.ArgumentMatchers.<java.util.function.Function<Order, Long>>any(),
+                    eq(201)))
                     .thenThrow(new RuntimeException("CART_EMPTY"));
 
             // standaloneSetup에는 GlobalExceptionHandler 없으므로 예외가 ServletException으로 래핑됨
@@ -650,12 +684,13 @@ class OrderApiControllerUnitTest {
 
             when(idempotencyService.findExisting(USER_ID, key)).thenReturn(Optional.of(failed));
             when(idempotencyService.retryAfterFailure(USER_ID, key, "ORDER_CANCEL")).thenReturn(newRecord);
+            stubExecuteAndMarkCompleted(400L, ORDER_ID, 200);
 
             mockMvc.perform(post("/api/v1/orders/{orderId}/cancel", ORDER_ID)
                             .header("X-Idempotency-Key", key))
                     .andExpect(status().isOk());
 
-            verify(orderService).cancelOrder(ORDER_ID, USER_ID);
+            verify(idempotencyService).executeAndMarkCompleted(eq(400L), eq(ORDER_ID), eq(200), any(Runnable.class));
             verify(idempotencyMetrics).recordRetry();
             verify(idempotencyMetrics).recordNew();
         }
@@ -685,7 +720,7 @@ class OrderApiControllerUnitTest {
             when(idempotencyService.findExisting(USER_ID, key)).thenReturn(Optional.empty());
             when(idempotencyService.initRecord(USER_ID, key, "ORDER_CANCEL")).thenReturn(record);
             doThrow(new RuntimeException("CANCEL_FAIL"))
-                    .when(orderService).cancelOrder(ORDER_ID, USER_ID);
+                    .when(idempotencyService).executeAndMarkCompleted(eq(500L), eq(ORDER_ID), eq(200), any(Runnable.class));
 
             try {
                 mockMvc.perform(post("/api/v1/orders/{orderId}/cancel", ORDER_ID)
@@ -776,7 +811,7 @@ class OrderApiControllerUnitTest {
             when(idempotencyService.findExisting(USER_ID, key)).thenReturn(Optional.empty());
             when(idempotencyService.initRecord(USER_ID, key, "ORDER_PARTIAL_CANCEL")).thenReturn(record);
             doThrow(new RuntimeException("PARTIAL_CANCEL_FAIL"))
-                    .when(orderService).partialCancel(ORDER_ID, USER_ID, 50L, 2);
+                    .when(idempotencyService).executeAndMarkCompleted(eq(600L), eq(ORDER_ID), eq(200), any(Runnable.class));
 
             try {
                 mockMvc.perform(post("/api/v1/orders/{orderId}/partial-cancel", ORDER_ID)

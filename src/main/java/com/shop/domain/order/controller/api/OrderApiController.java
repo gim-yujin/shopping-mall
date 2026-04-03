@@ -15,6 +15,7 @@ import com.shop.global.dto.ApiResponse;
 import com.shop.global.dto.PageResponse;
 import com.shop.global.idempotency.IdempotencyRecord;
 import com.shop.global.idempotency.IdempotencyService;
+import com.shop.global.idempotency.OrderWriteIdempotencyGuard;
 import com.shop.global.metrics.IdempotencyMetrics;
 import com.shop.global.security.SecurityUtil;
 import jakarta.validation.Valid;
@@ -62,15 +63,18 @@ public class OrderApiController {
 
     private final OrderService orderService;
     private final IdempotencyService idempotencyService;
+    private final OrderWriteIdempotencyGuard orderWriteIdempotencyGuard;
     private final IdempotencyMetrics idempotencyMetrics;
     private final ObjectMapper objectMapper;
 
     public OrderApiController(OrderService orderService,
                               IdempotencyService idempotencyService,
+                              OrderWriteIdempotencyGuard orderWriteIdempotencyGuard,
                               IdempotencyMetrics idempotencyMetrics,
                               ObjectMapper objectMapper) {
         this.orderService = orderService;
         this.idempotencyService = idempotencyService;
+        this.orderWriteIdempotencyGuard = orderWriteIdempotencyGuard;
         this.idempotencyMetrics = idempotencyMetrics;
         this.objectMapper = objectMapper;
     }
@@ -107,6 +111,7 @@ public class OrderApiController {
 
         // 멱등성 키가 없으면 기존 비멱등 동작으로 폴백 (하위 호환)
         if (idempotencyKey == null || idempotencyKey.isBlank()) {
+            orderWriteIdempotencyGuard.handleMissingKey("api", "create", userId);
             Order order = orderService.createOrder(userId, request);
             return ResponseEntity.status(HttpStatus.CREATED)
                     .body(ApiResponse.ok(OrderDetailResponse.from(order)));
@@ -170,36 +175,18 @@ public class OrderApiController {
 
         // 3단계: 주문 생성 실행
         try {
-            Order order = orderService.createOrder(userId, request);
-            ApiResponse<OrderDetailResponse> response = ApiResponse.ok(OrderDetailResponse.from(order));
-
-            // 4단계: 성공 → COMPLETED 전환 + 응답 JSON 캐시
-            String responseJson = serializeResponse(response);
-            idempotencyService.markCompleted(record.getRecordId(), order.getOrderId(),
-                    responseJson, HttpStatus.CREATED.value());
-
-            return ResponseEntity.status(HttpStatus.CREATED).body(response);
+            Order order = idempotencyService.executeWithCompletion(
+                    record.getRecordId(),
+                    () -> orderService.createOrder(userId, request),
+                    Order::getOrderId,
+                    HttpStatus.CREATED.value());
+            return ResponseEntity.status(HttpStatus.CREATED)
+                    .body(ApiResponse.ok(OrderDetailResponse.from(order)));
 
         } catch (Exception e) {
             // 5단계: 실패 → FAILED 전환 (주문 트랜잭션은 자동 롤백)
             idempotencyService.markFailed(record.getRecordId());
             throw e;  // 기존 예외 핸들러(ApiExceptionHandler)가 처리
-        }
-    }
-
-    /**
-     * ApiResponse를 JSON 문자열로 직렬화한다.
-     *
-     * <p>직렬화 실패 시 null을 반환한다. 멱등성 기능의 핵심은
-     * 중복 주문 방지이므로, 캐시된 응답이 없더라도 COMPLETED 상태만으로
-     * 중복 주문은 차단된다. 다음 재요청 시 DB에서 주문을 조회하여 반환하면 된다.</p>
-     */
-    private String serializeResponse(ApiResponse<OrderDetailResponse> response) {
-        try {
-            return objectMapper.writeValueAsString(response);
-        } catch (JsonProcessingException e) {
-            log.warn("멱등성 응답 직렬화 실패 — 중복 방지는 유지되나 캐시 응답 불가", e);
-            return null;
         }
     }
 
@@ -285,6 +272,7 @@ public class OrderApiController {
 
         // 멱등성 키가 없으면 기존 비멱등 동작으로 폴백
         if (idempotencyKey == null || idempotencyKey.isBlank()) {
+            orderWriteIdempotencyGuard.handleMissingKey("api", "cancel", userId);
             orderService.cancelOrder(orderId, userId);
             return ResponseEntity.ok(ApiResponse.ok());
         }
@@ -324,8 +312,11 @@ public class OrderApiController {
         idempotencyMetrics.recordNew();
 
         try {
-            orderService.cancelOrder(orderId, userId);
-            idempotencyService.markCompletedForSsr(record.getRecordId(), orderId);
+            idempotencyService.executeAndMarkCompleted(
+                    record.getRecordId(),
+                    orderId,
+                    HttpStatus.OK.value(),
+                    () -> orderService.cancelOrder(orderId, userId));
             return ResponseEntity.ok(ApiResponse.ok());
         } catch (Exception e) {
             idempotencyService.markFailed(record.getRecordId());
@@ -350,6 +341,7 @@ public class OrderApiController {
 
         // 멱등성 키가 없으면 기존 비멱등 동작으로 폴백
         if (idempotencyKey == null || idempotencyKey.isBlank()) {
+            orderWriteIdempotencyGuard.handleMissingKey("api", "partial_cancel", userId);
             orderService.partialCancel(orderId, userId, request.orderItemId(), request.quantity());
             return ResponseEntity.ok(ApiResponse.ok());
         }
@@ -389,8 +381,11 @@ public class OrderApiController {
         idempotencyMetrics.recordNew();
 
         try {
-            orderService.partialCancel(orderId, userId, request.orderItemId(), request.quantity());
-            idempotencyService.markCompletedForSsr(record.getRecordId(), orderId);
+            idempotencyService.executeAndMarkCompleted(
+                    record.getRecordId(),
+                    orderId,
+                    HttpStatus.OK.value(),
+                    () -> orderService.partialCancel(orderId, userId, request.orderItemId(), request.quantity()));
             return ResponseEntity.ok(ApiResponse.ok());
         } catch (Exception e) {
             idempotencyService.markFailed(record.getRecordId());

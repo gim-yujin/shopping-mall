@@ -16,6 +16,7 @@ import com.shop.domain.user.entity.User;
 import com.shop.domain.user.entity.UserTier;
 import com.shop.global.exception.BusinessException;
 import com.shop.global.idempotency.IdempotencyRecord;
+import com.shop.global.idempotency.OrderWriteIdempotencyGuard;
 import com.shop.global.security.CustomUserPrincipal;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -77,13 +78,15 @@ class OrderControllerUnitTest {
     private CheckoutPreviewService checkoutPreviewService;
     @Mock
     private com.shop.global.idempotency.IdempotencyService idempotencyService;
+    @Mock
+    private OrderWriteIdempotencyGuard orderWriteIdempotencyGuard;
 
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
         OrderController controller = new OrderController(
-                orderService, checkoutPreviewService, idempotencyService);
+                orderService, checkoutPreviewService, idempotencyService, orderWriteIdempotencyGuard);
 
         // PaymentMethodValidator가 @ValidPaymentMethod 어노테이션을 처리하려면
         // LocalValidatorFactoryBean이 standaloneSetup에 등록되어야 한다.
@@ -185,6 +188,17 @@ class OrderControllerUnitTest {
         );
         ReflectionTestUtils.setField(order, "orderId", ORDER_ID);
         return order;
+    }
+
+    private void stubExecuteWithCompletion(Long recordId) {
+        doAnswer(invocation -> {
+            java.util.function.Supplier<Order> action = invocation.getArgument(1);
+            return action.get();
+        }).when(idempotencyService).executeWithCompletion(
+                eq(recordId),
+                org.mockito.ArgumentMatchers.<java.util.function.Supplier<Order>>any(),
+                org.mockito.ArgumentMatchers.<java.util.function.Function<Order, Long>>any(),
+                eq(201));
     }
 
     /**
@@ -686,6 +700,7 @@ class OrderControllerUnitTest {
             when(idempotencyService.findExisting(USER_ID, key)).thenReturn(Optional.of(failed));
             when(idempotencyService.retryAfterFailure(USER_ID, key, "ORDER")).thenReturn(newRecord);
             when(orderService.createOrder(eq(USER_ID), any())).thenReturn(order);
+            stubExecuteWithCompletion(200L);
 
             mockMvc.perform(post("/orders")
                             .param("shippingAddress", "서울시 강남구")
@@ -696,7 +711,11 @@ class OrderControllerUnitTest {
                     .andExpect(status().is3xxRedirection())
                     .andExpect(redirectedUrl("/orders/" + ORDER_ID));
 
-            verify(idempotencyService).markCompletedForSsr(200L, ORDER_ID);
+            verify(idempotencyService).executeWithCompletion(
+                    eq(200L),
+                    org.mockito.ArgumentMatchers.<java.util.function.Supplier<Order>>any(),
+                    org.mockito.ArgumentMatchers.<java.util.function.Function<Order, Long>>any(),
+                    eq(201));
         }
 
         @Test
@@ -728,7 +747,11 @@ class OrderControllerUnitTest {
 
             when(idempotencyService.findExisting(USER_ID, key)).thenReturn(Optional.empty());
             when(idempotencyService.initRecord(USER_ID, key, "ORDER")).thenReturn(record);
-            when(orderService.createOrder(eq(USER_ID), any()))
+            when(idempotencyService.executeWithCompletion(
+                    eq(300L),
+                    org.mockito.ArgumentMatchers.<java.util.function.Supplier<Order>>any(),
+                    org.mockito.ArgumentMatchers.<java.util.function.Function<Order, Long>>any(),
+                    eq(201)))
                     .thenThrow(new BusinessException("STOCK_NOT_ENOUGH", "재고가 부족합니다."));
 
             mockMvc.perform(post("/orders")
@@ -754,7 +777,11 @@ class OrderControllerUnitTest {
 
             when(idempotencyService.findExisting(USER_ID, key)).thenReturn(Optional.empty());
             when(idempotencyService.initRecord(USER_ID, key, "ORDER")).thenReturn(record);
-            when(orderService.createOrder(eq(USER_ID), any()))
+            when(idempotencyService.executeWithCompletion(
+                    eq(400L),
+                    org.mockito.ArgumentMatchers.<java.util.function.Supplier<Order>>any(),
+                    org.mockito.ArgumentMatchers.<java.util.function.Function<Order, Long>>any(),
+                    eq(201)))
                     .thenThrow(new RuntimeException("DB_CONNECTION_LOST"));
 
             // standaloneSetup에는 GlobalExceptionHandler 없으므로 ServletException으로 래핑됨
@@ -783,6 +810,7 @@ class OrderControllerUnitTest {
             when(idempotencyService.findExisting(USER_ID, key)).thenReturn(Optional.empty());
             when(idempotencyService.initRecord(USER_ID, key, "ORDER")).thenReturn(record);
             when(orderService.createOrder(eq(USER_ID), any())).thenReturn(order);
+            stubExecuteWithCompletion(500L);
 
             mockMvc.perform(post("/orders")
                             .param("shippingAddress", "서울시 강남구")
@@ -793,7 +821,11 @@ class OrderControllerUnitTest {
                     .andExpect(status().is3xxRedirection())
                     .andExpect(redirectedUrl("/orders/" + ORDER_ID));
 
-            verify(idempotencyService).markCompletedForSsr(500L, ORDER_ID);
+            verify(idempotencyService).executeWithCompletion(
+                    eq(500L),
+                    org.mockito.ArgumentMatchers.<java.util.function.Supplier<Order>>any(),
+                    org.mockito.ArgumentMatchers.<java.util.function.Function<Order, Long>>any(),
+                    eq(201));
         }
     }
 

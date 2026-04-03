@@ -126,9 +126,11 @@ public class CouponApiController {
 
         // 3단계: 쿠폰 발급 실행
         try {
-            couponService.issueCouponById(userId, couponId);
-            // resourceId로 couponId를 기록하여 어떤 쿠폰이 발급되었는지 추적 가능
-            idempotencyService.markCompletedForSsr(record.getRecordId(), couponId.longValue());
+            idempotencyService.executeAndMarkCompleted(
+                    record.getRecordId(),
+                    couponId.longValue(),
+                    HttpStatus.CREATED.value(),
+                    () -> couponService.issueCouponById(userId, couponId));
             return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.ok());
         } catch (Exception e) {
             idempotencyService.markFailed(record.getRecordId());

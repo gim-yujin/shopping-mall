@@ -19,7 +19,7 @@ import static org.mockito.Mockito.when;
  * <p>기존 CustomMicrometerMetricsTest(통합 테스트)에서는 빈 등록만 검증했으므로
  * 개별 메트릭 클래스의 record/increment 메서드가 커버되지 않았다.
  * 이 테스트에서는 다음을 검증한다:
- * - IdempotencyMetrics: 6개 Counter의 increment 메서드
+ * - IdempotencyMetrics: 7개 Counter의 increment 메서드
  * - OutboxMetrics: 3개 Counter의 increment 메서드
  * - SearchLogBatchMeterBinder: 7개 Gauge 등록 + 값 조회</p>
  */
@@ -45,6 +45,7 @@ class MetricsBranchCoverageTest {
             metrics.recordDuplicateProcessing();
             metrics.recordConflict();
             metrics.recordRetry();
+            metrics.recordMissingKey("api", "create");
             metrics.recordStaleRecovered(3);
 
             // then: 각 카운터가 정확히 증가
@@ -58,6 +59,9 @@ class MetricsBranchCoverageTest {
                     "result", "conflict").count()).isEqualTo(1.0);
             assertThat(registry.counter("shop.idempotency.requests.total",
                     "result", "retry").count()).isEqualTo(1.0);
+            assertThat(registry.counter("shop.idempotency.missing_key.total",
+                    "channel", "api",
+                    "operation", "create").count()).isEqualTo(1.0);
             // staleRecovered: 3 증가
             assertThat(registry.counter("shop.idempotency.stale.recovered.total").count())
                     .isEqualTo(3.0);

@@ -9,7 +9,9 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.function.Function;
 import java.util.Optional;
+import java.util.function.Supplier;
 
 /**
  * 멱등성 키 관리 서비스.
@@ -97,9 +99,7 @@ public class IdempotencyService {
      */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void markCompleted(Long recordId, Long resourceId, String responseBody, int httpStatus) {
-        IdempotencyRecord record = repository.findById(recordId)
-                .orElseThrow(() -> new IllegalStateException("멱등성 레코드를 찾을 수 없습니다: " + recordId));
-        record.markCompleted(resourceId, responseBody, httpStatus);
+        loadRecordOrThrow(recordId).markCompleted(resourceId, responseBody, httpStatus);
     }
 
     /**
@@ -110,9 +110,34 @@ public class IdempotencyService {
      */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void markCompletedForSsr(Long recordId, Long resourceId) {
-        IdempotencyRecord record = repository.findById(recordId)
-                .orElseThrow(() -> new IllegalStateException("멱등성 레코드를 찾을 수 없습니다: " + recordId));
-        record.markCompletedForSsr(resourceId);
+        loadRecordOrThrow(recordId).markCompletedForSsr(resourceId);
+    }
+
+    /**
+     * 쓰기 작업과 COMPLETED 전환을 하나의 트랜잭션으로 묶어 실행한다.
+     *
+     * <p>비즈니스 작업은 성공했지만 COMPLETED 전환만 실패하는 경우를 방지하기 위해,
+     * 둘을 같은 트랜잭션에서 처리한다. COMPLETED 기록이 실패하면 비즈니스 작업도
+     * 함께 롤백되어 FAILED로 안전하게 복구할 수 있다.</p>
+     */
+    @Transactional
+    public <T> T executeWithCompletion(
+            Long recordId,
+            Supplier<T> action,
+            Function<T, Long> resourceIdExtractor,
+            int httpStatus) {
+        T result = action.get();
+        loadRecordOrThrow(recordId).markCompleted(resourceIdExtractor.apply(result), null, httpStatus);
+        return result;
+    }
+
+    /**
+     * 반환값이 없는 쓰기 작업과 COMPLETED 전환을 하나의 트랜잭션으로 묶어 실행한다.
+     */
+    @Transactional
+    public void executeAndMarkCompleted(Long recordId, Long resourceId, int httpStatus, Runnable action) {
+        action.run();
+        loadRecordOrThrow(recordId).markCompleted(resourceId, null, httpStatus);
     }
 
     /**
@@ -197,5 +222,10 @@ public class IdempotencyService {
             throw new BusinessException("INVALID_IDEMPOTENCY_KEY",
                     "멱등성 키는 영문, 숫자, 하이픈만 사용할 수 있습니다.");
         }
+    }
+
+    private IdempotencyRecord loadRecordOrThrow(Long recordId) {
+        return repository.findById(recordId)
+                .orElseThrow(() -> new IllegalStateException("멱등성 레코드를 찾을 수 없습니다: " + recordId));
     }
 }

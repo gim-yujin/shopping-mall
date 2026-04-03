@@ -91,6 +91,8 @@ app:
   # 테스트에서 스케줄러 동작 검증이 필요한 경우 해당 메서드를 직접 호출한다.
   scheduling:
     enabled: false
+  idempotency:
+    require-order-write-key: false
   search-log:
     batch:
       flush-interval-ms: 600000

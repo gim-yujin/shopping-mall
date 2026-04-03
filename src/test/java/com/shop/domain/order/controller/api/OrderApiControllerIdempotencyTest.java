@@ -6,6 +6,7 @@ import com.shop.domain.order.service.OrderService;
 import com.shop.global.exception.BusinessException;
 import com.shop.global.idempotency.IdempotencyRecord;
 import com.shop.global.idempotency.IdempotencyService;
+import com.shop.global.idempotency.OrderWriteIdempotencyGuard;
 import com.shop.global.metrics.IdempotencyMetrics;
 import com.shop.global.security.CustomUserPrincipal;
 import org.junit.jupiter.api.AfterEach;
@@ -64,6 +65,9 @@ class OrderApiControllerIdempotencyTest {
     private IdempotencyService idempotencyService;
 
     @Mock
+    private OrderWriteIdempotencyGuard orderWriteIdempotencyGuard;
+
+    @Mock
     private IdempotencyMetrics idempotencyMetrics;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -75,7 +79,7 @@ class OrderApiControllerIdempotencyTest {
         objectMapper.findAndRegisterModules();
 
         OrderApiController controller = new OrderApiController(
-                orderService, idempotencyService, idempotencyMetrics, objectMapper);
+                orderService, idempotencyService, orderWriteIdempotencyGuard, idempotencyMetrics, objectMapper);
 
         LocalValidatorFactoryBean validator = new LocalValidatorFactoryBean();
         validator.afterPropertiesSet();
@@ -168,6 +172,7 @@ class OrderApiControllerIdempotencyTest {
                     .andExpect(jsonPath("$.success").value(true))
                     .andExpect(jsonPath("$.data.orderId").value(100));
 
+            verify(orderWriteIdempotencyGuard).handleMissingKey("api", "create", USER_ID);
             // IdempotencyService는 호출되지 않아야 한다
             verifyNoInteractions(idempotencyService);
         }
@@ -186,6 +191,14 @@ class OrderApiControllerIdempotencyTest {
             when(idempotencyService.findExisting(USER_ID, VALID_KEY)).thenReturn(Optional.empty());
             when(idempotencyService.initRecord(USER_ID, VALID_KEY, "ORDER")).thenReturn(record);
             when(orderService.createOrder(eq(USER_ID), any())).thenReturn(order);
+            doAnswer(invocation -> {
+                java.util.function.Supplier<Order> action = invocation.getArgument(1);
+                return action.get();
+            }).when(idempotencyService).executeWithCompletion(
+                    eq(10L),
+                    org.mockito.ArgumentMatchers.<java.util.function.Supplier<Order>>any(),
+                    org.mockito.ArgumentMatchers.<java.util.function.Function<Order, Long>>any(),
+                    eq(201));
 
             mockMvc.perform(post("/api/v1/orders")
                             .contentType(MediaType.APPLICATION_JSON)
@@ -195,8 +208,11 @@ class OrderApiControllerIdempotencyTest {
                     .andExpect(jsonPath("$.success").value(true))
                     .andExpect(jsonPath("$.data.orderId").value(100));
 
-            // COMPLETED로 전환되었는지 검증
-            verify(idempotencyService).markCompleted(eq(10L), eq(100L), any(), eq(201));
+            verify(idempotencyService).executeWithCompletion(
+                    eq(10L),
+                    org.mockito.ArgumentMatchers.<java.util.function.Supplier<Order>>any(),
+                    org.mockito.ArgumentMatchers.<java.util.function.Function<Order, Long>>any(),
+                    eq(201));
         }
     }
 
@@ -285,7 +301,11 @@ class OrderApiControllerIdempotencyTest {
 
             when(idempotencyService.findExisting(USER_ID, VALID_KEY)).thenReturn(Optional.empty());
             when(idempotencyService.initRecord(USER_ID, VALID_KEY, "ORDER")).thenReturn(record);
-            when(orderService.createOrder(eq(USER_ID), any()))
+            when(idempotencyService.executeWithCompletion(
+                    eq(10L),
+                    org.mockito.ArgumentMatchers.<java.util.function.Supplier<Order>>any(),
+                    org.mockito.ArgumentMatchers.<java.util.function.Function<Order, Long>>any(),
+                    eq(201)))
                     .thenThrow(new BusinessException("EMPTY_CART", "장바구니가 비어있습니다."));
 
             mockMvc.perform(post("/api/v1/orders")

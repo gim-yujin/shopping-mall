@@ -194,6 +194,44 @@ class IdempotencyServiceTest {
     }
 
     @Nested
+    @DisplayName("executeWithCompletion / executeAndMarkCompleted — 원자적 완료 래퍼")
+    class ExecuteWithCompletionTest {
+
+        @Test
+        @DisplayName("executeWithCompletion은 action 결과를 반환하고 COMPLETED로 전환한다")
+        void executeWithCompletion_marksCompletedAndReturnsResult() {
+            IdempotencyRecord record = new IdempotencyRecord(1L, "key", "ORDER");
+            ReflectionTestUtils.setField(record, "recordId", 10L);
+            when(repository.findById(10L)).thenReturn(Optional.of(record));
+
+            Long result = idempotencyService.executeWithCompletion(10L, () -> 999L, id -> id, 201);
+
+            assertThat(result).isEqualTo(999L);
+            assertThat(record.isCompleted()).isTrue();
+            assertThat(record.getResourceId()).isEqualTo(999L);
+            assertThat(record.getHttpStatus()).isEqualTo(201);
+            assertThat(record.getResponseBody()).isNull();
+        }
+
+        @Test
+        @DisplayName("executeAndMarkCompleted는 void action 후 COMPLETED로 전환한다")
+        void executeAndMarkCompleted_marksCompleted() {
+            IdempotencyRecord record = new IdempotencyRecord(1L, "key", "ORDER_CANCEL");
+            ReflectionTestUtils.setField(record, "recordId", 20L);
+            when(repository.findById(20L)).thenReturn(Optional.of(record));
+
+            idempotencyService.executeAndMarkCompleted(20L, 555L, 200, () -> {
+                // no-op
+            });
+
+            assertThat(record.isCompleted()).isTrue();
+            assertThat(record.getResourceId()).isEqualTo(555L);
+            assertThat(record.getHttpStatus()).isEqualTo(200);
+            assertThat(record.getResponseBody()).isNull();
+        }
+    }
+
+    @Nested
     @DisplayName("retryAfterFailure — FAILED 재시도")
     class RetryAfterFailureTest {
 

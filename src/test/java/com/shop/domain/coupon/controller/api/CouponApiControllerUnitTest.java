@@ -65,6 +65,15 @@ class CouponApiControllerUnitTest {
         SecurityContextHolder.clearContext();
     }
 
+    private void stubExecuteAndMarkCompleted(Long recordId, Long resourceId, int httpStatus) {
+        doAnswer(invocation -> {
+            Runnable action = invocation.getArgument(3);
+            action.run();
+            return null;
+        }).when(idempotencyService).executeAndMarkCompleted(
+                eq(recordId), eq(resourceId), eq(httpStatus), any(Runnable.class));
+    }
+
     // ── 멱등성 키 없이 호출 (폴백) ──
 
     @Nested
@@ -109,6 +118,7 @@ class CouponApiControllerUnitTest {
 
             when(idempotencyService.findExisting(1L, key)).thenReturn(Optional.empty());
             when(idempotencyService.initRecord(1L, key, "COUPON_ISSUE")).thenReturn(record);
+            stubExecuteAndMarkCompleted(100L, 5L, 201);
 
             mockMvc.perform(post("/api/v1/coupons/issue/5")
                             .header("X-Idempotency-Key", key))
@@ -116,7 +126,7 @@ class CouponApiControllerUnitTest {
                     .andExpect(jsonPath("$.success").value(true));
 
             verify(couponService).issueCouponById(1L, 5);
-            verify(idempotencyService).markCompletedForSsr(100L, 5L);
+            verify(idempotencyService).executeAndMarkCompleted(eq(100L), eq(5L), eq(201), any(Runnable.class));
             verify(idempotencyMetrics).recordNew();
         }
     }
@@ -176,6 +186,7 @@ class CouponApiControllerUnitTest {
 
             when(idempotencyService.findExisting(1L, key)).thenReturn(Optional.of(failed));
             when(idempotencyService.retryAfterFailure(1L, key, "COUPON_ISSUE")).thenReturn(newRecord);
+            stubExecuteAndMarkCompleted(200L, 5L, 201);
 
             mockMvc.perform(post("/api/v1/coupons/issue/5")
                             .header("X-Idempotency-Key", key))
@@ -219,7 +230,7 @@ class CouponApiControllerUnitTest {
             when(idempotencyService.findExisting(1L, key)).thenReturn(Optional.empty());
             when(idempotencyService.initRecord(1L, key, "COUPON_ISSUE")).thenReturn(record);
             doThrow(new RuntimeException("COUPON_SOLD_OUT"))
-                    .when(couponService).issueCouponById(1L, 5);
+                    .when(idempotencyService).executeAndMarkCompleted(eq(300L), eq(5L), eq(201), any(Runnable.class));
 
             // standaloneSetup에는 GlobalExceptionHandler 없으므로 ServletException으로 래핑됨
             try {

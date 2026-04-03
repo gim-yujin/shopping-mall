@@ -12,12 +12,14 @@ import com.shop.global.common.PagingParams;
 import com.shop.global.exception.BusinessException;
 import com.shop.global.idempotency.IdempotencyRecord;
 import com.shop.global.idempotency.IdempotencyService;
+import com.shop.global.idempotency.OrderWriteIdempotencyGuard;
 import com.shop.global.security.SecurityUtil;
 import jakarta.validation.Valid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Controller;
 import org.springframework.validation.BindingResult;
 import org.springframework.ui.Model;
@@ -67,13 +69,16 @@ public class OrderController {
     private final OrderService orderService;
     private final CheckoutPreviewService checkoutPreviewService;
     private final IdempotencyService idempotencyService;
+    private final OrderWriteIdempotencyGuard orderWriteIdempotencyGuard;
 
     public OrderController(OrderService orderService,
                            CheckoutPreviewService checkoutPreviewService,
-                           IdempotencyService idempotencyService) {
+                           IdempotencyService idempotencyService,
+                           OrderWriteIdempotencyGuard orderWriteIdempotencyGuard) {
         this.orderService = orderService;
         this.checkoutPreviewService = checkoutPreviewService;
         this.idempotencyService = idempotencyService;
+        this.orderWriteIdempotencyGuard = orderWriteIdempotencyGuard;
     }
 
     /**
@@ -141,6 +146,7 @@ public class OrderController {
 
         // 멱등성 키가 없으면 기존 비멱등 동작으로 폴백 (하위 호환)
         if (idempotencyKey == null || idempotencyKey.isBlank()) {
+            orderWriteIdempotencyGuard.handleMissingKey("ssr", "create", userId);
             return createOrderWithoutIdempotency(userId, request, redirectAttributes);
         }
 
@@ -188,10 +194,11 @@ public class OrderController {
 
         // 3단계: 주문 생성 실행
         try {
-            Order order = orderService.createOrder(userId, request);
-
-            // 4단계: 성공 → COMPLETED 전환 (SSR이므로 응답 JSON 없이 orderId만 저장)
-            idempotencyService.markCompletedForSsr(record.getRecordId(), order.getOrderId());
+            Order order = idempotencyService.executeWithCompletion(
+                    record.getRecordId(),
+                    () -> orderService.createOrder(userId, request),
+                    Order::getOrderId,
+                    HttpStatus.CREATED.value());
 
             redirectAttributes.addFlashAttribute("successMessage", "주문이 완료되었습니다.");
             return "redirect:/orders/" + order.getOrderId();
