@@ -41,4 +41,33 @@ class DuplicateConstraintMessageResolverTest {
 
         assertThat(resolver.resolve(exception)).isEqualTo("중복된 데이터가 존재합니다. 다시 시도해주세요.");
     }
+
+    @Test
+    void resolve_nullException_returnsDefaultMessage() {
+        assertThat(resolver.resolve(null)).isEqualTo("중복된 데이터가 존재합니다. 다시 시도해주세요.");
+    }
+
+    @Test
+    void resolve_causeWithNullMessage_returnsDefaultMessage() {
+        RuntimeException cause = new RuntimeException((String) null);
+        DataIntegrityViolationException exception = new DataIntegrityViolationException("outer", cause);
+
+        assertThat(resolver.resolve(exception)).isEqualTo("중복된 데이터가 존재합니다. 다시 시도해주세요.");
+    }
+
+    @Test
+    void resolve_userNameUnderscore_returnsUsernameMessage() {
+        DataIntegrityViolationException exception = new DataIntegrityViolationException(
+                "duplicate key value violates unique constraint \"uk_user_name_idx\"");
+
+        assertThat(resolver.resolve(exception)).isEqualTo("이미 사용 중인 아이디입니다.");
+    }
+
+    @Test
+    void resolve_eMailUnderscore_returnsEmailMessage() {
+        DataIntegrityViolationException exception = new DataIntegrityViolationException(
+                "duplicate key value violates unique constraint \"uk_e_mail_idx\"");
+
+        assertThat(resolver.resolve(exception)).isEqualTo("이미 사용 중인 이메일입니다.");
+    }
 }

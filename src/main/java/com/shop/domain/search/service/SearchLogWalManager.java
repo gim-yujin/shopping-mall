@@ -1,5 +1,6 @@
 package com.shop.domain.search.service;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import org.slf4j.Logger;
@@ -246,11 +247,20 @@ public class SearchLogWalManager {
 
         // 현재 활성 세그먼트를 제외한 잔존 세그먼트 목록 조회.
         // 파일명 순 정렬로 시간순 복구를 보장한다 (파일명에 타임스탬프 포함).
+        // currentSegmentPath를 synchronized 블록에서 읽어 IS2_INCONSISTENT_SYNC를 해소한다.
+        Path activeSegment;
+        synchronized (this) {
+            activeSegment = currentSegmentPath;
+        }
+
         List<Path> segments;
         try (Stream<Path> stream = Files.list(walDir)) {
             segments = stream
-                    .filter(p -> p.getFileName().toString().startsWith(SEGMENT_PREFIX))
-                    .filter(p -> !p.equals(currentSegmentPath))
+                    .filter(p -> {
+                        Path fileName = p.getFileName();
+                        return fileName != null && fileName.toString().startsWith(SEGMENT_PREFIX);
+                    })
+                    .filter(p -> !p.equals(activeSegment))
                     .sorted()
                     .toList();
         } catch (IOException e) {
@@ -280,7 +290,7 @@ public class SearchLogWalManager {
                         SearchLogEntry entry = objectMapper.readValue(line, SearchLogEntry.class);
                         recovered.add(entry);
                         segmentEntries++;
-                    } catch (Exception e) {
+                    } catch (JsonProcessingException e) {
                         // 라인 파싱 실패 — 해당 엔트리만 건너뛰고 나머지는 계속 복구.
                         // 프로세스 크래시 시 마지막 라인이 불완전하게 기록될 수 있다.
                         parseErrors++;

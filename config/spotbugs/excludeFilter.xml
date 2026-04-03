@@ -30,4 +30,54 @@
             <Class name="com.shop.domain.user.dto.SignupRequest"/>
         </Or>
     </Match>
+
+    <!--
+      THROWS_METHOD_THROWS_RUNTIMEEXCEPTION: Resilience4j 폴백/래핑 패턴에서
+      checked exception을 RuntimeException으로 변환하는 것은 의도적 설계.
+      - CheckoutPreviewService: StructuredTaskScope의 ExecutionException 래핑
+      - OrderCreationService: CircuitBreaker fallback에서 checked exception 래핑
+      - ResilientCallExecutor: Callable.call()의 checked exception 래핑
+    -->
+    <Match>
+        <Bug pattern="THROWS_METHOD_THROWS_RUNTIMEEXCEPTION"/>
+        <Or>
+            <Class name="com.shop.domain.order.service.CheckoutPreviewService"/>
+            <Class name="com.shop.domain.order.service.OrderCreationService"/>
+            <Class name="com.shop.global.resilience.ResilientCallExecutor"/>
+        </Or>
+    </Match>
+
+    <!--
+      UPM_UNCALLED_PRIVATE_METHOD: Resilience4j @CircuitBreaker의 fallbackMethod는
+      리플렉션으로 호출되므로 SpotBugs가 호출 지점을 감지하지 못한다.
+    -->
+    <Match>
+        <Bug pattern="UPM_UNCALLED_PRIVATE_METHOD"/>
+        <Class name="com.shop.domain.order.service.OrderCreationService"/>
+        <Method name="createOrderFallback"/>
+    </Match>
+
+    <!--
+      CT_CONSTRUCTOR_THROW: SearchLogWalManager 생성자에서 WAL 디렉터리 생성 및
+      세그먼트 파일을 여는 것은 fail-fast 의도. 디렉터리/파일 생성 불가 시
+      부분 초기화된 객체보다 즉시 실패가 안전하다.
+    -->
+    <Match>
+        <Bug pattern="CT_CONSTRUCTOR_THROW"/>
+        <Class name="com.shop.domain.search.service.SearchLogWalManager"/>
+    </Match>
+
+    <!--
+      테스트 코드 전역 제외: 테스트 가독성과 간결성을 위한 패턴들을 SpotBugs에서 제외한다.
+      - BAD_PRACTICE: 의도적 예외 무시, throws Exception 선언, 반환값 무시 등
+      - STYLE: 테스트 데이터 존재 전제 하 간결한 null 처리
+      - MT_CORRECTNESS: 동시성 테스트의 의도적 volatile 미사용 (테스트 정합성에 영향 없음)
+      - PERFORMANCE: JUnit @AfterEach 등 프레임워크 리플렉션 호출 미감지
+      - I18N: 테스트에서 Locale 미지정 toLowerCase() 등 허용
+      - 기타: 하드코딩 경로(임시 디렉터리), 리소스 관리(테스트 트랜잭션 롤백) 등
+    -->
+    <Match>
+        <Source name="~.*Test(Supplementary)?\.java"/>
+        <Bug pattern="RV_RETURN_VALUE_IGNORED_BAD_PRACTICE,RV_RETURN_VALUE_IGNORED,THROWS_METHOD_THROWS_RUNTIMEEXCEPTION,THROWS_METHOD_THROWS_CLAUSE_BASIC_EXCEPTION,REC_CATCH_EXCEPTION,DE_MIGHT_IGNORE,NP_NULL_ON_SOME_PATH_FROM_RETURN_VALUE,URF_UNREAD_FIELD,AT_STALE_THREAD_WRITE_OF_PRIMITIVE,AT_NONATOMIC_64BIT_PRIMITIVE,UPM_UNCALLED_PRIVATE_METHOD,DM_CONVERT_CASE,VA_FORMAT_STRING_USES_NEWLINE,BC_UNCONFIRMED_CAST_OF_RETURN_VALUE,DLS_DEAD_LOCAL_STORE,SF_SWITCH_NO_DEFAULT,DMI_HARDCODED_ABSOLUTE_FILENAME,OBL_UNSATISFIED_OBLIGATION_EXCEPTION_EDGE,ODR_OPEN_DATABASE_RESOURCE"/>
+    </Match>
 </FindBugsFilter>

@@ -143,18 +143,24 @@ public class Resilience4jConfig {
      */
     private void addRetryLogger(Retry retry) {
         retry.getEventPublisher()
-                .onRetry(event -> log.warn(
-                        "[Retry] '{}' 재시도 #{} — 원인: {}",
-                        event.getName(),
-                        event.getNumberOfRetryAttempts(),
-                        event.getLastThrowable().getMessage()
-                ))
-                .onError(event -> log.error(
-                        "[Retry] '{}' 재시도 소진 ({}회) — 최종 실패: {}",
-                        event.getName(),
-                        event.getNumberOfRetryAttempts(),
-                        event.getLastThrowable().getMessage()
-                ));
+                .onRetry(event -> {
+                    Throwable lastThrowable = event.getLastThrowable();
+                    log.warn(
+                            "[Retry] '{}' 재시도 #{} — 원인: {}",
+                            event.getName(),
+                            event.getNumberOfRetryAttempts(),
+                            lastThrowable != null ? lastThrowable.getMessage() : "unknown"
+                    );
+                })
+                .onError(event -> {
+                    Throwable lastThrowable = event.getLastThrowable();
+                    log.error(
+                            "[Retry] '{}' 재시도 소진 ({}회) — 최종 실패: {}",
+                            event.getName(),
+                            event.getNumberOfRetryAttempts(),
+                            lastThrowable != null ? lastThrowable.getMessage() : "unknown"
+                    );
+                });
     }
 
     // ── Micrometer 메트릭 바인딩 ──────────────────────────────
