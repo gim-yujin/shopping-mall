@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import java.util.List;
 import java.util.Optional;
 
 public interface ReviewRepository extends JpaRepository<Review, Long> {
@@ -33,6 +34,19 @@ public interface ReviewRepository extends JpaRepository<Review, Long> {
     Optional<Double> findAverageRatingByProductId(@Param("productId") Long productId);
 
     int countByProductId(Long productId);
+
+    /**
+     * 상품별 평균 평점과 리뷰 수를 단일 쿼리로 조회한다.
+     *
+     * <p>기존에는 findAverageRatingByProductId()와 countByProductId()를 별도로 호출하여
+     * 동일 테이블에 2회 DB 왕복이 발생했다. 단일 집계 쿼리로 통합하여 1회로 감소시킨다.</p>
+     *
+     * <p>idx_review_rating(product_id, rating) 인덱스로 Index-Only Scan이 가능하다.</p>
+     *
+     * @return 단일 행 리스트. row[0] = avgRating (Double, nullable), row[1] = count (Long)
+     */
+    @Query("SELECT AVG(r.rating), COUNT(r) FROM Review r WHERE r.productId = :productId")
+    List<Object[]> findRatingStatsByProductId(@Param("productId") Long productId);
 
     boolean existsByUserIdAndOrderItemId(Long userId, Long orderItemId);
 

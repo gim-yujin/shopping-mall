@@ -200,8 +200,9 @@ public class ReviewService {
     private void updateProductRating(Long productId) {
         Product product = productRepository.findById(productId)
                 .orElseThrow(() -> new ResourceNotFoundException("상품", productId));
-        Double avg = reviewRepository.findAverageRatingByProductId(productId).orElse(0.0);
-        int count = reviewRepository.countByProductId(productId);
+        Object[] stats = reviewRepository.findRatingStatsByProductId(productId).get(0);
+        Double avg = stats[0] != null ? ((Number) stats[0]).doubleValue() : 0.0;
+        int count = ((Number) stats[1]).intValue();
         product.updateRating(BigDecimal.valueOf(avg).setScale(2, RoundingMode.HALF_UP), count);
     }
 

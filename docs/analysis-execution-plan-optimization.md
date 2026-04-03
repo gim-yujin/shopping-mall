@@ -299,6 +299,89 @@ WHERE r.review_id = sub.review_id AND r.helpful_count != sub.actual_count
 
 ---
 
+### 2-7. `findByOrderId()` — 인덱스 선행 컬럼 불일치
+
+**심각도**: MEDIUM
+**파일**: `PointHistoryRepository.java:42`
+
+```java
+@Query("SELECT ph FROM PointHistory ph WHERE ph.referenceId = :orderId AND ph.referenceType IN ('ORDER', 'CANCEL') ORDER BY ph.createdAt ASC")
+List<PointHistory> findByOrderId(@Param("orderId") Long orderId);
+```
+
+**현재 실행 계획 (추정)**:
+```
+BitmapOr
+  → Bitmap Index Scan on idx_point_history_reference (reference_type = 'ORDER' AND reference_id = :orderId)
+  → Bitmap Index Scan on idx_point_history_reference (reference_type = 'CANCEL' AND reference_id = :orderId)
+→ Bitmap Heap Scan (fetch created_at for ORDER BY)
+→ Sort (created_at ASC)
+```
+
+**문제**: 현재 인덱스 `idx_point_history_reference(reference_type, reference_id)`는 선행 컬럼이 `reference_type`이다.
+`reference_type IN ('ORDER', 'CANCEL')` 조건에서 PostgreSQL은 두 값에 대해 각각 인덱스 스캔을 수행한 뒤 BitmapOr로 병합한다.
+이후 `created_at` 컬럼은 인덱스에 없으므로 heap 접근 후 Sort가 추가된다.
+
+point_history 테이블은 50M건(스키마 주석 기준)이므로, `reference_id` 직접 조회가 가능한 인덱스가 효율적이다.
+
+**완화 요소**: 주문 취소/CS 문의 경로에서 사용되어 트래픽은 중간 수준이다. 특정 orderId에 연관된 포인트 이력은 소수(1~5건)이므로 개별 쿼리 비용 자체는 작지만, BitmapOr + Sort 오버헤드는 불필요하다.
+
+**개선 방안**: `reference_id`를 선행 컬럼으로 둔 복합 인덱스를 추가한다.
+
+```sql
+CREATE INDEX idx_point_history_ref_order ON point_history(reference_id, reference_type, created_at);
+```
+
+이 인덱스로 `reference_id = :orderId` 등값 조건에서 단일 Index Range Scan을 수행하고,
+`reference_type IN ('ORDER', 'CANCEL')` 필터와 `created_at ASC` 정렬을 인덱스에서 직접 처리한다.
+BitmapOr 병합과 별도 Sort가 모두 제거된다.
+
+**2026-04-04 적용 결과**: `idx_point_history_ref_order`를 추가했다. 코드 변경은 §4-5 참고.
+
+---
+
+### 2-8. `updateProductRating()` — 동일 필터 2회 DB 왕복
+
+**심각도**: LOW-MEDIUM
+**파일**: `ReviewService.java:200-205`
+
+```java
+private void updateProductRating(Long productId) {
+    Product product = productRepository.findById(productId).orElseThrow(...);
+    Double avg = reviewRepository.findAverageRatingByProductId(productId).orElse(0.0);
+    int count = reviewRepository.countByProductId(productId);
+    product.updateRating(BigDecimal.valueOf(avg).setScale(2, RoundingMode.HALF_UP), count);
+}
+```
+
+**현재 실행 계획 (추정)**:
+```
+쿼리 1: SELECT AVG(rating) FROM reviews WHERE product_id = :productId
+  → Index Only Scan on idx_review_rating(product_id, rating)
+
+쿼리 2: SELECT COUNT(*) FROM reviews WHERE product_id = :productId
+  → Index Scan on idx_review_product(product_id, created_at DESC)
+```
+
+**문제**: `product_id`가 동일한 두 집계 쿼리를 별도로 실행하여 2회의 DB 왕복이 발생한다.
+각 쿼리는 동일한 행 집합을 스캔하므로 작업이 중복된다.
+
+**실행 경로**: 리뷰 생성·수정·삭제 시 호출된다. 인기 상품에서 리뷰 CRUD가 빈번하면 중복 비용이 누적된다.
+
+**개선 방안**: 단일 집계 쿼리로 통합한다.
+
+```java
+@Query("SELECT AVG(r.rating), COUNT(r) FROM Review r WHERE r.productId = :productId")
+Object[] findRatingStatsByProductId(@Param("productId") Long productId);
+```
+
+기존 `idx_review_rating(product_id, rating)` 인덱스가 `AVG(rating)`과 `COUNT(*)`를 모두 커버하므로
+Index-Only Scan이 가능하다. DB 왕복 2회 → 1회로 감소.
+
+**2026-04-04 적용 결과**: `findRatingStatsByProductId()`를 추가하고 `updateProductRating()`을 단일 쿼리로 전환했다. 코드 변경은 §4-6 참고.
+
+---
+
 ## 3. 우선순위 매트릭스
 
 | # | 대상 쿼리 | 파일 위치 | 심각도 | 영향 빈도 | 실행 경로 | 조치 난이도 |
@@ -309,10 +392,12 @@ WHERE r.review_id = sub.review_id AND r.helpful_count != sub.actual_count
 | 4 | `v_order_list` 상관 서브쿼리 | `schema.sql:788-791` | MEDIUM | 관리자 조회 시 | 관리자 주문 목록 | 현행 유지 가능 |
 | 5 | `countByStatus()` Partial Index 매칭 | `OrderItemRepository.java:98` | LOW | 대시보드 조회 시 | 관리자 대시보드 | 리터럴 네이티브 쿼리 분리 |
 | 6 | `syncAllHelpfulCounts()` 전체 GROUP BY | `ReviewRepository.java:80` | LOW | 야간 배치 | ReviewHelpfulSyncScheduler | 현행 유지 가능 |
+| 7 | `findByOrderId()` 인덱스 선행 컬럼 불일치 | `PointHistoryRepository.java:42` | MEDIUM | 주문 취소/CS 시 | 주문 취소·상세 | 복합 인덱스 추가 |
+| 8 | `updateProductRating()` 2회 집계 | `ReviewService.java:200` | LOW-MEDIUM | 리뷰 CUD 시 | 리뷰 생성·수정·삭제 | 단일 쿼리 통합 |
 
 ### 조치 권장
 
-- **적용 완료 (항목 1, 2, 3, 5)**: 인덱스/쿼리 경로 보강으로 해결. 코드 변경은 §4, 벤치마크 결과는 §5 참고.
+- **적용 완료 (항목 1, 2, 3, 5, 7, 8)**: 인덱스/쿼리 경로 보강으로 해결. 코드 변경은 §4, 벤치마크 결과는 §5 참고.
 - **모니터링 후 판단 (항목 4)**: 관리자 조회 경로이므로 실제 실행 시간을 측정한 뒤 필요 시 적용한다.
 - **현행 유지 (항목 6)**: 영향이 작고 배치 경로라 현행 유지 가능하다.
 
@@ -320,10 +405,11 @@ WHERE r.review_id = sub.review_id AND r.helpful_count != sub.actual_count
 
 ## 4. 적용 완료: 코드 변경사항
 
-항목 1, 2, 3은 `schema.sql`/migration에 인덱스를 추가하여 해결했고,
+항목 1, 2, 3, 7은 `schema.sql`/migration에 인덱스를 추가하여 해결했고,
 항목 5는 Repository/Service 경로를 리터럴 네이티브 쿼리로 분리하여 해결하였다.
+항목 8은 2개의 집계 쿼리를 단일 쿼리로 통합하여 해결하였다.
 
-### 변경 파일
+### 변경 파일 (항목 1, 2, 3, 5)
 
 | 파일 | 변경 내용 |
 |---|---|
@@ -434,17 +520,74 @@ WHERE r.review_id = sub.review_id AND r.helpful_count != sub.actual_count
 - 파라미터 바인딩 쿼리는 generic plan에서 Partial Index 매칭이 불확실할 수 있다.
 - 관리자 대시보드 집계는 고정된 상태값 하나만 필요하므로, 범용 메서드보다 고정 리터럴 경로가 더 명확하고 빠르다.
 
+### 4-5. 항목 7: `idx_point_history_ref_order` 추가
+
+**위치**: `schema.sql` — Point_History 인덱스 블록, `idx_point_history_reference` 직후
+
+```diff
+  CREATE INDEX idx_point_history_reference ON point_history(reference_type, reference_id);
+
++ -- findByOrderId() 인덱스 선행 컬럼 최적화: reference_id 기반 조회용 복합 인덱스.
++ CREATE INDEX idx_point_history_ref_order ON point_history(reference_id, reference_type, created_at);
++
+  -- [Phase 8] point_history 복합 인덱스 (change_type별 최신순 조회 최적화).
+```
+
+**설계 근거**:
+- 선행 컬럼 `reference_id`: `WHERE reference_id = :orderId` 등값 조건에서 단일 Index Range Scan.
+- 후행 컬럼 `reference_type`: `IN ('ORDER', 'CANCEL')` 필터를 인덱스에서 직접 처리.
+- 후행 컬럼 `created_at`: `ORDER BY created_at ASC`를 인덱스 순서로 처리하여 별도 Sort 제거.
+- 기존 `idx_point_history_reference(reference_type, reference_id)`는 제거하지 않는다. `reference_type` 기반 조회(관리자 이력 필터 등)에서 여전히 활용된다.
+
+### 4-6. 항목 8: `findRatingStatsByProductId()` 단일 집계 쿼리 통합
+
+**위치**: `ReviewRepository.java`, `ReviewService.java`
+
+```diff
++ @Query("SELECT AVG(r.rating), COUNT(r) FROM Review r WHERE r.productId = :productId")
++ Object[] findRatingStatsByProductId(@Param("productId") Long productId);
+```
+
+```diff
+  private void updateProductRating(Long productId) {
+      Product product = productRepository.findById(productId).orElseThrow(...);
+-     Double avg = reviewRepository.findAverageRatingByProductId(productId).orElse(0.0);
+-     int count = reviewRepository.countByProductId(productId);
++     Object[] stats = reviewRepository.findRatingStatsByProductId(productId);
++     Double avg = stats[0] != null ? ((Number) stats[0]).doubleValue() : 0.0;
++     int count = ((Number) stats[1]).intValue();
+      product.updateRating(BigDecimal.valueOf(avg).setScale(2, RoundingMode.HALF_UP), count);
+  }
+```
+
+**설계 근거**:
+- `findAverageRatingByProductId()`와 `countByProductId()`는 동일한 `product_id` 필터를 공유하므로 단일 쿼리로 통합하면 DB 왕복이 2→1회로 감소한다.
+- `idx_review_rating(product_id, rating)` 인덱스가 `AVG(rating)`과 `COUNT(*)` 모두를 커버하므로 Index-Only Scan이 가능하다.
+- 기존 `findAverageRatingByProductId()`와 `countByProductId()`는 다른 곳에서 개별 호출될 가능성을 위해 유지한다.
+
 ### 인덱스 총 개수 변경
 
 ```diff
-- -- 총 19개 테이블, 57개 인덱스 생성됨 (일반 54 + UNIQUE 3)
-+ -- 총 19개 테이블, 60개 인덱스 생성됨 (일반 57 + UNIQUE 3)
+- -- 총 19개 테이블, 60개 인덱스 생성됨 (일반 57 + UNIQUE 3)
++ -- 총 19개 테이블, 61개 인덱스 생성됨 (일반 58 + UNIQUE 3)
 ```
+
+### 변경 파일 (항목 7, 8)
+
+| 파일 | 변경 내용 |
+|---|---|
+| `src/main/resources/schema.sql` | `idx_point_history_ref_order` 인덱스 추가, 인덱스 총 개수 갱신 |
+| `src/main/resources/migration/V20__optimize_point_history_ref_and_review_rating.sql` | 인덱스 추가 마이그레이션 |
+| `src/main/java/com/shop/domain/review/repository/ReviewRepository.java` | `findRatingStatsByProductId()` 단일 집계 쿼리 추가 |
+| `src/main/java/com/shop/domain/review/service/ReviewService.java` | `updateProductRating()` 2→1 쿼리 전환 |
+| `src/test/java/com/shop/domain/review/service/ReviewServiceUnitTest.java` | 새 집계 쿼리 Mock 갱신 |
+| `src/test/java/com/shop/domain/review/service/ReviewServiceBranchTest.java` | 새 집계 쿼리 Mock 갱신 |
 
 ### 영향받지 않는 코드
 
-항목 1, 2, 3은 인덱스 추가만으로 플래너가 최적 실행 계획을 선택한다.
+항목 1, 2, 3, 7은 인덱스 추가만으로 플래너가 최적 실행 계획을 선택한다.
 항목 5는 관리자 대시보드의 고정 집계 경로만 별도 메서드로 분리했다.
+항목 8은 `updateProductRating()` 내부 호출만 변경했다.
 
 | 파일 | 쿼리 메서드 | 변경 여부 |
 |---|---|---|
@@ -453,7 +596,12 @@ WHERE r.review_id = sub.review_id AND r.helpful_count != sub.actual_count
 | `ProductRepository.java:194` | `searchByKeywordLikeFlat()` | 변경 없음 |
 | `OrderRepository.java:63-68` | `findYearlySpentByUser()` | 변경 없음 |
 | `OrderItemRepository.java:98` | `countByStatus()` | 유지 |
-| `OrderItemRepository.java:110` | `countReturnRequested()` | 신규 |
+| `OrderItemRepository.java:110` | `countReturnRequested()` | 신규 (항목 5) |
+| `PointHistoryRepository.java:42` | `findByOrderId()` | 변경 없음 (인덱스만 추가) |
+| `ReviewRepository.java:32-33` | `findAverageRatingByProductId()` | 유지 |
+| `ReviewRepository.java:35` | `countByProductId()` | 유지 |
+| `ReviewRepository.java:48` | `findRatingStatsByProductId()` | 신규 (항목 8) |
+| `ReviewService.java:200` | `updateProductRating()` | 단일 쿼리로 전환 |
 | `ProductQueryService.java:142-150` | `search()` — FTS/LIKE 폴백 로직 | 변경 없음 |
 | `SearchService.java:64-68` | `getPopularKeywords()` — 캐시 래핑 | 변경 없음 |
 | `OrderQueryService.java:177` | `getPendingReturnCount()` | 새 리터럴 쿼리 경로 사용 |

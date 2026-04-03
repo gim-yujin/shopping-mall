@@ -78,8 +78,7 @@ class ReviewServiceBranchTest {
             // 평점 재계산용 Mock
             Product product = mock(Product.class);
             when(productRepository.findById(1L)).thenReturn(Optional.of(product));
-            when(reviewRepository.findAverageRatingByProductId(1L)).thenReturn(Optional.of(4.5));
-            when(reviewRepository.countByProductId(1L)).thenReturn(10);
+            when(reviewRepository.findRatingStatsByProductId(1L)).thenReturn(java.util.Collections.singletonList(new Object[]{4.5, 10L}));
 
             // when
             ReviewUpdateRequest request = new ReviewUpdateRequest(5, "수정 제목", "수정 내용");
@@ -192,8 +191,7 @@ class ReviewServiceBranchTest {
         // 평점 재계산용 Mock
         Product product = mock(Product.class);
         when(productRepository.findById(1L)).thenReturn(Optional.of(product));
-        when(reviewRepository.findAverageRatingByProductId(1L)).thenReturn(Optional.empty());
-        when(reviewRepository.countByProductId(1L)).thenReturn(0);
+        when(reviewRepository.findRatingStatsByProductId(1L)).thenReturn(java.util.Collections.singletonList(new Object[]{null, 0L}));
 
         // when: 삭제 실행 — 캐시 null이어도 예외 없이 완료
         reviewService.deleteReview(100L, 5L);

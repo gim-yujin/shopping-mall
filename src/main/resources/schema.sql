@@ -695,6 +695,19 @@ CREATE INDEX idx_search_date_keyword ON search_logs(searched_at DESC, search_key
 CREATE INDEX idx_point_history_user ON point_history(user_id, created_at DESC);
 CREATE INDEX idx_point_history_reference ON point_history(reference_type, reference_id);
 
+-- findByOrderId() 인덱스 선행 컬럼 최적화: reference_id 기반 조회용 복합 인덱스.
+--
+-- 문제: findByOrderId() 쿼리는 reference_id = :orderId AND reference_type IN ('ORDER', 'CANCEL')
+-- 패턴으로 특정 주문의 포인트 이력을 조회한다.
+-- 기존 idx_point_history_reference(reference_type, reference_id)는 선행 컬럼이 reference_type이므로,
+-- IN 절의 두 값에 대해 각각 인덱스 스캔 후 BitmapOr 병합이 필요하다.
+-- 50M 테이블에서 reference_id를 직접 필터링하면 1회 범위 스캔으로 충분하다.
+--
+-- 해결: (reference_id, reference_type, created_at) 복합 인덱스로
+-- reference_id 등값 조건에서 단일 Index Range Scan을 수행하고,
+-- reference_type 필터와 created_at 정렬을 인덱스에서 직접 처리한다.
+CREATE INDEX idx_point_history_ref_order ON point_history(reference_id, reference_type, created_at);
+
 -- [Phase 8] point_history 복합 인덱스 (change_type별 최신순 조회 최적화).
 --
 -- 문제: 포인트 이력 조회 시 change_type으로 필터링 후 created_at DESC로 정렬하는 패턴이 빈번하다.
@@ -848,4 +861,4 @@ JOIN products p ON p.product_id = w.product_id;
 -- 이로 인해 DO $$ 블록이 여러 개의 불완전한 SQL 조각으로 분리되어
 -- PSQLException (Parser.java) 파싱 에러가 발생한다.
 -- RAISE NOTICE는 디버깅 편의용이었으므로 주석으로 대체한다.
--- 총 19개 테이블, 60개 인덱스 생성됨 (일반 57 + UNIQUE 3)
+-- 총 19개 테이블, 61개 인덱스 생성됨 (일반 58 + UNIQUE 3)

@@ -200,8 +200,7 @@ class ReviewServiceUnitTest {
         when(reviewRepository.existsByUserIdAndOrderItemId(userId, orderItemId)).thenReturn(false);
         when(reviewRepository.save(any(Review.class))).thenAnswer(invocation -> invocation.getArgument(0));
         when(productRepository.findById(productId)).thenReturn(Optional.of(product));
-        when(reviewRepository.findAverageRatingByProductId(productId)).thenReturn(Optional.of(5.0));
-        when(reviewRepository.countByProductId(productId)).thenReturn(1);
+        when(reviewRepository.findRatingStatsByProductId(productId)).thenReturn(java.util.Collections.singletonList(new Object[]{5.0, 1L}));
 
         Review saved = reviewService.createReview(userId, request);
 
@@ -223,8 +222,7 @@ class ReviewServiceUnitTest {
         when(reviewRepository.existsByUserIdAndOrderItemId(userId, orderItemId)).thenReturn(false);
         when(reviewRepository.save(any(Review.class))).thenAnswer(invocation -> invocation.getArgument(0));
         when(productRepository.findById(productId)).thenReturn(Optional.of(product));
-        when(reviewRepository.findAverageRatingByProductId(productId)).thenReturn(Optional.of(4.666666));
-        when(reviewRepository.countByProductId(productId)).thenReturn(3);
+        when(reviewRepository.findRatingStatsByProductId(productId)).thenReturn(java.util.Collections.singletonList(new Object[]{4.666666, 3L}));
 
         reviewService.createReview(userId, request);
 
@@ -286,8 +284,7 @@ class ReviewServiceUnitTest {
         when(reviewRepository.findById(reviewId)).thenReturn(Optional.of(review));
         Product product = mock(Product.class);
         when(productRepository.findById(productId)).thenReturn(Optional.of(product));
-        when(reviewRepository.findAverageRatingByProductId(productId)).thenReturn(Optional.of(0.0));
-        when(reviewRepository.countByProductId(productId)).thenReturn(0);
+        when(reviewRepository.findRatingStatsByProductId(productId)).thenReturn(java.util.Collections.singletonList(new Object[]{0.0, 0L}));
 
         reviewService.deleteReview(reviewId, userId);
 
@@ -321,8 +318,7 @@ class ReviewServiceUnitTest {
         when(reviewRepository.existsByUserIdAndOrderItemId(userId, orderItemId)).thenReturn(false);
         when(reviewRepository.save(any(Review.class))).thenAnswer(invocation -> invocation.getArgument(0));
         when(productRepository.findById(productId)).thenReturn(Optional.of(product));
-        when(reviewRepository.findAverageRatingByProductId(productId)).thenReturn(Optional.empty());
-        when(reviewRepository.countByProductId(productId)).thenReturn(0);
+        when(reviewRepository.findRatingStatsByProductId(productId)).thenReturn(java.util.Collections.singletonList(new Object[]{null, 0L}));
 
         reviewService.createReview(userId, request);
 
