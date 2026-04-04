@@ -2,10 +2,13 @@ package com.shop.domain.product.controller;
 
 import com.shop.domain.category.entity.Category;
 import com.shop.domain.category.service.CategoryService;
+import com.shop.domain.coupon.dto.CouponStats;
 import com.shop.domain.coupon.service.CouponService;
 import com.shop.domain.order.service.OrderService;
+import com.shop.domain.product.dto.AdminDashboardPreview;
 import com.shop.domain.product.dto.AdminProductRequest;
 import com.shop.domain.product.entity.Product;
+import com.shop.domain.product.service.AdminDashboardPreviewService;
 import com.shop.domain.product.service.ProductService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -34,6 +37,7 @@ class AdminControllerUnitTest {
     @Mock private OrderService orderService;
     @Mock private CategoryService categoryService;
     @Mock private CouponService couponService;
+    @Mock private AdminDashboardPreviewService dashboardPreviewService;
 
     @InjectMocks
     private AdminController adminController;
@@ -63,6 +67,27 @@ class AdminControllerUnitTest {
         assertThat(view).isEqualTo("redirect:/admin/orders");
         assertThat(redirect.getFlashAttributes()).containsKey("successMessage");
         verify(orderService).updateOrderStatus(1L, "SHIPPED", "CJ", "1234");
+    }
+
+    // ──────────── 대시보드 ────────────
+
+    @Test
+    @DisplayName("GET /admin — 대시보드 프리뷰 서비스 호출 + 모델 바인딩")
+    void dashboard_delegatesToPreviewService() {
+        AdminDashboardPreview preview = new AdminDashboardPreview(
+                new PageImpl<>(List.of()), new PageImpl<>(List.of()),
+                new CouponStats(10, 5, 100, 30), 3L);
+        when(dashboardPreviewService.getPreview()).thenReturn(preview);
+        Model model = new ConcurrentModel();
+
+        String view = adminController.dashboard(model);
+
+        assertThat(view).isEqualTo("admin/dashboard");
+        assertThat(model.containsAttribute("products")).isTrue();
+        assertThat(model.containsAttribute("recentOrders")).isTrue();
+        assertThat(model.containsAttribute("couponStats")).isTrue();
+        assertThat(model.getAttribute("pendingReturnCount")).isEqualTo(3L);
+        verify(dashboardPreviewService).getPreview();
     }
 
     // ──────────── 상품 목록 ────────────

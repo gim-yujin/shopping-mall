@@ -4,7 +4,9 @@ import com.shop.domain.category.service.CategoryService;
 import com.shop.domain.coupon.dto.CouponStats;
 import com.shop.domain.coupon.service.CouponService;
 import com.shop.domain.order.dto.AdminReturnResponse;
+import com.shop.domain.product.dto.AdminDashboardPreview;
 import com.shop.domain.order.service.OrderService;
+import com.shop.domain.product.service.AdminDashboardPreviewService;
 import com.shop.domain.product.service.ProductService;
 import com.shop.global.exception.BusinessException;
 import org.junit.jupiter.api.DisplayName;
@@ -24,7 +26,6 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
 /**
@@ -52,6 +53,7 @@ class AdminControllerReturnManagementTest {
     @Mock private OrderService orderService;
     @Mock private CategoryService categoryService;
     @Mock private CouponService couponService;
+    @Mock private AdminDashboardPreviewService dashboardPreviewService;
 
     @InjectMocks
     private AdminController adminController;
@@ -242,13 +244,10 @@ class AdminControllerReturnManagementTest {
         @Test
         @DisplayName("대시보드에 pendingReturnCount 모델 속성 포함")
         void dashboard_includesPendingReturnCount() {
-            // Given
-            // [Phase 18] findAll() → findAllForAdmin(): CQRS 분리로 관리자 전용 메서드 사용
-            when(productService.findAllForAdmin(any())).thenReturn(new PageImpl<>(List.of()));
-            // [Phase 18] CQRS: 대시보드가 getAllOrdersFlat()을 사용하도록 변경됨
-            when(orderService.getAllOrdersFlat(any())).thenReturn(new PageImpl<>(List.of()));
-            when(couponService.getCouponStats()).thenReturn(new CouponStats(0, 0, 0, 0));
-            when(orderService.getPendingReturnCount()).thenReturn(5L);
+            // Given — [Phase 25] 대시보드가 AdminDashboardPreviewService로 병렬 조회
+            when(dashboardPreviewService.getPreview()).thenReturn(new AdminDashboardPreview(
+                    new PageImpl<>(List.of()), new PageImpl<>(List.of()),
+                    new CouponStats(0, 0, 0, 0), 5L));
 
             Model model = new ConcurrentModel();
 
@@ -258,18 +257,16 @@ class AdminControllerReturnManagementTest {
             // Then
             assertThat(view).isEqualTo("admin/dashboard");
             assertThat(model.getAttribute("pendingReturnCount")).isEqualTo(5L);
-            verify(orderService).getPendingReturnCount();
+            verify(dashboardPreviewService).getPreview();
         }
 
         @Test
         @DisplayName("반품 대기 0건 — pendingReturnCount = 0")
         void dashboard_zeroPendingReturns() {
-            // [Phase 18] findAll() → findAllForAdmin(): CQRS 분리로 관리자 전용 메서드 사용
-            when(productService.findAllForAdmin(any())).thenReturn(new PageImpl<>(List.of()));
-            // [Phase 18] CQRS: 대시보드가 getAllOrdersFlat()을 사용하도록 변경됨
-            when(orderService.getAllOrdersFlat(any())).thenReturn(new PageImpl<>(List.of()));
-            when(couponService.getCouponStats()).thenReturn(new CouponStats(0, 0, 0, 0));
-            when(orderService.getPendingReturnCount()).thenReturn(0L);
+            // Given — [Phase 25] 대시보드가 AdminDashboardPreviewService로 병렬 조회
+            when(dashboardPreviewService.getPreview()).thenReturn(new AdminDashboardPreview(
+                    new PageImpl<>(List.of()), new PageImpl<>(List.of()),
+                    new CouponStats(0, 0, 0, 0), 0L));
 
             Model model = new ConcurrentModel();
             adminController.dashboard(model);

@@ -65,12 +65,12 @@
                     <div>
                         <span class="text-sm text-gray-500" th:text="${#temporals.format(order.orderDate, 'yyyy.MM.dd')}">날짜</span>
                         <span class="ml-2 text-sm font-medium" th:text="${order.orderNumber}">ORD-001</span>
-                        <span th:if="${!order.items.isEmpty()}" class="ml-2 text-sm text-gray-700" th:text="${order.items[0].productName + (order.items.size() > 1 ? ' 외 ' + (order.items.size()-1) + '건' : '')}">상품명</span>
+                        <span th:if="${order.firstProductName != null}" class="ml-2 text-sm text-gray-700" th:text="${order.firstProductName + (order.itemCount > 1 ? ' 외 ' + (order.itemCount - 1) + '건' : '')}">상품명</span>
                     </div>
                     <div class="flex items-center gap-3">
                         <span class="px-2 py-0.5 text-xs rounded-full"
-                              th:classappend="${order.orderStatus.badgeClass}"
-                              th:text="${order.orderStatus.label}">상태</span>
+                              th:classappend="${orderStatusBadgeClasses.getOrDefault(order.orderStatus, 'bg-yellow-100 text-yellow-700')}"
+                              th:text="${orderStatusLabels.getOrDefault(order.orderStatus, order.orderStatus)}">상태</span>
                         <span class="text-sm font-bold" th:text="${#numbers.formatDecimal(order.finalAmount,0,'COMMA',0,'POINT')} + '원'">0원</span>
                     </div>
                 </div>

@@ -1,24 +1,24 @@
 package com.shop.domain.review.service;
 
 import com.shop.domain.order.repository.OrderItemRepository;
-import com.shop.domain.product.entity.Product;
-import com.shop.domain.product.repository.ProductRepository;
-import com.shop.domain.product.service.ProductService;
 import com.shop.domain.review.dto.ReviewUpdateRequest;
 import com.shop.domain.review.entity.Review;
 import com.shop.domain.review.repository.ReviewHelpfulRepository;
 import com.shop.domain.review.repository.ReviewRepository;
+import com.shop.global.event.ReviewRatingChangedEvent;
 import com.shop.global.exception.BusinessException;
 import com.shop.global.exception.ResourceNotFoundException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.cache.CacheManager;
 import org.springframework.cache.concurrent.ConcurrentMapCache;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
@@ -28,7 +28,6 @@ import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
-import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -51,13 +50,11 @@ class ReviewServiceBranchTest {
     @Mock
     private ReviewHelpfulRepository reviewHelpfulRepository;
     @Mock
-    private ProductRepository productRepository;
-    @Mock
-    private ProductService productService;
-    @Mock
     private OrderItemRepository orderItemRepository;
     @Mock
     private CacheManager cacheManager;
+    @Mock
+    private ApplicationEventPublisher eventPublisher;
 
     @InjectMocks
     private ReviewService reviewService;
@@ -69,16 +66,11 @@ class ReviewServiceBranchTest {
     class UpdateReviewTests {
 
         @Test
-        @DisplayName("정상 수정 — rating/title/content 변경 + 평점 재계산 + 캐시 무효화")
-        void updateReview_success_updatesAndRecalculates() {
+        @DisplayName("정상 수정 — rating/title/content 변경 + ReviewRatingChangedEvent 발행")
+        void updateReview_success_updatesAndPublishesEvent() {
             // given: 기존 리뷰 (userId=5)
             Review review = new Review(1L, 5L, 10L, 3, "기존 제목", "기존 내용");
             when(reviewRepository.findById(100L)).thenReturn(Optional.of(review));
-
-            // 평점 재계산용 Mock
-            Product product = mock(Product.class);
-            when(productRepository.findById(1L)).thenReturn(Optional.of(product));
-            when(reviewRepository.findRatingStatsByProductId(1L)).thenReturn(java.util.Collections.singletonList(new Object[]{4.5, 10L}));
 
             // when
             ReviewUpdateRequest request = new ReviewUpdateRequest(5, "수정 제목", "수정 내용");
@@ -87,8 +79,10 @@ class ReviewServiceBranchTest {
             // then: 리뷰 내용 변경됨
             assertThat(updated.getRating()).isEqualTo(5);
             assertThat(updated.getTitle()).isEqualTo("수정 제목");
-            // 상품 캐시 무효화 호출
-            verify(productService).evictProductDetailCache(1L);
+            // 후처리 이벤트 발행
+            ArgumentCaptor<ReviewRatingChangedEvent> eventCaptor = ArgumentCaptor.forClass(ReviewRatingChangedEvent.class);
+            verify(eventPublisher).publishEvent(eventCaptor.capture());
+            assertThat(eventCaptor.getValue().productId()).isEqualTo(1L);
         }
 
         @Test
@@ -180,24 +174,20 @@ class ReviewServiceBranchTest {
     // ── bumpProductReviewVersion: 캐시 null / non-CaffeineCache 분기 ──
 
     @Test
-    @DisplayName("deleteReview — 캐시가 null이면 bumpProductReviewVersion이 조용히 건너뛴다")
-    void deleteReview_nullCache_skipsVersionBump() {
-        // given: productReviewVersion 캐시가 null인 환경
-        // bumpProductReviewVersion에서 cache == null → return 분기
+    @DisplayName("deleteReview — 삭제 성공 시 ReviewRatingChangedEvent 발행")
+    void deleteReview_success_publishesEvent() {
+        // given
         Review review = new Review(1L, 5L, 10L, 4, "제목", "내용");
         when(reviewRepository.findById(100L)).thenReturn(Optional.of(review));
-        when(cacheManager.getCache("productReviewVersion")).thenReturn(null);
 
-        // 평점 재계산용 Mock
-        Product product = mock(Product.class);
-        when(productRepository.findById(1L)).thenReturn(Optional.of(product));
-        when(reviewRepository.findRatingStatsByProductId(1L)).thenReturn(java.util.Collections.singletonList(new Object[]{null, 0L}));
-
-        // when: 삭제 실행 — 캐시 null이어도 예외 없이 완료
+        // when
         reviewService.deleteReview(100L, 5L);
 
         // then
         verify(reviewRepository).delete(review);
+        ArgumentCaptor<ReviewRatingChangedEvent> eventCaptor = ArgumentCaptor.forClass(ReviewRatingChangedEvent.class);
+        verify(eventPublisher).publishEvent(eventCaptor.capture());
+        assertThat(eventCaptor.getValue().productId()).isEqualTo(1L);
     }
 
     @Test

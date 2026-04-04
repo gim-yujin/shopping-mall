@@ -32,46 +32,28 @@ class CategoryServiceUnitTest {
     }
 
     @Test
-    @DisplayName("getAllDescendantIds - 재귀적으로 하위 카테고리 ID를 모두 수집")
-    void getAllDescendantIds_collectsRecursively() {
-        Category child = mock(Category.class);
-        Category grandChild = mock(Category.class);
-
-        when(child.getCategoryId()).thenReturn(2);
-        when(grandChild.getCategoryId()).thenReturn(3);
-
-        when(categoryRepository.findByParentId(1)).thenReturn(List.of(child));
-        when(categoryRepository.findByParentId(2)).thenReturn(List.of(grandChild));
-        when(categoryRepository.findByParentId(3)).thenReturn(List.of());
+    @DisplayName("getAllDescendantIds - CTE 단일 쿼리로 하위 카테고리 ID를 모두 조회")
+    void getAllDescendantIds_delegatesToCteQuery() {
+        when(categoryRepository.findAllDescendantIds(1)).thenReturn(List.of(1, 2, 3));
 
         List<Integer> ids = categoryService.getAllDescendantIds(1);
 
         assertThat(ids)
-                .as("루트 + 모든 하위 ID가 포함되어야 함")
+                .as("CTE 쿼리 결과가 그대로 반환되어야 함")
                 .containsExactly(1, 2, 3);
+        verify(categoryRepository).findAllDescendantIds(1);
     }
 
-
     @Test
-    @DisplayName("getAllDescendantIds - 순환 참조가 있어도 중복/무한 재귀 없이 종료")
-    void getAllDescendantIds_cycleDetected_stopsSafely() {
-        Category child = mock(Category.class);
-        Category rootAsChild = mock(Category.class);
+    @DisplayName("getAllDescendantIds - 하위 카테고리 없으면 루트만 반환")
+    void getAllDescendantIds_leafCategory_returnsOnlyRoot() {
+        when(categoryRepository.findAllDescendantIds(5)).thenReturn(List.of(5));
 
-        when(child.getCategoryId()).thenReturn(2);
-        when(rootAsChild.getCategoryId()).thenReturn(1);
-
-        when(categoryRepository.findByParentId(1)).thenReturn(List.of(child));
-        when(categoryRepository.findByParentId(2)).thenReturn(List.of(rootAsChild));
-
-        List<Integer> ids = categoryService.getAllDescendantIds(1);
+        List<Integer> ids = categoryService.getAllDescendantIds(5);
 
         assertThat(ids)
-                .as("순환이 있어도 각 카테고리 ID는 한 번만 수집되어야 함")
-                .containsExactly(1, 2);
-        verify(categoryRepository).findByParentId(1);
-        verify(categoryRepository).findByParentId(2);
-        verifyNoMoreInteractions(categoryRepository);
+                .as("하위 카테고리가 없으면 루트 ID만 반환")
+                .containsExactly(5);
     }
 
     @Test

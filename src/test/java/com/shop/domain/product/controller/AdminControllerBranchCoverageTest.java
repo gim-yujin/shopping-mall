@@ -4,7 +4,9 @@ import com.shop.domain.category.service.CategoryService;
 import com.shop.domain.coupon.dto.CouponStats;
 import com.shop.domain.coupon.service.CouponService;
 import com.shop.domain.order.service.OrderService;
+import com.shop.domain.product.dto.AdminDashboardPreview;
 import com.shop.domain.product.entity.Product;
+import com.shop.domain.product.service.AdminDashboardPreviewService;
 import com.shop.domain.product.service.ProductService;
 import com.shop.global.exception.BusinessException;
 import com.shop.global.security.CustomUserPrincipal;
@@ -54,13 +56,15 @@ class AdminControllerBranchCoverageTest {
     private CategoryService categoryService;
     @Mock
     private CouponService couponService;
+    @Mock
+    private AdminDashboardPreviewService dashboardPreviewService;
 
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
         AdminController controller = new AdminController(
-                productService, orderService, categoryService, couponService);
+                productService, orderService, categoryService, couponService, dashboardPreviewService);
         mockMvc = MockMvcBuilders.standaloneSetup(controller).build();
 
         // 관리자 인증 설정
@@ -83,15 +87,12 @@ class AdminControllerBranchCoverageTest {
     class DashboardTests {
 
         @Test
-        @DisplayName("대시보드 렌더링 — 상품, 최근 주문, 쿠폰 통계, 반품 대기 건수")
+        @DisplayName("대시보드 렌더링 — 프리뷰 서비스 호출 + 모델 속성 바인딩")
         void dashboard_rendersWithAllAttributes() throws Exception {
-            when(productService.findAllForAdmin(any(PageRequest.class)))
-                    .thenReturn(Page.empty());
-            when(orderService.getAllOrdersFlat(any(PageRequest.class)))
-                    .thenReturn(Page.empty());
-            when(couponService.getCouponStats())
-                    .thenReturn(new CouponStats(10, 5, 100, 30));
-            when(orderService.getPendingReturnCount()).thenReturn(3L);
+            when(dashboardPreviewService.getPreview()).thenReturn(
+                    new AdminDashboardPreview(
+                            Page.empty(), Page.empty(),
+                            new CouponStats(10, 5, 100, 30), 3L));
 
             mockMvc.perform(get("/admin"))
                     .andExpect(status().isOk())

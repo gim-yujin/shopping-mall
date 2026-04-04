@@ -1,8 +1,5 @@
 package com.shop.domain.review.service;
 
-import com.shop.domain.product.entity.Product;
-import com.shop.domain.product.repository.ProductRepository;
-import com.shop.domain.product.service.ProductService;
 import com.shop.domain.order.entity.OrderItem;
 import com.shop.domain.order.entity.OrderStatus;
 import com.shop.domain.order.repository.OrderItemRepository;
@@ -13,21 +10,19 @@ import com.shop.domain.review.entity.Review;
 import com.shop.domain.review.repository.ReviewRepository;
 import com.shop.domain.review.repository.ReviewHelpfulRepository;
 import com.shop.global.cache.CacheKeyGenerator;
+import com.shop.global.event.ReviewRatingChangedEvent;
 import com.shop.global.exception.BusinessException;
 import com.shop.global.exception.ResourceNotFoundException;
 import org.springframework.cache.Cache;
 import org.springframework.cache.CacheManager;
 import org.springframework.cache.annotation.Cacheable;
-import org.springframework.cache.caffeine.CaffeineCache;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import java.math.BigDecimal;
-import java.math.RoundingMode;
 import java.util.List;
-import java.util.Objects;
 import java.util.Set;
 
 @Service
@@ -39,23 +34,20 @@ public class ReviewService {
 
     private final ReviewRepository reviewRepository;
     private final ReviewHelpfulRepository reviewHelpfulRepository;
-    private final ProductRepository productRepository;
-    private final ProductService productService;
     private final OrderItemRepository orderItemRepository;
     private final CacheManager cacheManager;
+    private final ApplicationEventPublisher eventPublisher;
 
     public ReviewService(ReviewRepository reviewRepository,
                          ReviewHelpfulRepository reviewHelpfulRepository,
-                         ProductRepository productRepository,
-                         ProductService productService,
                          OrderItemRepository orderItemRepository,
-                         CacheManager cacheManager) {
+                         CacheManager cacheManager,
+                         ApplicationEventPublisher eventPublisher) {
         this.reviewRepository = reviewRepository;
         this.reviewHelpfulRepository = reviewHelpfulRepository;
-        this.productRepository = productRepository;
-        this.productService = productService;
         this.orderItemRepository = orderItemRepository;
         this.cacheManager = cacheManager;
+        this.eventPublisher = eventPublisher;
     }
 
     // [Phase 10] sync = true: 스탬피드 방지 — 인기 상품 리뷰 페이지에서 동시 조회 시 DB 쿼리 1회로 제한
@@ -89,9 +81,7 @@ public class ReviewService {
             throw new BusinessException("DUPLICATE_REVIEW", "이미 리뷰를 작성하였습니다.");
         }
 
-        updateProductRating(request.productId());
-        productService.evictProductDetailCache(request.productId());
-        bumpProductReviewVersion(request.productId());
+        eventPublisher.publishEvent(new ReviewRatingChangedEvent(request.productId()));
         return saved;
     }
 
@@ -152,9 +142,7 @@ public class ReviewService {
         }
         Long productId = review.getProductId();
         reviewRepository.delete(review);
-        updateProductRating(productId);
-        productService.evictProductDetailCache(productId);
-        bumpProductReviewVersion(productId);
+        eventPublisher.publishEvent(new ReviewRatingChangedEvent(productId));
     }
 
     /**
@@ -175,11 +163,8 @@ public class ReviewService {
         // Review.update()로 rating, title, content 변경 + updatedAt 갱신
         review.update(request.rating(), request.title(), request.content());
 
-        // 평점 변경 가능성이 있으므로 상품 평균 평점 재계산
-        Long productId = review.getProductId();
-        updateProductRating(productId);
-        productService.evictProductDetailCache(productId);
-        bumpProductReviewVersion(productId);
+        // [Phase 25] 평점 변경 가능성이 있으므로 AFTER_COMMIT 이벤트로 재계산
+        eventPublisher.publishEvent(new ReviewRatingChangedEvent(review.getProductId()));
 
         return review;
     }
@@ -195,15 +180,6 @@ public class ReviewService {
             throw new BusinessException("FORBIDDEN", "본인의 리뷰만 수정할 수 있습니다.");
         }
         return review;
-    }
-
-    private void updateProductRating(Long productId) {
-        Product product = productRepository.findById(productId)
-                .orElseThrow(() -> new ResourceNotFoundException("상품", productId));
-        Object[] stats = reviewRepository.findRatingStatsByProductId(productId).get(0);
-        Double avg = stats[0] != null ? ((Number) stats[0]).doubleValue() : 0.0;
-        int count = ((Number) stats[1]).intValue();
-        product.updateRating(BigDecimal.valueOf(avg).setScale(2, RoundingMode.HALF_UP), count);
     }
 
     /**
@@ -264,7 +240,7 @@ public class ReviewService {
         int deleted = reviewHelpfulRepository.deleteByReviewIdAndUserIdNative(reviewId, userId);
         if (deleted > 0) {
             reviewRepository.decrementHelpfulCount(reviewId);
-            bumpProductReviewVersion(productId);
+            eventPublisher.publishEvent(new ReviewRatingChangedEvent(productId));
             return false; // 취소됨
         }
 
@@ -272,7 +248,7 @@ public class ReviewService {
         int inserted = reviewHelpfulRepository.insertIgnoreConflict(reviewId, userId);
         if (inserted > 0) {
             reviewRepository.incrementHelpfulCount(reviewId);
-            bumpProductReviewVersion(productId);
+            eventPublisher.publishEvent(new ReviewRatingChangedEvent(productId));
             return true;
         }
 
@@ -286,23 +262,6 @@ public class ReviewService {
         }
         Long version = cache.get(productId, Long.class);
         return version == null ? 0L : version;
-    }
-
-    private void bumpProductReviewVersion(Long productId) {
-        Cache cache = cacheManager.getCache(PRODUCT_REVIEW_VERSION_CACHE);
-        if (cache == null) {
-            return;
-        }
-
-        if (cache instanceof CaffeineCache caffeineCache) {
-            caffeineCache.getNativeCache().asMap().merge(productId, 1L, (a, b) -> ((Long) a) + ((Long) b));
-            return;
-        }
-
-        synchronized (this) {
-            Long current = cache.get(productId, Long.class);
-            cache.put(productId, Objects.requireNonNullElse(current, 0L) + 1L);
-        }
     }
 
     public Set<Long> getHelpedReviewIds(Long userId, Set<Long> reviewIds) {

@@ -1,12 +1,15 @@
 package com.shop.domain.user.controller;
 
 import com.shop.domain.coupon.service.CouponService;
+import com.shop.domain.order.entity.OrderStatus;
 import com.shop.domain.order.service.OrderService;
 import com.shop.domain.point.service.PointQueryService;
 import com.shop.domain.review.service.ReviewService;
+import com.shop.domain.user.dto.MyPagePreview;
 import com.shop.domain.user.dto.PasswordChangeRequest;
 import com.shop.domain.user.dto.ProfileUpdateRequest;
 import com.shop.domain.user.entity.User;
+import com.shop.domain.user.service.MyPagePreviewService;
 import com.shop.domain.user.service.UserService;
 import com.shop.global.common.PageDefaults;
 import com.shop.global.common.PagingParams;
@@ -32,26 +35,34 @@ public class MyPageController {
     private final CouponService couponService;
     private final PointQueryService pointQueryService;
     private final DuplicateConstraintMessageResolver duplicateConstraintMessageResolver;
+    private final MyPagePreviewService myPagePreviewService;
 
     public MyPageController(UserService userService, OrderService orderService,
                             ReviewService reviewService, CouponService couponService,
                             PointQueryService pointQueryService,
-                            DuplicateConstraintMessageResolver duplicateConstraintMessageResolver) {
+                            DuplicateConstraintMessageResolver duplicateConstraintMessageResolver,
+                            MyPagePreviewService myPagePreviewService) {
         this.userService = userService;
         this.orderService = orderService;
         this.reviewService = reviewService;
         this.couponService = couponService;
         this.pointQueryService = pointQueryService;
         this.duplicateConstraintMessageResolver = duplicateConstraintMessageResolver;
+        this.myPagePreviewService = myPagePreviewService;
     }
 
     @GetMapping
     public String myPage(Model model) {
         Long userId = SecurityUtil.getCurrentUserId().orElseThrow();
-        User user = userService.findById(userId);
-        model.addAttribute("user", user);
-        model.addAttribute("recentOrders", orderService.getOrdersByUser(userId, PageRequest.of(0, PageDefaults.MYPAGE_RECENT_ORDERS)));
-        model.addAttribute("coupons", couponService.getAvailableCoupons(userId));
+        // [Phase 25] 3개 서비스 호출을 StructuredTaskScope로 병렬 실행 + CQRS flat 전환.
+        // 기존: 순차 호출(user → orders 2-query → coupons), 지연 = sum(T1+T2+T3+T4)
+        // 이후: 병렬 호출(user ∥ orders flat ∥ coupons), 지연 = max(T1,T2,T3)
+        MyPagePreview preview = myPagePreviewService.getPreview(userId);
+        model.addAttribute("user", preview.user());
+        model.addAttribute("recentOrders", preview.recentOrders());
+        model.addAttribute("coupons", preview.coupons());
+        model.addAttribute("orderStatusLabels", OrderStatus.labelsByCode());
+        model.addAttribute("orderStatusBadgeClasses", OrderStatus.badgeClassesByCode());
         return "mypage/index";
     }
 

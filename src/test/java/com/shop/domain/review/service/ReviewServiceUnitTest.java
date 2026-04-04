@@ -1,8 +1,5 @@
 package com.shop.domain.review.service;
 
-import com.shop.domain.product.entity.Product;
-import com.shop.domain.product.repository.ProductRepository;
-import com.shop.domain.product.service.ProductService;
 import com.shop.domain.order.entity.Order;
 import com.shop.domain.order.entity.OrderItem;
 import com.shop.domain.order.entity.OrderStatus;
@@ -11,6 +8,7 @@ import com.shop.domain.review.dto.ReviewCreateRequest;
 import com.shop.domain.review.entity.Review;
 import com.shop.domain.review.repository.ReviewHelpfulRepository;
 import com.shop.domain.review.repository.ReviewRepository;
+import com.shop.global.event.ReviewRatingChangedEvent;
 import com.shop.global.exception.BusinessException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -20,18 +18,17 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.dao.DataIntegrityViolationException;
 
 import jakarta.validation.Validation;
 import jakarta.validation.Validator;
-import java.math.BigDecimal;
 import java.util.Optional;
 import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -44,16 +41,13 @@ class ReviewServiceUnitTest {
     private ReviewHelpfulRepository reviewHelpfulRepository;
 
     @Mock
-    private ProductRepository productRepository;
-
-    @Mock
-    private ProductService productService;
-
-    @Mock
     private OrderItemRepository orderItemRepository;
 
     @Mock
     private CacheManager cacheManager;
+
+    @Mock
+    private ApplicationEventPublisher eventPublisher;
 
     private ReviewService reviewService;
 
@@ -62,10 +56,9 @@ class ReviewServiceUnitTest {
         reviewService = new ReviewService(
                 reviewRepository,
                 reviewHelpfulRepository,
-                productRepository,
-                productService,
                 orderItemRepository,
-                cacheManager);
+                cacheManager,
+                eventPublisher);
     }
 
     private void mockValidDeliveredOrderItem(Long orderItemId, Long userId, Long productId) {
@@ -97,8 +90,7 @@ class ReviewServiceUnitTest {
                 .hasMessageContaining("이미 리뷰를 작성");
 
         verify(reviewRepository, never()).save(any());
-        verify(productRepository, never()).findById(any());
-        verifyNoInteractions(productService);
+        verifyNoInteractions(eventPublisher);
     }
 
     @Test
@@ -117,8 +109,7 @@ class ReviewServiceUnitTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("이미 리뷰를 작성");
 
-        verify(productRepository, never()).findById(any());
-        verifyNoInteractions(productService);
+        verifyNoInteractions(eventPublisher);
     }
 
     @Test
@@ -188,50 +179,25 @@ class ReviewServiceUnitTest {
     }
 
     @Test
-    @DisplayName("createReview - 배송 완료된 본인 주문 항목이면 생성 성공")
+    @DisplayName("createReview - 배송 완료된 본인 주문 항목이면 생성 성공 + 이벤트 발행")
     void createReview_validOrderItem_succeeds() {
         Long userId = 11L;
         Long productId = 101L;
         Long orderItemId = 1001L;
         ReviewCreateRequest request = new ReviewCreateRequest(productId, orderItemId, 5, "정상", "내용");
-        Product product = mock(Product.class);
 
         mockValidDeliveredOrderItem(orderItemId, userId, productId);
         when(reviewRepository.existsByUserIdAndOrderItemId(userId, orderItemId)).thenReturn(false);
         when(reviewRepository.save(any(Review.class))).thenAnswer(invocation -> invocation.getArgument(0));
-        when(productRepository.findById(productId)).thenReturn(Optional.of(product));
-        when(reviewRepository.findRatingStatsByProductId(productId)).thenReturn(java.util.Collections.singletonList(new Object[]{5.0, 1L}));
 
         Review saved = reviewService.createReview(userId, request);
 
         assertThat(saved.getOrderItemId()).isEqualTo(orderItemId);
         verify(reviewRepository).save(any(Review.class));
-        verify(productService).evictProductDetailCache(productId);
-    }
 
-    @Test
-    @DisplayName("createReview - 평균 평점은 소수 둘째 자리 반올림으로 업데이트")
-    void createReview_updatesProductRatingRoundedToTwoDecimals() {
-        Long userId = 11L;
-        Long productId = 101L;
-        Long orderItemId = 1001L;
-        ReviewCreateRequest request = new ReviewCreateRequest(productId, orderItemId, 5, "좋음", "내용");
-        Product product = mock(Product.class);
-
-        mockValidDeliveredOrderItem(orderItemId, userId, productId);
-        when(reviewRepository.existsByUserIdAndOrderItemId(userId, orderItemId)).thenReturn(false);
-        when(reviewRepository.save(any(Review.class))).thenAnswer(invocation -> invocation.getArgument(0));
-        when(productRepository.findById(productId)).thenReturn(Optional.of(product));
-        when(reviewRepository.findRatingStatsByProductId(productId)).thenReturn(java.util.Collections.singletonList(new Object[]{4.666666, 3L}));
-
-        reviewService.createReview(userId, request);
-
-        ArgumentCaptor<BigDecimal> avgCaptor = ArgumentCaptor.forClass(BigDecimal.class);
-        verify(product).updateRating(avgCaptor.capture(), eq(3));
-        assertThat(avgCaptor.getValue())
-                .as("평균 평점은 소수 둘째 자리 반올림 값이어야 함")
-                .isEqualByComparingTo("4.67");
-        verify(productService).evictProductDetailCache(productId);
+        ArgumentCaptor<ReviewRatingChangedEvent> eventCaptor = ArgumentCaptor.forClass(ReviewRatingChangedEvent.class);
+        verify(eventPublisher).publishEvent(eventCaptor.capture());
+        assertThat(eventCaptor.getValue().productId()).isEqualTo(productId);
     }
 
     @Test
@@ -270,26 +236,26 @@ class ReviewServiceUnitTest {
                 .as("신규 도움이 돼요 추가면 true 반환")
                 .isTrue();
         verify(reviewRepository).incrementHelpfulCount(reviewId);
-        verifyNoInteractions(productService);
+        // helpful 토글은 이벤트를 발행하므로 eventPublisher 호출 검증
+        verify(eventPublisher).publishEvent(any(ReviewRatingChangedEvent.class));
     }
 
     @Test
-    @DisplayName("deleteReview - 삭제 성공 시 productDetail 캐시 evict 호출")
-    void deleteReview_success_evictsProductDetailCache() {
+    @DisplayName("deleteReview - 삭제 성공 시 ReviewRatingChangedEvent 발행")
+    void deleteReview_success_publishesEvent() {
         Long reviewId = 1L;
         Long userId = 2L;
         Long productId = 100L;
         Review review = new Review(productId, userId, null, 5, "삭제", "대상");
 
         when(reviewRepository.findById(reviewId)).thenReturn(Optional.of(review));
-        Product product = mock(Product.class);
-        when(productRepository.findById(productId)).thenReturn(Optional.of(product));
-        when(reviewRepository.findRatingStatsByProductId(productId)).thenReturn(java.util.Collections.singletonList(new Object[]{0.0, 0L}));
 
         reviewService.deleteReview(reviewId, userId);
 
         verify(reviewRepository).delete(review);
-        verify(productService).evictProductDetailCache(productId);
+        ArgumentCaptor<ReviewRatingChangedEvent> eventCaptor = ArgumentCaptor.forClass(ReviewRatingChangedEvent.class);
+        verify(eventPublisher).publishEvent(eventCaptor.capture());
+        assertThat(eventCaptor.getValue().productId()).isEqualTo(productId);
     }
 
     @Test
@@ -306,28 +272,24 @@ class ReviewServiceUnitTest {
     }
 
     @Test
-    @DisplayName("createReview - 평균값이 없으면 0.00과 리뷰 수로 상품 평점 갱신")
-    void createReview_whenNoAverage_updatesZeroRating() {
+    @DisplayName("createReview - 성공 시 ReviewRatingChangedEvent에 올바른 productId 전달")
+    void createReview_publishesEventWithCorrectProductId() {
         Long userId = 11L;
         Long productId = 101L;
         Long orderItemId = 1001L;
         ReviewCreateRequest request = new ReviewCreateRequest(productId, orderItemId, 2, "첫 리뷰", "내용");
-        Product product = mock(Product.class);
 
         mockValidDeliveredOrderItem(orderItemId, userId, productId);
         when(reviewRepository.existsByUserIdAndOrderItemId(userId, orderItemId)).thenReturn(false);
         when(reviewRepository.save(any(Review.class))).thenAnswer(invocation -> invocation.getArgument(0));
-        when(productRepository.findById(productId)).thenReturn(Optional.of(product));
-        when(reviewRepository.findRatingStatsByProductId(productId)).thenReturn(java.util.Collections.singletonList(new Object[]{null, 0L}));
 
         reviewService.createReview(userId, request);
 
-        ArgumentCaptor<BigDecimal> avgCaptor = ArgumentCaptor.forClass(BigDecimal.class);
-        verify(product).updateRating(avgCaptor.capture(), eq(0));
-        assertThat(avgCaptor.getValue())
-                .as("리뷰 평균값이 없으면 기본 평점 0.00으로 갱신되어야 함")
-                .isEqualByComparingTo("0.00");
-        verify(productService).evictProductDetailCache(productId);
+        ArgumentCaptor<ReviewRatingChangedEvent> eventCaptor = ArgumentCaptor.forClass(ReviewRatingChangedEvent.class);
+        verify(eventPublisher).publishEvent(eventCaptor.capture());
+        assertThat(eventCaptor.getValue().productId())
+                .as("이벤트에 올바른 productId가 전달되어야 함")
+                .isEqualTo(productId);
     }
 
     @Test
@@ -368,7 +330,7 @@ class ReviewServiceUnitTest {
         verify(reviewRepository, never()).incrementHelpfulCount(any());
         verify(reviewRepository, never()).decrementHelpfulCount(any());
         verify(reviewHelpfulRepository).existsByReviewIdAndUserId(reviewId, userId);
-        verifyNoInteractions(productService);
+        verifyNoInteractions(eventPublisher);
     }
 
 

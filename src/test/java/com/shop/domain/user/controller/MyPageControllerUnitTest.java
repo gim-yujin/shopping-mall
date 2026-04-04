@@ -5,7 +5,9 @@ import com.shop.domain.order.service.OrderService;
 import com.shop.domain.point.entity.PointHistory;
 import com.shop.domain.point.service.PointQueryService;
 import com.shop.domain.review.service.ReviewService;
+import com.shop.domain.user.dto.MyPagePreview;
 import com.shop.domain.user.entity.User;
+import com.shop.domain.user.service.MyPagePreviewService;
 import com.shop.domain.user.service.UserService;
 import com.shop.global.security.CustomUserPrincipal;
 import com.shop.global.exception.DuplicateConstraintMessageResolver;
@@ -26,6 +28,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.validation.beanvalidation.LocalValidatorFactoryBean;
 
+import java.util.Collections;
 import java.util.List;
 
 import static org.mockito.ArgumentMatchers.*;
@@ -52,12 +55,14 @@ class MyPageControllerUnitTest {
     private PointQueryService pointQueryService;
     @Mock
     private DuplicateConstraintMessageResolver duplicateConstraintMessageResolver;
+    @Mock
+    private MyPagePreviewService myPagePreviewService;
 
     private MockMvc mockMvc;
 
     @BeforeEach
     void setUp() {
-        MyPageController controller = new MyPageController(userService, orderService, reviewService, couponService, pointQueryService, duplicateConstraintMessageResolver);
+        MyPageController controller = new MyPageController(userService, orderService, reviewService, couponService, pointQueryService, duplicateConstraintMessageResolver, myPagePreviewService);
 
         LocalValidatorFactoryBean validator = new LocalValidatorFactoryBean();
         validator.afterPropertiesSet();
@@ -83,6 +88,23 @@ class MyPageControllerUnitTest {
     @AfterEach
     void tearDown() {
         SecurityContextHolder.clearContext();
+    }
+
+    @Test
+    @DisplayName("GET /mypage — 프리뷰 서비스 호출 + 모델 바인딩")
+    void myPage_delegatesToPreviewService() throws Exception {
+        User user = new User("tester", "tester@example.com", "encoded", "테스터", "010-1111-2222");
+        MyPagePreview preview = new MyPagePreview(
+                user, new PageImpl<>(List.of()), Collections.emptyList());
+        when(myPagePreviewService.getPreview(1L)).thenReturn(preview);
+
+        mockMvc.perform(get("/mypage"))
+                .andExpect(status().isOk())
+                .andExpect(view().name("mypage/index"))
+                .andExpect(model().attributeExists("user", "recentOrders", "coupons",
+                        "orderStatusLabels", "orderStatusBadgeClasses"));
+
+        verify(myPagePreviewService).getPreview(1L);
     }
 
     @Test

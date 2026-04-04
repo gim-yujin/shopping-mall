@@ -6,6 +6,7 @@ import com.shop.domain.point.service.PointQueryService;
 import com.shop.domain.review.service.ReviewService;
 import com.shop.domain.user.dto.SignupRequest;
 import com.shop.domain.user.entity.User;
+import com.shop.domain.user.service.MyPagePreviewService;
 import com.shop.domain.user.service.UserService;
 import com.shop.global.exception.BusinessException;
 import com.shop.global.exception.DuplicateConstraintMessageResolver;
@@ -64,6 +65,7 @@ class UserControllerSupplementaryUnitTest {
     @Mock private ReviewService reviewService;
     @Mock private CouponService couponService;
     @Mock private PointQueryService pointQueryService;
+    @Mock private MyPagePreviewService myPagePreviewService;
 
     private MockMvc authMvc;
     private MockMvc myPageMvc;
@@ -82,7 +84,7 @@ class UserControllerSupplementaryUnitTest {
         // MyPageController는 인증 필요
         MyPageController myPageController = new MyPageController(
                 userService, orderService, reviewService,
-                couponService, pointQueryService, duplicateResolver);
+                couponService, pointQueryService, duplicateResolver, myPagePreviewService);
         myPageMvc = MockMvcBuilders.standaloneSetup(myPageController)
                 .setValidator(validator)
                 .build();
@@ -212,13 +214,12 @@ class UserControllerSupplementaryUnitTest {
     class MyPageSupplementaryTests {
 
         @Test
-        @DisplayName("GET /mypage — 대시보드에 사용자 정보, 최근 주문, 쿠폰을 표시한다")
+        @DisplayName("GET /mypage — 프리뷰 서비스 호출 + 모델 바인딩")
         void myPage_dashboard() throws Exception {
             // given
-            when(userService.findById(USER_ID)).thenReturn(createUser());
-            when(orderService.getOrdersByUser(eq(USER_ID), any(Pageable.class)))
-                    .thenReturn(new PageImpl<>(Collections.emptyList()));
-            when(couponService.getAvailableCoupons(USER_ID)).thenReturn(Collections.emptyList());
+            when(myPagePreviewService.getPreview(USER_ID)).thenReturn(
+                    new com.shop.domain.user.dto.MyPagePreview(
+                            createUser(), new PageImpl<>(Collections.emptyList()), Collections.emptyList()));
 
             // when & then
             myPageMvc.perform(get("/mypage"))

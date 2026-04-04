@@ -14,6 +14,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
+
 @Service
 @Transactional(readOnly = true)
 public class CategoryService {
@@ -53,30 +54,14 @@ public class CategoryService {
     /**
      * 카테고리 ID와 모든 하위 카테고리 ID를 반환한다.
      * 카테고리 트리 구조는 거의 변하지 않으므로 캐싱에 적합하다.
-     * 이전: 매 요청마다 재귀 쿼리 N+1회
-     * 이후: 캐시 히트 시 DB 접근 0회
+     *
+     * <p>[Phase 25] 재귀 N+1 → WITH RECURSIVE CTE 단일 쿼리로 대체.
+     * 기존: 트리 노드마다 findByParentId() 호출 → O(N) 쿼리.
+     * 이후: 단일 CTE 쿼리 → 1 쿼리. 캐시 히트 시 DB 접근 0회.</p>
      */
     @Cacheable(value = "categoryDescendants", key = "#categoryId", sync = true)
     public List<Integer> getAllDescendantIds(Integer categoryId) {
-        List<Integer> ids = new ArrayList<>();
-        Set<Integer> visited = new HashSet<>();
-        ids.add(categoryId);
-        visited.add(categoryId);
-        collectChildIds(categoryId, ids, visited);
-        return ids;
-    }
-
-    private void collectChildIds(Integer parentId, List<Integer> ids, Set<Integer> visited) {
-        List<Category> children = categoryRepository.findByParentId(parentId);
-        for (Category child : children) {
-            Integer childId = child.getCategoryId();
-            if (!visited.add(childId)) {
-                log.warn("카테고리 하위 트리 순환 감지: parentId={}, childId={}", parentId, childId);
-                continue;
-            }
-            ids.add(childId);
-            collectChildIds(childId, ids, visited);
-        }
+        return categoryRepository.findAllDescendantIds(categoryId);
     }
 
     /**

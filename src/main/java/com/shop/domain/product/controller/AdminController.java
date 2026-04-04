@@ -4,8 +4,10 @@ import com.shop.domain.category.service.CategoryService;
 import com.shop.domain.coupon.service.CouponService;
 import com.shop.domain.order.entity.OrderStatus;
 import com.shop.domain.order.service.OrderService;
+import com.shop.domain.product.dto.AdminDashboardPreview;
 import com.shop.domain.product.dto.AdminProductRequest;
 import com.shop.domain.product.entity.Product;
+import com.shop.domain.product.service.AdminDashboardPreviewService;
 import com.shop.domain.product.service.ProductService;
 import com.shop.global.common.PageDefaults;
 import com.shop.global.common.PagingParams;
@@ -31,13 +33,16 @@ public class AdminController {
     private final OrderService orderService;
     private final CategoryService categoryService;
     private final CouponService couponService;
+    private final AdminDashboardPreviewService dashboardPreviewService;
 
     public AdminController(ProductService productService, OrderService orderService,
-                           CategoryService categoryService, CouponService couponService) {
+                           CategoryService categoryService, CouponService couponService,
+                           AdminDashboardPreviewService dashboardPreviewService) {
         this.productService = productService;
         this.orderService = orderService;
         this.categoryService = categoryService;
         this.couponService = couponService;
+        this.dashboardPreviewService = dashboardPreviewService;
     }
 
     // ──────────── 대시보드 ────────────
@@ -52,14 +57,14 @@ public class AdminController {
      */
     @GetMapping
     public String dashboard(Model model) {
-        // [Phase 18] findAll() → findAllForAdmin(): CQRS 분리로 읽기 메서드가 ProductQueryService로 이동했으나,
-        // 관리자 대시보드는 비활성 상품을 포함해야 하므로 ProductService의 Admin 전용 메서드를 사용한다.
-        model.addAttribute("products", productService.findAllForAdmin(PageRequest.of(0, PageDefaults.ADMIN_DASHBOARD_SIZE)));
-        // [Phase 18] CQRS: 경량 읽기 모델로 대시보드 주문 목록 조회 — 2-쿼리 패턴 제거
-        model.addAttribute("recentOrders", orderService.getAllOrdersFlat(PageRequest.of(0, PageDefaults.ADMIN_DASHBOARD_SIZE)));
-        model.addAttribute("couponStats", couponService.getCouponStats());
-        // [Step 5] 반품 대기 건수 — 대시보드 카드에 표시
-        model.addAttribute("pendingReturnCount", orderService.getPendingReturnCount());
+        // [Phase 25] 4개 서비스 호출을 StructuredTaskScope로 병렬 실행.
+        // 기존: 순차 호출 — 응답 지연 = sum(T1+T2+T3+T4)
+        // 이후: 병렬 호출 — 응답 지연 = max(T1,T2,T3,T4)
+        AdminDashboardPreview preview = dashboardPreviewService.getPreview();
+        model.addAttribute("products", preview.products());
+        model.addAttribute("recentOrders", preview.recentOrders());
+        model.addAttribute("couponStats", preview.couponStats());
+        model.addAttribute("pendingReturnCount", preview.pendingReturnCount());
         return "admin/dashboard";
     }
 
