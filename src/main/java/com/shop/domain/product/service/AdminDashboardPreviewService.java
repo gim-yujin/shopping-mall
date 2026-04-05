@@ -3,9 +3,9 @@ package com.shop.domain.product.service;
 import com.shop.domain.coupon.dto.CouponStats;
 import com.shop.domain.coupon.service.CouponService;
 import com.shop.domain.order.dto.OrderListReadModel;
-import com.shop.domain.order.service.OrderService;
 import com.shop.domain.product.dto.AdminDashboardPreview;
 import com.shop.domain.product.entity.Product;
+import com.shop.domain.product.port.AdminDashboardOrderPort;
 import com.shop.global.common.PageDefaults;
 import com.shop.global.concurrency.StructuredConcurrencyUtils;
 import com.shop.global.resilience.ResilientCallExecutor;
@@ -39,16 +39,16 @@ public class AdminDashboardPreviewService {
     private static final Logger log = LoggerFactory.getLogger(AdminDashboardPreviewService.class);
 
     private final ProductService productService;
-    private final OrderService orderService;
+    private final AdminDashboardOrderPort orderPort;
     private final CouponService couponService;
     private final ResilientCallExecutor resilientCallExecutor;
 
     public AdminDashboardPreviewService(ProductService productService,
-                                         OrderService orderService,
+                                         AdminDashboardOrderPort orderPort,
                                          CouponService couponService,
                                          ResilientCallExecutor resilientCallExecutor) {
         this.productService = productService;
-        this.orderService = orderService;
+        this.orderPort = orderPort;
         this.couponService = couponService;
         this.resilientCallExecutor = resilientCallExecutor;
     }
@@ -78,8 +78,8 @@ public class AdminDashboardPreviewService {
                                     PageRequest.of(0, PageDefaults.ADMIN_DASHBOARD_SIZE))));
 
             Subtask<Page<OrderListReadModel>> ordersTask = scope.fork(() ->
-                    resilientCallExecutor.execute("orderService",
-                            () -> orderService.getAllOrdersFlat(
+                    resilientCallExecutor.execute("orderPort",
+                            () -> orderPort.getAllOrdersFlat(
                                     PageRequest.of(0, PageDefaults.ADMIN_DASHBOARD_SIZE))));
 
             Subtask<CouponStats> couponTask = scope.fork(() ->
@@ -87,8 +87,8 @@ public class AdminDashboardPreviewService {
                             () -> couponService.getCouponStats()));
 
             Subtask<Long> returnCountTask = scope.fork(() ->
-                    resilientCallExecutor.execute("orderService",
-                            () -> orderService.getPendingReturnCount()));
+                    resilientCallExecutor.execute("orderPort",
+                            () -> orderPort.getPendingReturnCount()));
 
             scope.join().throwIfFailed();
 

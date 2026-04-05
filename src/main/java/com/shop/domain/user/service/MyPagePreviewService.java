@@ -3,9 +3,9 @@ package com.shop.domain.user.service;
 import com.shop.domain.coupon.entity.UserCoupon;
 import com.shop.domain.coupon.service.CouponService;
 import com.shop.domain.order.dto.OrderListReadModel;
-import com.shop.domain.order.service.OrderService;
 import com.shop.domain.user.dto.MyPagePreview;
 import com.shop.domain.user.entity.User;
+import com.shop.domain.user.port.MyPageOrderPort;
 import com.shop.global.common.PageDefaults;
 import com.shop.global.concurrency.StructuredConcurrencyUtils;
 import com.shop.global.resilience.ResilientCallExecutor;
@@ -25,9 +25,9 @@ import java.util.concurrent.StructuredTaskScope.Subtask;
 /**
  * [Phase 25] 마이페이지 프리뷰 — 3개 서비스 호출 병렬화 + CQRS 전환.
  *
- * <p><b>문제:</b> MyPageController.myPage()에서 userService, orderService,
+ * <p><b>문제:</b> MyPageController.myPage()에서 userService, orderPort,
  * couponService를 순차적으로 호출하여 응답 지연이 sum(T1+T2+T3)이었다.
- * 또한 orderService.getOrdersByUser()가 2-query 엔티티 패턴을 사용하여
+ * 또한 orderPort.getOrdersByUser()가 2-query 엔티티 패턴을 사용하여
  * 불필요한 OrderItem 컬렉션을 모두 로딩했다.</p>
  *
  * <p><b>해결:</b>
@@ -48,16 +48,16 @@ public class MyPagePreviewService {
     private static final Logger log = LoggerFactory.getLogger(MyPagePreviewService.class);
 
     private final UserService userService;
-    private final OrderService orderService;
+    private final MyPageOrderPort orderPort;
     private final CouponService couponService;
     private final ResilientCallExecutor resilientCallExecutor;
 
     public MyPagePreviewService(UserService userService,
-                                 OrderService orderService,
+                                 MyPageOrderPort orderPort,
                                  CouponService couponService,
                                  ResilientCallExecutor resilientCallExecutor) {
         this.userService = userService;
-        this.orderService = orderService;
+        this.orderPort = orderPort;
         this.couponService = couponService;
         this.resilientCallExecutor = resilientCallExecutor;
     }
@@ -88,8 +88,8 @@ public class MyPagePreviewService {
 
             // 최근 주문 — 필수 데이터, CQRS flat 쿼리 사용 (2-query 패턴 제거)
             Subtask<Page<OrderListReadModel>> ordersTask = scope.fork(() ->
-                    resilientCallExecutor.execute("orderService",
-                            () -> orderService.getOrdersByUserFlat(userId,
+                    resilientCallExecutor.execute("orderPort",
+                            () -> orderPort.getOrdersByUserFlat(userId,
                                     PageRequest.of(0, PageDefaults.MYPAGE_RECENT_ORDERS))));
 
             // 쿠폰 — 비필수 데이터, 장애 시 빈 목록 폴백
