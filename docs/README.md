@@ -21,6 +21,7 @@
 | [`docs/implementation-details.md`](./implementation-details.md) | 아키텍처, 주문 처리, 데이터 모델의 구현 세부를 정리 | 2026-03-14 | Reference |
 | [`docs/order-invariant-checks.md`](./order-invariant-checks.md) | 주문 도메인 무결성 점검 규칙과 운영 확인 절차 제공 | 2026-03-14 | SSOT |
 | [`docs/search-log-ops-policy.md`](./search-log-ops-policy.md) | 검색 로그 저장/정리 정책과 운영 기준 정의 | 2026-04-02 | SSOT |
+| [`docs/rest-api-guide.md`](./rest-api-guide.md) | REST API 엔드포인트 사용 설명서 (요청/응답 형식, 인증, 멱등성 키) | 2026-04-06 | SSOT |
 | [`docs/guide-doc-naming-conventions.md`](./guide-doc-naming-conventions.md) | `docs/` 문서 네이밍/분류 컨벤션 관리 | 2026-03-14 | SSOT |
 | [`docs/문서_수치_갱신_규칙.md`](./문서_수치_갱신_규칙.md) | README 수치 검증 및 갱신 절차 가이드 | 2026-03-14 | SSOT |
 | [`docs/pmd-method-naming-conventions-exceptions.md`](./pmd-method-naming-conventions-exceptions.md) | PMD 메서드 네이밍 예외 정책과 적용 기준 정리 | 2026-03-14 | Reference |
