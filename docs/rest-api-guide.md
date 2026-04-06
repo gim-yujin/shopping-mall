@@ -61,8 +61,9 @@ http://localhost:8080/api/v1
 |---|---|
 | `/api/**` 보안 체인 | Stateless, CSRF 비활성 |
 | 인증 방식 | 세션 기반 (SecurityContext) |
-| 공개 API | `GET /api/v1/products/**`, `GET /api/v1/products/{id}/reviews` |
+| 공개 API | `GET /api/v1/products/**`, `GET /api/v1/products/{id}/reviews`, `/api/v1/search/**`, `POST /api/v1/users/signup` |
 | 인증 필요 | 그 외 모든 엔드포인트 |
+| 관리자 전용 | `/api/v1/admin/**` (ROLE_ADMIN 필요) |
 
 ### 공통 에러 코드
 
@@ -90,6 +91,72 @@ X-Idempotency-Key: 550e8400-e29b-41d4-a716-446655440000
 | 동일 키 + 이전 성공 | 저장된 응답 반환 (재처리 없음) |
 | 동일 키 + 이전 처리 중 | `409 Conflict` 반환 |
 | 동일 키 + 이전 실패 | 재처리 허용 |
+
+---
+
+## 검색 (Search)
+
+> 인증 불필요 — 모든 엔드포인트가 공개 API
+
+### 상품 검색
+
+```
+GET /api/v1/search?q=티셔츠&page=0&size=20
+```
+
+FTS(Full-Text Search)로 상품을 검색한다. 첫 페이지 조회 시에만 검색 로그를 기록한다.
+
+**Query Parameters**
+
+| 파라미터 | 타입 | 기본값 | 설명 |
+|---|---|---|---|
+| `q` | string | (필수) | 검색 키워드 |
+| `page` | int | `0` | 페이지 번호 (0-based) |
+| `size` | int | `20` | 페이지 크기 |
+
+**응답 (200 OK)** — `PageResponse<ProductSummaryResponse>`
+
+```json
+{
+  "success": true,
+  "data": {
+    "content": [
+      {
+        "productId": 1,
+        "productName": "반팔 티셔츠",
+        "price": 29000,
+        "originalPrice": 39000,
+        "discountPercent": 25,
+        "thumbnailUrl": "/images/product1.jpg",
+        "ratingAvg": 4.5,
+        "reviewCount": 42,
+        "salesCount": 150
+      }
+    ],
+    "page": 0,
+    "size": 20,
+    "totalElements": 5,
+    "totalPages": 1,
+    "first": true,
+    "last": true
+  }
+}
+```
+
+### 인기 검색어 조회
+
+```
+GET /api/v1/search/popular
+```
+
+**응답 (200 OK)** — 상위 10개 인기 검색어
+
+```json
+{
+  "success": true,
+  "data": ["티셔츠", "원피스", "청바지", "운동화", "가방"]
+}
+```
 
 ---
 
@@ -699,10 +766,256 @@ POST /api/v1/reviews/{reviewId}/helpful
 
 ---
 
+## 포인트 (Point)
+
+> 모든 엔드포인트 인증 필요
+
+### 내 포인트 이력 조회
+
+```
+GET /api/v1/points/history?page=0
+```
+
+적립(EARN), 사용(USE), 환불(REFUND), 만료(EXPIRE), 조정(ADJUST) 등 모든 유형의 포인트 변동 내역을 최신순으로 반환한다.
+
+**Query Parameters**
+
+| 파라미터 | 타입 | 기본값 | 설명 |
+|---|---|---|---|
+| `page` | int | `0` | 페이지 번호 (0-based) |
+
+**응답 (200 OK)** — `PageResponse<PointHistoryResponse>`
+
+```json
+{
+  "success": true,
+  "data": {
+    "content": [
+      {
+        "historyId": 1,
+        "changeType": "EARN",
+        "amount": 820,
+        "balanceAfter": 1820,
+        "referenceType": "ORDER",
+        "referenceId": 100,
+        "description": "주문 적립",
+        "createdAt": "2026-04-06T14:30:00"
+      }
+    ],
+    "page": 0,
+    "size": 10,
+    "totalElements": 15,
+    "totalPages": 2,
+    "first": true,
+    "last": false
+  }
+}
+```
+
+---
+
+## 사용자 (User)
+
+### 회원가입 (공개)
+
+```
+POST /api/v1/users/signup
+```
+
+인증 불필요.
+
+**Request Body**
+
+| 필드 | 타입 | 필수 | 설명 |
+|---|---|---|---|
+| `username` | String | O | 사용자명 (4~50자) |
+| `email` | String | O | 이메일 |
+| `password` | String | O | 비밀번호 (8자 이상, 영문+숫자+특수문자) |
+| `name` | String | O | 이름 |
+| `phone` | String | — | 전화번호 (010-xxxx-xxxx 형식) |
+
+```json
+{
+  "username": "hong",
+  "email": "hong@example.com",
+  "password": "Pass1234!",
+  "name": "홍길동",
+  "phone": "010-1234-5678"
+}
+```
+
+**응답 (201 Created)** — `UserProfileResponse`
+
+```json
+{
+  "success": true,
+  "data": {
+    "userId": 1,
+    "username": "hong",
+    "email": "hong@example.com",
+    "name": "홍길동",
+    "phone": "010-1234-5678",
+    "tierName": "BRONZE",
+    "tierLevel": 1,
+    "totalSpent": 0,
+    "pointBalance": 0,
+    "createdAt": "2026-04-06T15:00:00"
+  }
+}
+```
+
+### 내 프로필 조회 (인증 필요)
+
+```
+GET /api/v1/users/me
+```
+
+**응답 (200 OK)** — `UserProfileResponse` (회원가입 응답과 동일 구조)
+
+### 프로필 수정 (인증 필요)
+
+```
+PUT /api/v1/users/me/profile
+```
+
+**Request Body**
+
+| 필드 | 타입 | 필수 | 설명 |
+|---|---|---|---|
+| `name` | String | O | 이름 (최대 50자) |
+| `email` | String | O | 이메일 |
+| `phone` | String | — | 전화번호 (010-xxxx-xxxx 형식) |
+
+```json
+{
+  "name": "홍길동",
+  "email": "newemail@example.com",
+  "phone": "010-9876-5432"
+}
+```
+
+**응답 (200 OK)**
+
+```json
+{
+  "success": true
+}
+```
+
+### 비밀번호 변경 (인증 필요)
+
+```
+POST /api/v1/users/me/password
+```
+
+**Request Body**
+
+| 필드 | 타입 | 필수 | 설명 |
+|---|---|---|---|
+| `currentPassword` | String | O | 현재 비밀번호 |
+| `newPassword` | String | O | 새 비밀번호 (8~100자, 영문+숫자+특수문자) |
+
+```json
+{
+  "currentPassword": "OldPass1!",
+  "newPassword": "NewPass2@"
+}
+```
+
+**응답 (200 OK)**
+
+```json
+{
+  "success": true
+}
+```
+
+---
+
+## 재고 관리 (Inventory) — 관리자 전용
+
+> 모든 엔드포인트 ROLE_ADMIN 필요
+
+### 상품별 재고 변경 이력 조회
+
+```
+GET /api/v1/admin/inventory/{productId}/history?page=0
+```
+
+**Query Parameters**
+
+| 파라미터 | 타입 | 기본값 | 설명 |
+|---|---|---|---|
+| `page` | int | `0` | 페이지 번호 (0-based) |
+
+**응답 (200 OK)** — `PageResponse<InventoryHistoryResponse>`
+
+```json
+{
+  "success": true,
+  "data": {
+    "content": [
+      {
+        "historyId": 1,
+        "productId": 10,
+        "changeType": "IN",
+        "changeAmount": 50,
+        "beforeQuantity": 100,
+        "afterQuantity": 150,
+        "reason": "정기 입고",
+        "referenceId": null,
+        "createdBy": 1,
+        "createdAt": "2026-04-06T10:00:00"
+      }
+    ],
+    "page": 0,
+    "size": 10,
+    "totalElements": 30,
+    "totalPages": 3,
+    "first": true,
+    "last": false
+  }
+}
+```
+
+### 수동 재고 조정
+
+```
+POST /api/v1/admin/inventory/{productId}/adjust
+```
+
+양수 amount는 입고, 음수 amount는 출고를 의미한다.
+
+**Request Body**
+
+| 필드 | 타입 | 필수 | 설명 |
+|---|---|---|---|
+| `amount` | Integer | O | 조정 수량 (양수=입고, 음수=출고) |
+| `reason` | String | O | 변경 사유 |
+
+```json
+{
+  "amount": 50,
+  "reason": "정기 입고"
+}
+```
+
+**응답 (200 OK)**
+
+```json
+{
+  "success": true
+}
+```
+
+---
+
 ## 엔드포인트 요약
 
 | 메서드 | 경로 | 인증 | 멱등성 키 | 설명 |
 |---|---|---|---|---|
+| GET | `/api/v1/search` | - | - | 상품 검색 |
+| GET | `/api/v1/search/popular` | - | - | 인기 검색어 조회 |
 | GET | `/api/v1/products` | - | - | 상품 목록 조회 |
 | GET | `/api/v1/products/{id}` | - | - | 상품 상세 조회 |
 | GET | `/api/v1/cart` | O | - | 장바구니 조회 |
@@ -722,3 +1035,10 @@ POST /api/v1/reviews/{reviewId}/helpful
 | POST | `/api/v1/reviews` | O | - | 리뷰 작성 |
 | DELETE | `/api/v1/reviews/{id}` | O | - | 리뷰 삭제 |
 | POST | `/api/v1/reviews/{id}/helpful` | O | - | 도움이 돼요 토글 |
+| GET | `/api/v1/points/history` | O | - | 내 포인트 이력 |
+| POST | `/api/v1/users/signup` | - | - | 회원가입 |
+| GET | `/api/v1/users/me` | O | - | 내 프로필 조회 |
+| PUT | `/api/v1/users/me/profile` | O | - | 프로필 수정 |
+| POST | `/api/v1/users/me/password` | O | - | 비밀번호 변경 |
+| GET | `/api/v1/admin/inventory/{id}/history` | ADMIN | - | 재고 변경 이력 |
+| POST | `/api/v1/admin/inventory/{id}/adjust` | ADMIN | - | 수동 재고 조정 |

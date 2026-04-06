@@ -76,6 +76,9 @@ public class SecurityConfig {
             .authenticationProvider(authenticationProvider())
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/api/v1/products", "/api/v1/products/**").permitAll()
+                .requestMatchers("/api/v1/search/**").permitAll()
+                .requestMatchers("/api/v1/users/signup").permitAll()
+                .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
                 .anyRequest().authenticated()
             )
             // API는 세션 쿠키 기반 브라우저 폼 제출이 아니므로 CSRF 비활성화
