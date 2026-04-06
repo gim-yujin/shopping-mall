@@ -1,6 +1,7 @@
 package com.shop.domain.coupon.controller.api;
 
 import com.shop.domain.coupon.service.CouponService;
+import com.shop.global.idempotency.IdempotencyExecutor;
 import com.shop.global.idempotency.IdempotencyRecord;
 import com.shop.global.idempotency.IdempotencyService;
 import com.shop.global.metrics.IdempotencyMetrics;
@@ -48,8 +49,9 @@ class CouponApiControllerUnitTest {
 
     @BeforeEach
     void setUp() {
+        IdempotencyExecutor idempotencyExecutor = new IdempotencyExecutor(idempotencyService, idempotencyMetrics);
         CouponApiController controller = new CouponApiController(
-                couponService, idempotencyService, idempotencyMetrics);
+                couponService, idempotencyExecutor);
         mockMvc = MockMvcBuilders.standaloneSetup(controller).build();
 
         // SecurityContextHolder에 인증 정보 설정 — SecurityUtil.getCurrentUserId() 동작용

@@ -2,18 +2,11 @@ package com.shop.domain.coupon.controller.api;
 
 import com.shop.domain.coupon.service.CouponService;
 import com.shop.global.dto.ApiResponse;
-import com.shop.global.idempotency.IdempotencyRecord;
-import com.shop.global.idempotency.IdempotencyService;
-import com.shop.global.metrics.IdempotencyMetrics;
+import com.shop.global.idempotency.IdempotencyExecutor;
 import com.shop.global.security.SecurityUtil;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-
-import java.util.Optional;
 
 /**
  * [Phase 14] 쿠폰 발급 REST API 컨트롤러 (멱등성 보장).
@@ -31,6 +24,8 @@ import java.util.Optional;
  * <p>멱등성 키를 적용하면 첫 번째 발급 성공 후 재시도 시
  * COMPLETED 상태의 캐시된 응답을 반환하여 위 문제를 해결한다.</p>
  *
+ * <p>멱등성 흐름의 공통 보일러플레이트는 {@link IdempotencyExecutor}에 위임한다.</p>
+ *
  * <h3>기존 CouponController(SSR)와의 역할 분담</h3>
  * <ul>
  *   <li>CouponController — Thymeleaf 폼 기반 SSR, 리다이렉트 응답</li>
@@ -41,18 +36,13 @@ import java.util.Optional;
 @RequestMapping("/api/v1/coupons")
 public class CouponApiController {
 
-    private static final Logger log = LoggerFactory.getLogger(CouponApiController.class);
-
     private final CouponService couponService;
-    private final IdempotencyService idempotencyService;
-    private final IdempotencyMetrics idempotencyMetrics;
+    private final IdempotencyExecutor idempotencyExecutor;
 
     public CouponApiController(CouponService couponService,
-                                IdempotencyService idempotencyService,
-                                IdempotencyMetrics idempotencyMetrics) {
+                                IdempotencyExecutor idempotencyExecutor) {
         this.couponService = couponService;
-        this.idempotencyService = idempotencyService;
-        this.idempotencyMetrics = idempotencyMetrics;
+        this.idempotencyExecutor = idempotencyExecutor;
     }
 
     /**
@@ -80,61 +70,9 @@ public class CouponApiController {
             return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.ok());
         }
 
-        // ── [Phase 14] 멱등성 키 패턴 적용 ────────────────────
-
-        idempotencyService.validateKey(idempotencyKey);
-
-        // 1단계: 기존 레코드 확인
-        Optional<IdempotencyRecord> existing = idempotencyService.findExisting(userId, idempotencyKey);
-        if (existing.isPresent()) {
-            IdempotencyRecord prev = existing.get();
-
-            if (prev.isCompleted()) {
-                // 이미 발급 완료 — 재발급 없이 성공 응답 반환
-                idempotencyMetrics.recordDuplicateCompleted();
-                log.info("쿠폰 멱등성 키 중복 (COMPLETED) - userId={}, key={}, couponId={}",
-                        userId, idempotencyKey, couponId);
-                return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.ok());
-            }
-
-            if (prev.isProcessing()) {
-                idempotencyMetrics.recordDuplicateProcessing();
-                return ResponseEntity.status(HttpStatus.CONFLICT)
-                        .body(ApiResponse.error("IDEMPOTENCY_PROCESSING",
-                                "이전 쿠폰 발급 요청이 처리 중입니다. 잠시 후 다시 시도해주세요."));
-            }
-
-            // FAILED — 재시도 허용
-            idempotencyMetrics.recordRetry();
-        }
-
-        // 2단계: PROCESSING 레코드 생성
-        IdempotencyRecord record;
-        boolean isRetry = existing.isPresent();
-        try {
-            record = isRetry
-                    ? idempotencyService.retryAfterFailure(userId, idempotencyKey, "COUPON_ISSUE")
-                    : idempotencyService.initRecord(userId, idempotencyKey, "COUPON_ISSUE");
-        } catch (DataIntegrityViolationException e) {
-            idempotencyMetrics.recordConflict();
-            return ResponseEntity.status(HttpStatus.CONFLICT)
-                    .body(ApiResponse.error("IDEMPOTENCY_CONFLICT",
-                            "동일한 요청이 처리 중입니다. 잠시 후 다시 시도해주세요."));
-        }
-
-        idempotencyMetrics.recordNew();
-
-        // 3단계: 쿠폰 발급 실행
-        try {
-            idempotencyService.executeAndMarkCompleted(
-                    record.getRecordId(),
-                    couponId.longValue(),
-                    HttpStatus.CREATED.value(),
-                    () -> couponService.issueCouponById(userId, couponId));
-            return ResponseEntity.status(HttpStatus.CREATED).body(ApiResponse.ok());
-        } catch (Exception e) {
-            idempotencyService.markFailed(record.getRecordId());
-            throw e;
-        }
+        return idempotencyExecutor.executeVoid(
+                userId, idempotencyKey, "COUPON_ISSUE",
+                HttpStatus.CREATED.value(), couponId.longValue(),
+                () -> couponService.issueCouponById(userId, couponId));
     }
 }

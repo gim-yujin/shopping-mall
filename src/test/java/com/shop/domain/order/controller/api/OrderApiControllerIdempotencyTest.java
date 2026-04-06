@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.shop.domain.order.entity.Order;
 import com.shop.domain.order.service.OrderService;
 import com.shop.global.exception.BusinessException;
+import com.shop.global.idempotency.IdempotencyExecutor;
 import com.shop.global.idempotency.IdempotencyRecord;
 import com.shop.global.idempotency.IdempotencyService;
 import com.shop.global.idempotency.OrderWriteIdempotencyGuard;
@@ -78,8 +79,9 @@ class OrderApiControllerIdempotencyTest {
         // ObjectMapper에 JavaTimeModule 등록 (LocalDateTime 직렬화용)
         objectMapper.findAndRegisterModules();
 
+        IdempotencyExecutor idempotencyExecutor = new IdempotencyExecutor(idempotencyService, idempotencyMetrics);
         OrderApiController controller = new OrderApiController(
-                orderService, idempotencyService, orderWriteIdempotencyGuard, idempotencyMetrics, objectMapper);
+                orderService, idempotencyExecutor, orderWriteIdempotencyGuard, objectMapper);
 
         LocalValidatorFactoryBean validator = new LocalValidatorFactoryBean();
         validator.afterPropertiesSet();

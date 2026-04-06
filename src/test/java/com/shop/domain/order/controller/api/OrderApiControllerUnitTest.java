@@ -5,6 +5,7 @@ import com.shop.domain.order.dto.OrderCreateRequest;
 import com.shop.domain.order.dto.OrderListReadModel;
 import com.shop.domain.order.entity.Order;
 import com.shop.domain.order.service.OrderService;
+import com.shop.global.idempotency.IdempotencyExecutor;
 import com.shop.global.idempotency.IdempotencyRecord;
 import com.shop.global.idempotency.IdempotencyService;
 import com.shop.global.idempotency.OrderWriteIdempotencyGuard;
@@ -85,8 +86,9 @@ class OrderApiControllerUnitTest {
         // ObjectMapper에 JavaTimeModule 등록 (LocalDateTime 직렬화용)
         objectMapper.findAndRegisterModules();
 
+        IdempotencyExecutor idempotencyExecutor = new IdempotencyExecutor(idempotencyService, idempotencyMetrics);
         OrderApiController controller = new OrderApiController(
-                orderService, idempotencyService, orderWriteIdempotencyGuard, idempotencyMetrics, objectMapper);
+                orderService, idempotencyExecutor, orderWriteIdempotencyGuard, objectMapper);
 
         // @Valid + @RequestBody 조합에서 Bean Validation이 동작하려면
         // LocalValidatorFactoryBean을 standaloneSetup에 등록해야 한다.
