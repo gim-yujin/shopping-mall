@@ -19,7 +19,7 @@ import java.util.stream.Collectors;
  * <h3>동작 원리</h3>
  * <p>5초 간격으로 {@code outbox_events} 테이블에서 PENDING 상태의 이벤트를 조회하고,
  * 이벤트 유형에 따라 적절한 핸들러(캐시 무효화 등)를 실행한다.
- * 처리 성공 시 PROCESSED로, 최대 재시도 초과 시 FAILED로 상태를 전이한다.</p>
+ * 처리 성공 시 PROCESSED로, 최대 재시도 초과 시 DEAD_LETTER로 상태를 전이한다.</p>
  *
  * <h3>왜 CDC(Change Data Capture)가 아닌 폴링인가?</h3>
  * <ul>

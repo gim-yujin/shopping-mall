@@ -42,7 +42,7 @@ public interface SearchLogRepository extends JpaRepository<SearchLog, Long> {
      *   3) autovacuum 부하 집중 → 이후 쿼리 성능 저하
      *
      * 해결: LIMIT으로 한 번에 삭제하는 행 수를 제한하여 WAL 크기와 잠금 시간을 분산한다.
-     * ctid 기반 서브쿼리는 PostgreSQL에서 PK 없이도 효율적인 배치 삭제를 보장한다.
+     * log_id 서브쿼리로 삭제 대상을 먼저 제한한 뒤 배치 삭제한다.
      *
      * SearchLogCleanupScheduler에서 반복 호출하여 반환값이 batchSize 미만이 될 때까지 삭제한다.
      *

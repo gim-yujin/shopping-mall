@@ -12,7 +12,7 @@ import java.util.List;
  * Outbox 이벤트 리포지토리.
  *
  * <p>폴러가 PENDING 이벤트를 순서대로 가져오고,
- * 정리 스케줄러가 오래된 PROCESSED 이벤트를 배치 삭제한다.</p>
+ * 정리 스케줄러가 오래된 PROCESSED/DEAD_LETTER 이벤트를 배치 삭제한다.</p>
  */
 public interface OutboxEventRepository extends JpaRepository<OutboxEvent, Long> {
 
@@ -21,7 +21,7 @@ public interface OutboxEventRepository extends JpaRepository<OutboxEvent, Long> 
      *
      * <p>폴러가 호출하며, 한 번에 최대 batchSize건만 가져온다.
      * partial index {@code idx_outbox_pending}을 사용하여
-     * PROCESSED/FAILED 레코드는 스캔하지 않는다.</p>
+     * PROCESSED/DEAD_LETTER(및 레거시 FAILED) 레코드는 스캔하지 않는다.</p>
      *
      * <p>LIMIT 절로 한 번에 처리하는 이벤트 수를 제한하여
      * 폴링 주기당 DB 부하를 통제한다.</p>
