@@ -40,9 +40,9 @@ import java.util.stream.Stream;
  * <h3>세그먼트 생명주기</h3>
  * <pre>
  * 1. 신규 세그먼트 생성 → 현재 세그먼트로 지정
- * 2. add() 호출마다 현재 세그먼트에 JSON Lines 형식으로 append
+ * 2. append() 호출마다 현재 세그먼트에 JSON Lines 형식으로 append
  * 3. flush() 시점에 rotateSegment(): 현재 세그먼트를 닫고 새 세그먼트를 연다
- * 4. DB flush 성공 후 deleteSegment(): 닫힌 세그먼트를 삭제
+ * 4. 배치 처리가 끝난 뒤 deleteSegment(): 닫힌 세그먼트를 삭제
  * 5. 기동 시 recoverAll(): 잔존 세그먼트(3~4 사이 크래시)를 읽어 복구
  * </pre>
  *
@@ -106,7 +106,7 @@ public class SearchLogWalManager {
 
     /**
      * 마지막 recoverAll() 호출에서 읽은 세그먼트 경로 목록.
-     * DB flush 성공 후 deleteRecoveredSegments()로 삭제한다.
+     * 복구 처리 완료 후 deleteRecoveredSegments()로 삭제한다.
      */
     private List<Path> lastRecoveredSegments = List.of();
 
@@ -176,7 +176,7 @@ public class SearchLogWalManager {
      * 현재 세그먼트를 닫고 새 세그먼트를 연다.
      *
      * <p>flush() 시점에 호출되어, 현재까지 기록된 엔트리를 담은 세그먼트를 봉인하고
-     * 새 세그먼트로 전환한다. 반환된 세그먼트 경로는 DB flush 성공 후
+     * 새 세그먼트로 전환한다. 반환된 세그먼트 경로는 배치 처리 완료 후
      * {@link #deleteSegment(Path)}로 삭제해야 한다.</p>
      *
      * <p>세그먼트가 비어있으면(엔트리 0건) 자동으로 삭제하고 null을 반환한다.</p>

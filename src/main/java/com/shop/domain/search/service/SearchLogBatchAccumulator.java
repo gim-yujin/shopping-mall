@@ -31,8 +31,9 @@ import java.util.concurrent.atomic.AtomicLong;
  *
  * <h3>해결: 인메모리 배치 누적</h3>
  * <p>검색 로그를 lock-free {@link ConcurrentLinkedQueue}에 즉시 추가(O(1))하고,
- * 주기적으로(기본 5초) 또는 버퍼 임계치(기본 500건) 도달 시
- * {@link SearchLogBatchWriter}를 통해 JDBC 배치 INSERT로 한 번에 저장한다.</p>
+ * 주기적으로(기본 5초) {@link SearchLogBatchWriter}를 통해
+ * JDBC 배치 INSERT로 저장한다. 플러시 시 한 번에 꺼내는 최대 건수는
+ * batchSize(기본 500건)이다.</p>
  *
  * <p>초당 1000건 검색 시 기존 1000회 → 2회(5초 간격)로 DB 라운드트립이 감소하고,
  * asyncExecutor 큐 점유도 0으로 줄어 다른 비동기 작업에 큐 용량을 확보한다.</p>
@@ -43,7 +44,7 @@ import java.util.concurrent.atomic.AtomicLong;
  * 선택적으로 연동한다. WAL이 활성화되면:</p>
  * <ul>
  *   <li>{@code add()}: 인메모리 버퍼 추가 전에 WAL 세그먼트 파일에 먼저 기록</li>
- *   <li>{@code flush()}: WAL 세그먼트를 rotate한 뒤 DB flush, 성공 시 세그먼트 삭제</li>
+ *   <li>{@code flush()}: WAL 세그먼트를 rotate한 뒤 배치 처리 후 세그먼트 삭제</li>
  *   <li>{@code destroy()}: 잔여 버퍼 flush 후 WAL writer를 닫음</li>
  *   <li>기동 시: {@link SearchLogWalRecovery}가 잔존 세그먼트를 DB로 복원</li>
  * </ul>
@@ -61,7 +62,8 @@ import java.util.concurrent.atomic.AtomicLong;
  * <ul>
  *   <li>{@code add()}: HTTP 스레드에서 호출. WAL 비활성 시 lock-free CAS,
  *       WAL 활성 시 WAL append(synchronized) + CAS.</li>
- *   <li>{@code flush()}: {@code @Scheduled} 스레드에서 호출. 단일 스레드 실행으로 동시 플러시 방지.</li>
+ *   <li>{@code scheduledFlush()}: {@code @Scheduled} 스레드에서 호출되어 주기 플러시를 담당한다.
+ *       {@code flush()}는 종료 시점이나 테스트에서도 직접 호출될 수 있다.</li>
  *   <li>{@code bufferSize}: {@code AtomicInteger}로 근사치 추적. ConcurrentLinkedQueue.size()는
  *       O(n)이므로 별도 카운터로 O(1) 근사치를 유지한다.</li>
  * </ul>
@@ -200,8 +202,8 @@ public class SearchLogBatchAccumulator implements DisposableBean {
      *   <li>WAL 세그먼트 rotate — 현재 세그먼트를 닫고 새 세그먼트를 연다.
      *       이후 add()는 새 세그먼트에 기록된다.</li>
      *   <li>인메모리 버퍼 drain — 엔트리를 배치 단위로 꺼내 DB에 저장한다.</li>
-     *   <li>닫힌 세그먼트 삭제 — DB flush가 완료되면 세그먼트를 삭제한다.
-     *       이 시점 이후 크래시 시 해당 엔트리는 DB에 이미 저장되어 있으므로 안전하다.</li>
+     *   <li>닫힌 세그먼트 삭제 — 배치 처리가 완료되면 세그먼트를 삭제한다.
+     *       이 시점에는 엔트리가 DB에 저장되었거나, 저장 실패 시 의도적으로 폐기된 상태다.</li>
      * </ol>
      *
      * <p>세그먼트 rotate와 삭제 사이에 크래시가 발생하면, 다음 기동 시

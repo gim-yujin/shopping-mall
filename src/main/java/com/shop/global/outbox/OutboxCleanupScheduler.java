@@ -10,7 +10,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 
 /**
- * 처리 완료된 Outbox 이벤트를 배치 삭제하는 스케줄러.
+ * 오래된 Outbox 이벤트(PROCESSED/DEAD_LETTER)를 배치 삭제하는 스케줄러.
  *
  * <h3>왜 정리가 필요한가?</h3>
  * <p>Outbox 테이블은 INSERT-only로 증가한다. 처리 완료(PROCESSED) 이벤트를
