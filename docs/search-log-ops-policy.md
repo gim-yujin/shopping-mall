@@ -20,7 +20,8 @@
   기동 시 `SearchLogWalRecovery`가 잔존 세그먼트를 복구한다.
   - 기본 WAL 경로: `./data/wal/search-log`
   - `app.search-log.wal.sync-on-append=false`는 처리량 우선 설정이다.
-  - DB flush 성공 후 세그먼트 삭제 직전에 크래시하면 소수의 중복 복구가 가능하다.
+  - 배치 처리 완료 후 세그먼트 삭제 직전에 크래시하면, 이미 저장된 일부 엔트리가 소수 중복 복구될 수 있다.
+  - 일부 배치 저장이 실패해도 세그먼트는 삭제되며, 실패한 엔트리는 무한 복구 루프를 피하기 위해 폐기된다.
 
 ## 3) 배포/재시작 시 종료 정책
 - `SearchLogBatchAccumulator.destroy()`가 잔여 버퍼를 flush하고 WAL writer를 닫는다.
