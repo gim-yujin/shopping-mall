@@ -20,7 +20,7 @@
 개별 `@Async` INSERT를 제거하고, 인메모리 배치 누적기로 전환하여 DB 라운드트립을 대폭 감소시켰다.
 
 - **SearchLogEntry**: JPA 엔티티 대신 불변 record 값 객체. 영속성 컨텍스트 비용 없음.
-- **SearchLogBatchAccumulator**: `ConcurrentLinkedQueue` 기반 lock-free 버퍼. 주기적(5초) 또는 임계치(500건) 도달 시 플러시.
+- **SearchLogBatchAccumulator**: `ConcurrentLinkedQueue` 기반 lock-free 버퍼. 주기적(5초)으로 플러시하며, 한 번의 플러시에서 최대 500건씩 배치 처리.
 - **SearchLogBatchWriter**: `JdbcTemplate.batchUpdate()`로 JDBC 배치 INSERT. JPA `IDENTITY` 전략의 배치 불가 제약을 우회.
 - **SearchLogBatchMeterBinder**: Micrometer 메트릭 (버퍼 크기, 플러시 횟수, 폐기 건수) Prometheus 노출.
 
@@ -61,24 +61,24 @@ Phase 19의 인메모리 배치 누적기는 Graceful Shutdown(SIGTERM)에서는
 - **SearchLogWalConfig**: `app.search-log.wal.enabled=true`일 때만 WAL 빈을 생성하는
   `@ConditionalOnProperty` 설정. 기존 환경에 영향 없이 점진 전환 가능.
 - **SearchLogWalRecovery**: `ApplicationRunner`로 기동 시 잔존 세그먼트를 읽어
-  DB에 직접 배치 INSERT. 복구 완료 후 세그먼트를 삭제한다.
+  DB에 직접 배치 INSERT. 모든 배치 처리 완료 후 세그먼트를 삭제한다.
 - **SearchLogBatchAccumulator 통합**: `add()` 시 WAL append → 인메모리 버퍼 추가.
-  `flush()` 시 세그먼트 rotate → DB flush → 세그먼트 삭제.
+  `flush()` 시 세그먼트 rotate → 배치 처리(저장 또는 폐기) → 세그먼트 삭제.
 - **SearchLogBatchMeterBinder 확장**: WAL 관련 메트릭 2종 추가
   (`shop.search.log.wal.bytes.written`, `shop.search.log.wal.recovered.count`).
 
 ### 세그먼트 생명주기
 ```
 1. 신규 세그먼트 생성 → 현재 세그먼트로 지정
-2. add() 호출마다 현재 세그먼트에 JSON Lines append
+2. append() 호출마다 현재 세그먼트에 JSON Lines append
 3. flush() 시점에 rotateSegment(): 현재 세그먼트를 닫고 새 세그먼트를 연다
-4. DB flush 성공 후 deleteSegment(): 닫힌 세그먼트를 삭제
+4. 배치 처리 완료 후 deleteSegment(): 닫힌 세그먼트를 삭제
 5. 기동 시 recoverAll(): 잔존 세그먼트(3~4 사이 크래시)를 읽어 DB로 복구
 ```
 
 ### 중복 가능성
-크래시 타이밍에 따라 이미 DB에 저장된 엔트리가 WAL에도 남아 있을 수 있다.
-(DB flush 성공 → 세그먼트 삭제 전 크래시) 복구 시 소수의 중복 INSERT가 발생하지만,
+크래시 타이밍에 따라 이미 DB에 저장된 일부 엔트리가 WAL에도 남아 있을 수 있다.
+(배치 처리 완료 → 세그먼트 삭제 전 크래시) 복구 시 소수의 중복 INSERT가 발생할 수 있지만,
 검색 로그는 인기 검색어 통계 목적이므로 통계 정확도에 무시할 수준이다.
 
 ### 설정
