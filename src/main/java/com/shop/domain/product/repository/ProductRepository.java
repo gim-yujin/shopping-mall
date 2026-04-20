@@ -156,24 +156,38 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
     Page<Object[]> findDealsFlat(Pageable pageable);
 
     /**
-     * [Phase 18] 전체 상품 목록 (활성만) — 플랫 프로젝션.
+     * [Phase 18/21] 전체 상품 목록 (활성만) 콘텐츠 전용 — 플랫 프로젝션.
+     *
+     * <p>기존에는 Spring Data가 매 호출마다 data + count 쿼리를 함께 실행했다.
+     * 정렬/페이지별로 캐시 미스가 발생할 때마다 동일한 {@code SELECT COUNT(*) FROM
+     * products WHERE is_active = true}가 중복 실행되어(~23ms/건) 미스 스톰 시
+     * 커넥션 풀을 가중시켰다.</p>
+     *
+     * <p>해결: 콘텐츠와 count를 분리하여 ProductQueryService에서 count만 별도
+     * 캐시(productListCount, TTL 10분)에 공유한다. 동일 {@code is_active=true}
+     * 조건의 count는 정렬/페이지와 무관하므로 모든 조합이 한 개의 캐시 키를 공유한다.</p>
      */
     @Query(value = "SELECT product_id, product_name, price, original_price, rating_avg, "
             + "review_count, sales_count, category_id, category_name, created_at, thumbnail_url, is_active "
             + "FROM v_product_list WHERE is_active = true",
-            countQuery = "SELECT COUNT(*) FROM products WHERE is_active = true",
             nativeQuery = true)
-    Page<Object[]> findActiveProductsFlat(Pageable pageable);
+    List<Object[]> findActiveProductsFlatContent(Pageable pageable);
 
-    /**
-     * [Phase 18] 다중 카테고리 상품 목록 — 플랫 프로젝션.
-     */
+    /** [Phase 21] 활성 상품 총 개수 — 분리된 count 캐시 대상. */
+    @Query(value = "SELECT COUNT(*) FROM products WHERE is_active = true", nativeQuery = true)
+    long countActiveProducts();
+
+    /** [Phase 18/21] 카테고리별 상품 목록 콘텐츠 전용. */
     @Query(value = "SELECT product_id, product_name, price, original_price, rating_avg, "
             + "review_count, sales_count, category_id, category_name, created_at, thumbnail_url, is_active "
             + "FROM v_product_list WHERE is_active = true AND category_id IN :categoryIds",
-            countQuery = "SELECT COUNT(*) FROM products WHERE is_active = true AND category_id IN :categoryIds",
             nativeQuery = true)
-    Page<Object[]> findByCategoryIdsFlat(@Param("categoryIds") List<Integer> categoryIds, Pageable pageable);
+    List<Object[]> findByCategoryIdsFlatContent(@Param("categoryIds") List<Integer> categoryIds, Pageable pageable);
+
+    /** [Phase 21] 카테고리별 활성 상품 총 개수 — 분리된 count 캐시 대상. */
+    @Query(value = "SELECT COUNT(*) FROM products WHERE is_active = true AND category_id IN :categoryIds",
+            nativeQuery = true)
+    long countActiveByCategoryIds(@Param("categoryIds") List<Integer> categoryIds);
 
     /**
      * [Phase 18] 키워드 검색 (FTS) — 플랫 프로젝션.

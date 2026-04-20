@@ -5,6 +5,7 @@ import com.shop.domain.product.port.InventoryAdjustmentPort;
 import com.shop.domain.product.dto.ProductListReadModel;
 import com.shop.domain.product.repository.ProductRepository;
 import com.shop.domain.product.repository.ProductImageRepository;
+import com.github.benmanes.caffeine.cache.Caffeine;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -12,6 +13,9 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.cache.CacheManager;
+import org.springframework.cache.caffeine.CaffeineCache;
+import org.springframework.cache.support.SimpleCacheManager;
 import org.springframework.data.domain.*;
 
 import java.math.BigDecimal;
@@ -52,7 +56,18 @@ class ProductServiceUnitTestSupplementary {
     @BeforeEach
     void setUp() {
         productService = new ProductService(productRepository, productImageRepository, categoryService, inventoryAdjustmentPort);
-        productQueryService = new ProductQueryService(productRepository);
+        productQueryService = new ProductQueryService(productRepository, newTestCacheManager());
+    }
+
+    /** [Phase 21] count 캐시 분리에 맞춰 테스트용 CacheManager 제공. */
+    private static CacheManager newTestCacheManager() {
+        SimpleCacheManager mgr = new SimpleCacheManager();
+        mgr.setCaches(List.of(
+                new CaffeineCache("productListCount", Caffeine.newBuilder().maximumSize(10).build()),
+                new CaffeineCache("categoryProductsCount", Caffeine.newBuilder().maximumSize(500).build())
+        ));
+        mgr.initializeCaches();
+        return mgr;
     }
 
     /**
@@ -74,18 +89,19 @@ class ProductServiceUnitTestSupplementary {
 
     // ==================== 미커버 메서드 5개 ====================
 
-    // [Phase 18] findByCategory, findByCategoryIds → findByCategoryIdsSorted로 대체 (CQRS 읽기 서비스)
+    // [Phase 18/21] findByCategoryIdsSorted — content/count 분리 (findByCategoryIdsFlatContent + countActiveByCategoryIds)
     @Test
     @DisplayName("findByCategoryIdsSorted — 카테고리 ID로 상품 조회 위임")
     void findByCategoryIdsSorted_delegatesToRepository() {
         Object[] row = createNativeRow(1L, "상품A");
-        Page<Object[]> expected = new PageImpl<>(List.<Object[]>of(row));
-        when(productRepository.findByCategoryIdsFlat(eq(List.of(3)), any(Pageable.class))).thenReturn(expected);
+        when(productRepository.findByCategoryIdsFlatContent(eq(List.of(3)), any(Pageable.class)))
+                .thenReturn(List.<Object[]>of(row));
+        when(productRepository.countActiveByCategoryIds(List.of(3))).thenReturn(1L);
 
         Page<ProductListReadModel> result = productQueryService.findByCategoryIdsSorted(List.of(3), 0, 10, "best");
 
         assertThat(result.getTotalElements()).isEqualTo(1);
-        verify(productRepository).findByCategoryIdsFlat(eq(List.of(3)), any(Pageable.class));
+        verify(productRepository).findByCategoryIdsFlatContent(eq(List.of(3)), any(Pageable.class));
     }
 
     @Test
@@ -94,13 +110,14 @@ class ProductServiceUnitTestSupplementary {
         List<Integer> ids = List.of(1, 2, 3);
         Object[] row1 = createNativeRow(1L, "상품A");
         Object[] row2 = createNativeRow(2L, "상품B");
-        Page<Object[]> expected = new PageImpl<>(List.<Object[]>of(row1, row2));
-        when(productRepository.findByCategoryIdsFlat(eq(ids), any(Pageable.class))).thenReturn(expected);
+        when(productRepository.findByCategoryIdsFlatContent(eq(ids), any(Pageable.class)))
+                .thenReturn(List.<Object[]>of(row1, row2));
+        when(productRepository.countActiveByCategoryIds(ids)).thenReturn(2L);
 
         Page<ProductListReadModel> result = productQueryService.findByCategoryIdsSorted(ids, 0, 20, "best");
 
         assertThat(result.getTotalElements()).isEqualTo(2);
-        verify(productRepository).findByCategoryIdsFlat(eq(ids), any(Pageable.class));
+        verify(productRepository).findByCategoryIdsFlatContent(eq(ids), any(Pageable.class));
     }
 
     // [Phase 18] getBestSellers, getNewArrivals, getDeals → ProductQueryService (findBestSellersFlat 등 사용)
@@ -154,28 +171,30 @@ class ProductServiceUnitTestSupplementary {
 
     // ==================== findAllSorted 전체 sort 분기 ====================
 
-    // [Phase 18] findAllSorted → ProductQueryService (findActiveProductsFlat 사용)
+    // [Phase 18/21] findAllSorted — content/count 분리 (findActiveProductsFlatContent + countActiveProducts)
     @Test
     @DisplayName("findAllSorted — price_asc → price ASC 정렬")
     void findAllSorted_priceAsc() {
-        when(productRepository.findActiveProductsFlat(any(Pageable.class))).thenReturn(Page.empty());
+        when(productRepository.findActiveProductsFlatContent(any(Pageable.class))).thenReturn(List.of());
+        when(productRepository.countActiveProducts()).thenReturn(0L);
 
         productQueryService.findAllSorted(0, 20, "price_asc");
 
         ArgumentCaptor<Pageable> captor = ArgumentCaptor.forClass(Pageable.class);
-        verify(productRepository).findActiveProductsFlat(captor.capture());
+        verify(productRepository).findActiveProductsFlatContent(captor.capture());
         assertThat(captor.getValue().getSort().toString()).contains("price: ASC");
     }
 
     @Test
     @DisplayName("findAllSorted — price_desc → price DESC 정렬")
     void findAllSorted_priceDesc() {
-        when(productRepository.findActiveProductsFlat(any(Pageable.class))).thenReturn(Page.empty());
+        when(productRepository.findActiveProductsFlatContent(any(Pageable.class))).thenReturn(List.of());
+        when(productRepository.countActiveProducts()).thenReturn(0L);
 
         productQueryService.findAllSorted(0, 20, "price_desc");
 
         ArgumentCaptor<Pageable> captor = ArgumentCaptor.forClass(Pageable.class);
-        verify(productRepository).findActiveProductsFlat(captor.capture());
+        verify(productRepository).findActiveProductsFlatContent(captor.capture());
         assertThat(captor.getValue().getSort().toString()).contains("price: DESC");
     }
 
@@ -183,36 +202,39 @@ class ProductServiceUnitTestSupplementary {
     @Test
     @DisplayName("findAllSorted — newest → created_at DESC 정렬")
     void findAllSorted_newest() {
-        when(productRepository.findActiveProductsFlat(any(Pageable.class))).thenReturn(Page.empty());
+        when(productRepository.findActiveProductsFlatContent(any(Pageable.class))).thenReturn(List.of());
+        when(productRepository.countActiveProducts()).thenReturn(0L);
 
         productQueryService.findAllSorted(0, 20, "newest");
 
         ArgumentCaptor<Pageable> captor = ArgumentCaptor.forClass(Pageable.class);
-        verify(productRepository).findActiveProductsFlat(captor.capture());
+        verify(productRepository).findActiveProductsFlatContent(captor.capture());
         assertThat(captor.getValue().getSort().toString()).contains("created_at: DESC");
     }
 
     @Test
     @DisplayName("findAllSorted — review → review_count DESC 정렬")
     void findAllSorted_review() {
-        when(productRepository.findActiveProductsFlat(any(Pageable.class))).thenReturn(Page.empty());
+        when(productRepository.findActiveProductsFlatContent(any(Pageable.class))).thenReturn(List.of());
+        when(productRepository.countActiveProducts()).thenReturn(0L);
 
         productQueryService.findAllSorted(0, 20, "review");
 
         ArgumentCaptor<Pageable> captor = ArgumentCaptor.forClass(Pageable.class);
-        verify(productRepository).findActiveProductsFlat(captor.capture());
+        verify(productRepository).findActiveProductsFlatContent(captor.capture());
         assertThat(captor.getValue().getSort().toString()).contains("review_count: DESC");
     }
 
     @Test
     @DisplayName("findAllSorted — 알 수 없는 sort값 → default: sales_count DESC")
     void findAllSorted_defaultBest() {
-        when(productRepository.findActiveProductsFlat(any(Pageable.class))).thenReturn(Page.empty());
+        when(productRepository.findActiveProductsFlatContent(any(Pageable.class))).thenReturn(List.of());
+        when(productRepository.countActiveProducts()).thenReturn(0L);
 
         productQueryService.findAllSorted(0, 20, "best");
 
         ArgumentCaptor<Pageable> captor = ArgumentCaptor.forClass(Pageable.class);
-        verify(productRepository).findActiveProductsFlat(captor.capture());
+        verify(productRepository).findActiveProductsFlatContent(captor.capture());
         assertThat(captor.getValue().getSort().toString()).contains("sales_count: DESC");
     }
 }

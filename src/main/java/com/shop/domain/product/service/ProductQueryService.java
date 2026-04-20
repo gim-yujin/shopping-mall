@@ -9,9 +9,12 @@ import com.shop.global.common.PagingParams;
 import com.shop.global.exception.ResourceNotFoundException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.cache.Cache;
+import org.springframework.cache.CacheManager;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.dao.DataAccessException;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -19,6 +22,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 
 /**
  * [Phase 18] 상품 읽기 전용 서비스 — CQRS 읽기 모델 분리.
@@ -57,10 +61,18 @@ public class ProductQueryService {
 
     private static final Logger log = LoggerFactory.getLogger(ProductQueryService.class);
 
-    private final ProductRepository productRepository;
+    /** [Phase 21] 활성 상품 총 개수 캐시 키 (정렬/페이지 무관). */
+    private static final String PRODUCT_LIST_COUNT_CACHE = "productListCount";
+    private static final String PRODUCT_LIST_COUNT_KEY = "all";
+    /** [Phase 21] 카테고리별 활성 상품 총 개수 캐시. */
+    private static final String CATEGORY_PRODUCTS_COUNT_CACHE = "categoryProductsCount";
 
-    public ProductQueryService(ProductRepository productRepository) {
+    private final ProductRepository productRepository;
+    private final CacheManager cacheManager;
+
+    public ProductQueryService(ProductRepository productRepository, CacheManager cacheManager) {
         this.productRepository = productRepository;
+        this.cacheManager = cacheManager;
     }
 
     // ── 홈 페이지 캐시 ────────────────────────────────────────
@@ -107,12 +119,18 @@ public class ProductQueryService {
     public Page<ProductListReadModel> findAllSorted(int page, int size, String sort) {
         // [Phase 18] 네이티브 SQL은 snake_case 컬럼명을 사용하므로 toProductSortNative() 사용
         Pageable pageable = PageRequest.of(page, size, PagingParams.toProductSortNative(sort));
-        return productRepository.findActiveProductsFlat(pageable)
-                .map(ProductListReadModel::fromNativeRow);
+        // [Phase 21] count 쿼리를 분리 캐시(productListCount)로 공유.
+        // 기존: sort/page 조합마다 캐시 미스 시 data + count 2쿼리 → 25개 조합이면 count 25회 중복.
+        // 개선: count는 모든 조합이 "all" 키를 공유하여 10분 동안 1회만 실행.
+        List<ProductListReadModel> content = productRepository.findActiveProductsFlatContent(pageable)
+                .stream().map(ProductListReadModel::fromNativeRow).toList();
+        long total = countActiveCached();
+        return new PageImpl<>(content, pageable, total);
     }
 
     /**
      * [Phase 18] 카테고리별 상품 목록 (정렬 포함) — 읽기 모델 반환.
+     * [Phase 21] 카테고리 조합별 count도 별도 캐시로 분리.
      */
     @Cacheable(value = "categoryProducts", sync = true,
             key = "#categoryIds.toString() + ':' + #page + ':' + #size + ':' + #sort")
@@ -120,8 +138,30 @@ public class ProductQueryService {
             List<Integer> categoryIds, int page, int size, String sort) {
         // [Phase 18] 네이티브 SQL은 snake_case 컬럼명을 사용하므로 toProductSortNative() 사용
         Pageable pageable = PageRequest.of(page, size, PagingParams.toProductSortNative(sort));
-        return productRepository.findByCategoryIdsFlat(categoryIds, pageable)
-                .map(ProductListReadModel::fromNativeRow);
+        List<ProductListReadModel> content = productRepository.findByCategoryIdsFlatContent(categoryIds, pageable)
+                .stream().map(ProductListReadModel::fromNativeRow).toList();
+        long total = countActiveByCategoryIdsCached(categoryIds);
+        return new PageImpl<>(content, pageable, total);
+    }
+
+    /**
+     * [Phase 21] 활성 상품 총 개수 — 정렬/페이지와 독립적이므로 단일 키 "all"에서 공유.
+     *
+     * <p>{@link Cache#get(Object, java.util.concurrent.Callable)}를 사용해 Caffeine의
+     * 키 단위 로드 동기화를 활용한다. 동시에 들어온 미스는 한 번의 DB 호출로 수렴한다.
+     * @Cacheable 자체 호출(proxy self-invocation) 문제를 피하면서 동일한 효과를 얻는다.</p>
+     */
+    long countActiveCached() {
+        Cache cache = Objects.requireNonNull(cacheManager.getCache(PRODUCT_LIST_COUNT_CACHE),
+                "productListCount cache not configured");
+        return cache.get(PRODUCT_LIST_COUNT_KEY, productRepository::countActiveProducts);
+    }
+
+    /** [Phase 21] 카테고리 ID 조합별 활성 상품 총 개수 캐시. */
+    long countActiveByCategoryIdsCached(List<Integer> categoryIds) {
+        Cache cache = Objects.requireNonNull(cacheManager.getCache(CATEGORY_PRODUCTS_COUNT_CACHE),
+                "categoryProductsCount cache not configured");
+        return cache.get(categoryIds, () -> productRepository.countActiveByCategoryIds(categoryIds));
     }
 
     // ── 검색 캐시 ────────────────────────────────────────────

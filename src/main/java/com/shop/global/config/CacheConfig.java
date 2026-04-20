@@ -69,6 +69,12 @@ public class CacheConfig {
                 perCacheMinutes("searchResults", 2, 300),
                 perCacheMinutes("categoryProducts", 2, 300),
 
+                // [Phase 21] 상품 목록 총 개수 전용 캐시 — 상품 목록(sort/page) 캐시 미스 시
+                // 매번 재실행되던 COUNT 쿼리(활성 상품 수)를 모든 정렬/페이지가 공유하도록 분리.
+                // TTL을 길게(10분) 설정해 data 캐시 주기(2분)마다 count가 재계산되는 낭비를 제거.
+                cacheMinutes("productListCount", 10, 10),
+                cacheMinutes("categoryProductsCount", 10, 500),
+
                 // 상품 상세: hot read 흡수가 중요. 인기 상품은 초당 수백 요청이므로 PER 필수.
                 perCacheMinutes("productDetail", 2, 500),
 

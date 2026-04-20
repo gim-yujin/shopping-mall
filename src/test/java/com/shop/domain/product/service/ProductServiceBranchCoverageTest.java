@@ -10,6 +10,7 @@ import com.shop.domain.product.entity.ProductImage;
 import com.shop.domain.product.repository.ProductImageRepository;
 import com.shop.domain.product.repository.ProductRepository;
 import com.shop.global.exception.ResourceNotFoundException;
+import com.github.benmanes.caffeine.cache.Caffeine;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -18,6 +19,9 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.cache.CacheManager;
+import org.springframework.cache.caffeine.CaffeineCache;
+import org.springframework.cache.support.SimpleCacheManager;
 import org.springframework.test.util.ReflectionTestUtils;
 
 import java.math.BigDecimal;
@@ -64,8 +68,19 @@ class ProductServiceBranchCoverageTest {
                 productRepository, productImageRepository,
                 categoryService, inventoryAdjustmentPort
         );
-        // [Phase 18] CQRS 읽기 서비스 — ProductRepository만 주입
-        productQueryService = new ProductQueryService(productRepository);
+        // [Phase 18/21] CQRS 읽기 서비스 — count 분리 캐시용 CacheManager 주입
+        productQueryService = new ProductQueryService(productRepository, newTestCacheManager());
+    }
+
+    /** [Phase 21] count 캐시 분리에 맞춰 테스트용 CacheManager 제공. */
+    private static CacheManager newTestCacheManager() {
+        SimpleCacheManager mgr = new SimpleCacheManager();
+        mgr.setCaches(List.of(
+                new CaffeineCache("productListCount", Caffeine.newBuilder().maximumSize(10).build()),
+                new CaffeineCache("categoryProductsCount", Caffeine.newBuilder().maximumSize(500).build())
+        ));
+        mgr.initializeCaches();
+        return mgr;
     }
 
     private AdminProductRequest buildRequest(int stockQuantity, List<String> imageUrls) {

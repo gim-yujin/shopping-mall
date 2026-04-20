@@ -171,8 +171,8 @@ JOIN categories c ON c.category_id = p.category_id;
 | `findBestSellersFlat()` | `ProductRepository.java:130` | `ProductListReadModel` |
 | `findNewArrivalsFlat()` | `ProductRepository.java:140` | `ProductListReadModel` |
 | `findDealsFlat()` | `ProductRepository.java:150` | `ProductListReadModel` |
-| `findActiveProductsFlat()` | `ProductRepository.java:161` | `ProductListReadModel` |
-| `findByCategoryIdsFlat()` | `ProductRepository.java:171` | `ProductListReadModel` |
+| `findActiveProductsFlatContent()` + `countActiveProducts()` | `ProductRepository.java:174,178` | `ProductListReadModel` |
+| `findByCategoryIdsFlatContent()` + `countActiveByCategoryIds()` | `ProductRepository.java:185,190` | `ProductListReadModel` |
 | `searchByKeywordFlat()` | `ProductRepository.java:182` | `ProductListReadModel` |
 | `searchByKeywordLikeFlat()` | `ProductRepository.java:194` | `ProductListReadModel` |
 
