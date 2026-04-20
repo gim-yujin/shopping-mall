@@ -53,6 +53,10 @@ let _failLogCount = 0;
 const COUPON_CODE = __ENV.COUPON_CODE || 'LOADTEST_RUSH';
 const COUPON_SKIP_PAGE = (__ENV.COUPON_SKIP_PAGE || '0') === '1';
 const COUPON_SLEEP = parseFloat(__ENV.COUPON_SLEEP || '0.2');
+// Shopping 시나리오에서 각 VU의 POST /orders 간 최소 간격(초).
+// RateLimitPlan.ORDER = 5건/60초/사용자이므로 12s 이상이면 SLO 지표로서 order_ok가
+// rate limit 영향을 받지 않고 측정된다. 기본 0(기존 동작 유지).
+const SHOPPING_ORDER_SPACING = parseFloat(__ENV.SHOPPING_ORDER_SPACING || '0');
 
 // Threshold/요약 출력 튜닝 (필요 시 env로 조정)
 const MIN_CHECK_RATE = parseFloat(__ENV.MIN_CHECK_RATE || '0.99');
@@ -721,7 +725,14 @@ export function scenarioShopping() {
     checkAuth(res, 'order list');
   });
 
-  sleep(Math.random() * 2 + 1);
+  // ORDER 플랜(5/60s/user) 준수를 위한 iteration 간 간격 확보.
+  // SHOPPING_ORDER_SPACING=12 로 주면 동일 VU의 POST /orders 간격이 12초 이상이 되어
+  // rate_limit_exceeded 없이 order_ok가 측정된다. 기본 0이면 기존 동작.
+  if (SHOPPING_ORDER_SPACING > 0) {
+    sleep(SHOPPING_ORDER_SPACING);
+  } else {
+    sleep(Math.random() * 2 + 1);
+  }
 }
 
 // ──────────────────────────────────────────────

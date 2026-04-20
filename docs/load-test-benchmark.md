@@ -237,18 +237,19 @@ Phase 21(COUNT 쿼리 공유 캐시 분리, [`analysis-product-list-count-cache-
 
 #### 10-5-1. 측정 수치 비교
 
-| 지표 | 1차 런(인덱스 누락 상태) | 2차 런(인덱스 복구 후) | 3차 런(템플릿 픽스 후) |
-|:-----|:----:|:----:|:----:|
-| RUN_ID | `phase21_shopping_20260421_022632` | `phase21_shopping_indexed_20260421_024123` | `phase21_shopping_postfix_20260421_062628` |
-| 처리량 | 16.9 req/s | 30.1 req/s | 29.9 req/s |
-| overall p95 | **5459ms** | **13.4ms** | **13.2ms** |
-| overall p99 | 7620ms | 15.4ms | 17.6ms |
-| GET /orders p95 | 8410ms | 14.7ms | 10.4ms |
-| POST /orders p95 | 1499ms | 13.5ms | 14.4ms |
-| HTTP 에러율 | 14.09% | 16.98% | **4.09%** |
-| 체크 통과율 | 88.18% | 88.58% | **100.00%** |
-| order_ok | 93.77% (1068/1139) | 68.34% (1440/2107) | 68.25% (1439/2107) |
-| `SpelEvaluationException` | 수 건 | 6478건 | **0건** |
+| 지표 | 1차 런(인덱스 누락 상태) | 2차 런(인덱스 복구 후) | 3차 런(템플릿 픽스 후) | 4차 런(ORDER 플랜 준수 페이싱) |
+|:-----|:----:|:----:|:----:|:----:|
+| RUN_ID | `phase21_shopping_20260421_022632` | `phase21_shopping_indexed_20260421_024123` | `phase21_shopping_postfix_20260421_062628` | `phase21_shopping_paced_20260421_072140` |
+| 처리량 | 16.9 req/s | 30.1 req/s | 29.9 req/s | 13.4 req/s |
+| overall p95 | **5459ms** | **13.4ms** | **13.2ms** | **13.3ms** |
+| overall p99 | 7620ms | 15.4ms | 17.6ms | 20.4ms |
+| GET /orders p95 | 8410ms | 14.7ms | 10.4ms | 10.8ms |
+| POST /orders p95 | 1499ms | 13.5ms | 14.4ms | 13.5ms |
+| HTTP 에러율 | 14.09% | 16.98% | **4.09%** | **0.00%** |
+| 체크 통과율 | 88.18% | 88.58% | **100.00%** | **100.00%** |
+| order_ok | 93.77% (1068/1139) | 68.34% (1440/2107) | 68.25% (1439/2107) | **100.00%** |
+| `SpelEvaluationException` | 수 건 | 6478건 | **0건** | **0건** |
+| rate_limit_exceeded ORDER | — | 733건 | 668건 | **0건** |
 
 #### 10-5-2. 1차 런이 느렸던 이유 — 운영 실수(인덱스 누락)
 
@@ -272,18 +273,46 @@ Phase 21(COUNT 쿼리 공유 캐시 분리, [`analysis-product-list-count-cache-
 - 3차 런: rate_limit_exceeded 668건, `order_fail_http_4xx` 668건 — **정확히 일치**. 즉 3차 런의 `order_ok` 68.25% 하락은 **전적으로 ORDER 플랜 rate limit이 의도대로 발동한 결과**이며, 성능 회귀나 버그가 아니다.
 - `order_ok`를 SLO 지표로 쓰려면 시나리오의 요청 간격을 ORDER 플랜(5/min)에 맞춰 늘려야 한다. 후속 과제로 분리(§10-5-4 참조).
 
-#### 10-5-4. Shopping 재측정에서 확인된 것/되지 않은 것
+#### 10-5-4. Shopping 재측정에서 확인된 것
 
-**확인된 것**
 - 500K 스케일에서 shopping 시나리오의 p95가 두 자릿수 ms 수준임 — Phase 21 이후 쓰기 경로 포함 시에도 회귀 없음.
 - 생성기 이후 secondary index 재적용이 필수 운영 절차라는 점이 운영 경험으로 확정됨.
 - 3차 런에서 템플릿 버그(A) 해소가 SpEL 에러 6478건 → 0건·HTTP 에러율 4.09%·체크 통과율 100%로 입증됨.
 - `order_ok` 하락이 ORDER 플랜 rate limit 단일 원인(668/668 정확 일치)임이 로그로 격리됨.
+- 4차 런에서 per-VU 간격 13초를 강제하자 rate_limit_exceeded 0건·`order_ok` 100%로 수렴 — `order_ok`가 의미 있는 SLO 지표로 복구됨.
 
-**확인되지 않은 것 — 후속 과제**
-- k6 shopping 시나리오의 per-VU 간격을 ORDER 플랜에 맞춰 조정한 뒤 `order_ok`가 100%에 수렴하는지는 별도 측정이 필요하다. (k6 스크립트 `load-test.js`의 `scenarioShopping` think time 조정)
+#### 10-5-5. 4차 런 — ORDER 플랜 준수 페이싱으로 `order_ok` SLO 복구
+
+**변경 내용 (`load-test/load-test.js`)**
+- 환경변수 `SHOPPING_ORDER_SPACING`(초) 추가 — iteration 끝 sleep을 이 값으로 고정해 동일 VU의 POST /orders 간격을 보장.
+- 기본 0이면 기존 동작(think-time 기반 1~3초). 운영 의도에 맞춰 값만 조정 가능.
+
+**실행 커맨드**
+```bash
+k6 run --env SCENARIO=shopping --env RUN_ID="phase21_shopping_paced_$(date +%Y%m%d_%H%M%S)" \
+       --env BASE_URL=http://localhost:8080 \
+       --env SHOPPING_ORDER_SPACING=13 \
+       load-test/load-test.js
+```
+
+**왜 13초인가**
+- ORDER 플랜: capacity 5, refill 5/60s = 토큰 하나당 12초.
+- 동일 VU가 12초 간격으로 주문하면 소비·보충이 정확히 balanced. 타이밍 지터를 감안해 13초로 1초 마진을 두면 보수적 안전지대.
+
+**결과 (3차 런 대비)**
+| 지표 | 3차 런 | 4차 런 |
+|:-----|:----:|:----:|
+| 처리량 | 29.9 req/s | 13.4 req/s (페이싱에 의한 의도 감소) |
+| order_ok | 68.25% | **100.00%** |
+| HTTP 에러율 | 4.09% | **0.00%** |
+| rate_limit_exceeded ORDER | 668건 | **0건** |
+| POST /orders p95 | 14.4ms | 13.5ms |
+
+- 처리량이 절반 이하로 감소한 것은 ORDER 플랜을 준수하기 위한 의도된 감속이다. 응답 latency 자체는 영향 없음(POST /orders p95 ~13ms 유지).
+- 본 런은 "Phase 21 + 템플릿 픽스 + rate limit 준수" 조건에서 shopping 경로가 500K 스케일에서 100% 성공으로 동작함을 단일 런으로 확증한다.
 
 ### 10-6. 결론
 - 본 재측정은 **Phase 21이 회귀를 일으키지 않았음**을 500K 스케일 browse + shopping 양쪽에서 확인한다. 이는 `analysis-product-list-count-cache-split.md` §4.2의 "재측정 미실시" 한계를 해소한다.
 - Phase 21 단독 기여 격리 측정은 별도 실험 설계가 필요하므로 본 문서에는 포함하지 않는다.
-- Shopping 시나리오에서 드러난 템플릿 버그(§10-5-3 A)는 커밋 `0487a47`에서 수정 + 3차 런으로 입증. rate limit 시나리오 불일치(§10-5-3 B)는 k6 스크립트 조정 후속 과제로 분리.
+- Shopping 시나리오에서 드러난 템플릿 버그(§10-5-3 A)는 커밋 `0487a47`에서 수정, 3차 런(§10-5-1)으로 효과 입증.
+- ORDER 플랜 시나리오 불일치(§10-5-3 B)는 4차 런(§10-5-5)에서 k6 스크립트에 `SHOPPING_ORDER_SPACING` 추가로 해소, `order_ok` 100% 복구로 확증.
