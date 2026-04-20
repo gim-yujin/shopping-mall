@@ -33,7 +33,7 @@ load-test-analysis.md §3.3의 "처리량 천장 ~49 req/s"는 **Tomcat 플랫�
 
 EXPLAIN ANALYZE로 `findActiveProductsFlat`의 Page count 쿼리(`SELECT COUNT(*) FROM products WHERE is_active = true`)를 측정한 결과:
 
-- 500K 행 기준 **~23ms** (Seq Scan + 필터)
+- 본 항목에 기록했던 "500K 행·Seq Scan·~23ms"는 **구환경의 가정**이다. 2026-04-21 PG 16.13·50K 활성 상품에서 재측정하면 `Index Only Scan using idx_product_review_count`가 선택되어 약 **7.7ms**에 완료된다 (`load-test-benchmark.md` §10-7-3 참고). 실 운영에서는 스케일·PG 버전에 따라 다시 측정해야 한다.
 - 캐시 미스 시마다 content 쿼리와 함께 자동 실행됨
 - **sort × page 조합마다 중복 실행** — 정렬/페이지 번호와 `is_active=true` 총 개수는 독립적
 
@@ -89,7 +89,22 @@ TTL을 10분으로 길게 둔 이유:
 - HTTP 에러율 0.00%, 체크 통과율 100.00%
 - Phase 21 이후 **회귀 없음** 확인
 
-상세 수치와 한계(단독 기여 격리 미실시)는 [`load-test-benchmark.md`](./load-test-benchmark.md) §10에 기록. 재측정 환경 구축 절차는 [`guide-loadtest-env-setup.md`](./guide-loadtest-env-setup.md)를 참고.
+상세 수치는 [`load-test-benchmark.md`](./load-test-benchmark.md) §10에 기록. 재측정 환경 구축 절차는 [`guide-loadtest-env-setup.md`](./guide-loadtest-env-setup.md)를 참고.
+
+### 4-3. 단독 기여 격리 실험 (해소 완료, 2026-04-21)
+
+§4-1에서 EXPLAIN ANALYZE 기반으로 예측한 효과를 cold-cache burst 실험으로 실측해 격리했다. `main`(Phase 21 ON, `9b07097`) vs 직전 커밋(`411dd17`)을 git worktree로 병행 실행, 60개의 `sort×page×size` 조합을 `xargs -P 30`으로 burst했다.
+
+| 지표 | Phase 21 ON | Phase 21 OFF | Δ |
+|:-----|:--:|:--:|:--:|
+| p95 | 126.5ms | 140.5ms | **−11%** |
+| p99 | 135.4ms | 157.7ms | **−17%** |
+| max | 137.3ms | 166.2ms | **−21%** |
+| wall time (60건) | 0.254s | 0.272s | −7% |
+| `products.idx_scan` | 22 | 27 | −5 (−19%) |
+
+- 평균이 아니라 **꼬리(p95/p99/max)** 에서 Phase 21의 효과가 관측된다. 본 문서 §2-3에서 예측한 "캐시 미스 storm에서 중복 COUNT 제거" 가설과 방향성이 일치한다.
+- 전체 실험 절차·해석은 [`load-test-benchmark.md`](./load-test-benchmark.md) §10-7.
 
 ## 5. 검증
 

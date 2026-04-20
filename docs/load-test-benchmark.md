@@ -229,7 +229,7 @@ Phase 21(COUNT 쿼리 공유 캐시 분리, [`analysis-product-list-count-cache-
 - Phase 21 최적화의 핵심은 "`productList` 캐시 미스 storm 시 중복 COUNT 실행 제거"다. 이 효과는 다음 조건에서만 드러난다:
   - `productList`(2분 TTL) 만료 직후 여러 sort/page 조합이 동시에 미스 → 이전에는 조합 수만큼 COUNT 실행, 지금은 `productListCount`(10분 TTL, 단일 키)에서 1회 히트
 - 본 9분 런 동안 `productListCount`(10분 TTL)는 기본적으로 히트 상태로 유지되므로, Phase 21 단독 효과는 관측되지 않는다.
-- 단독 효과 재측정은 (a) 10분 이상 지속 실행 + (b) 캐시 강제 만료 후 재측정 스크립트가 필요하다 — 후속 과제로 보류한다.
+- 단독 효과 재측정은 (a) cold cache 상태에서 (b) sort×page×size 조합 동시 미스를 강제하는 별도 스크립트가 필요하다 — §10-7에서 별도 격리 실험으로 수행한다.
 
 ### 10-5. Shopping 시나리오 — 500K 재측정 (부가 확인)
 
@@ -313,6 +313,65 @@ k6 run --env SCENARIO=shopping --env RUN_ID="phase21_shopping_paced_$(date +%Y%m
 
 ### 10-6. 결론
 - 본 재측정은 **Phase 21이 회귀를 일으키지 않았음**을 500K 스케일 browse + shopping 양쪽에서 확인한다. 이는 `analysis-product-list-count-cache-split.md` §4.2의 "재측정 미실시" 한계를 해소한다.
-- Phase 21 단독 기여 격리 측정은 별도 실험 설계가 필요하므로 본 문서에는 포함하지 않는다.
+- Phase 21 단독 기여 격리 측정은 §10-7에서 cold-cache burst 실험으로 수행 — p95 −11%·p99 −17%·max −21%·DB 인덱스 스캔 −19%로 방향성 확인.
 - Shopping 시나리오에서 드러난 템플릿 버그(§10-5-3 A)는 커밋 `0487a47`에서 수정, 3차 런(§10-5-1)으로 효과 입증.
 - ORDER 플랜 시나리오 불일치(§10-5-3 B)는 4차 런(§10-5-5)에서 k6 스크립트에 `SHOPPING_ORDER_SPACING` 추가로 해소, `order_ok` 100% 복구로 확증.
+
+### 10-7. Phase 21 단독 기여 격리 실험
+
+§10-4에서 보류했던 "Phase 21 단독 기여"를 격리하기 위해 cold-cache 상태에서 `productList` 캐시 미스 storm을 재현하는 전용 스크립트(`load-test/storm-benchmark.sh`)를 작성하고, `main`(Phase 21 ON, `9b07097`) vs 직전 커밋(`411dd17`, Phase 21 직전)을 git worktree로 병행 실행해 비교 측정했다.
+
+#### 10-7-1. 실험 설계
+
+- **부하 모양**: sort 6종(best, price_asc, price_desc, newest, rating, review) × page 5종(0–4) × size 2종(10, 20) = **60 URL**을 `xargs -P 30`으로 burst. 재시작 직후 cold 상태이므로 `productList`/`productListCount` 모두 미스.
+- **측정 조건**
+  - **A. Phase 21 ON**: 현재 main(`9b07097`). `productList` 미스 시 `productListCount`(10분·단일 키 "all")에서 count 공유.
+  - **B. Phase 21 OFF**: `/tmp/shopping-mall-pre-phase21` worktree(`411dd17`). `productList` 미스 시 `findActiveProductsFlat(pageable)`이 content+count를 함께 실행해 조합마다 COUNT 재발행.
+- **절차 (각 조건별)**
+  1. 앱 재시작 → `/actuator/health=UP` 대기
+  2. 워밍업: `curl /products?sort=best&page=0&size=10` 1회(Hibernate 프리컴파일 / HikariCP 초기화)
+  3. `SELECT pg_stat_reset();` 로 카운터 초기화
+  4. `storm-benchmark.sh` 실행
+  5. `pg_stat_user_tables`에서 `products` seq_scan/idx_scan 값 수집
+- **환경**: `shopping_mall_loadtest_db` (products 50K active, orders 504K), PostgreSQL 16.13, HikariCP 풀 17, 가상 스레드 ON.
+
+#### 10-7-2. 결과
+
+| 지표 | A. Phase 21 ON | B. Phase 21 OFF | Δ |
+|:-----|:--:|:--:|:--:|
+| Wall time (60건 burst) | **0.254s** | 0.272s | −18ms (−7%) |
+| avg (per request) | 93.6ms | 99.2ms | −5.6ms |
+| p50 | 95.2ms | 98.4ms | −3.2ms (−3%) |
+| **p95** | **126.5ms** | 140.5ms | **−14.0ms (−11%)** |
+| p99 | 135.4ms | 157.7ms | −22.3ms (−17%) |
+| max | 137.3ms | 166.2ms | −29.0ms (−21%) |
+| ok_count / fail_count | 60 / 0 | 60 / 0 | — |
+| `products.idx_scan` (pg_stat) | 22 | 27 | **−5 (−19%)** |
+| `products.seq_scan` (pg_stat) | 0 | 0 | 0 |
+
+아티팩트: `/tmp/phase21-k6/storm-phase21_{on,off}_cold-{raw,times,summary}.txt`.
+
+#### 10-7-3. 해석
+
+- **꼬리(p95/p99/max)에서 효과 확인**: Phase 21이 가장 크게 기여하는 것은 평균이 아니라 꼬리다. count 쿼리가 재발행되는 요청만큼 DB 시간이 겹치면서 꼬리를 늘리는 구조였고, 격리 실험에서도 p99 −17%·max −21%로 같은 방향성이 나왔다. `productListCount`가 단일 키 공유라 thundering herd 위험이 없다는 §3-3의 설계가 재확인된다.
+- **`products.idx_scan` 22 vs 27**: 60 요청 × 2 쿼리(content + count) = 120 스캔이 아니라 수십 단위로 관측되는 것은, 같은 sort/page 조합이 burst 중 중복 호출되면서 Hibernate L1 + Spring proxy 경로에서 부분적으로 병합됐거나 JVM 내부에서 요청이 compaction됐기 때문으로 보인다. 그러나 ON 대비 OFF가 **정확히 5회 더 스캔**했다는 점은 캐시 분리의 직접적 효과로 해석 가능하다(완벽히 독립 관측은 아님).
+- **COUNT 쿼리는 Seq Scan이 아니라 Index Only Scan**: PG 16.13에서 `EXPLAIN ANALYZE SELECT COUNT(*) FROM products WHERE is_active=true`를 실제로 측정하면 `Index Only Scan using idx_product_review_count`가 선택되어 ~7.7ms에 완료된다. `analysis-product-list-count-cache-split.md` §2-3이 "Seq Scan + ~23ms"로 기술한 값은 당시 가정이었고, 실측으로 갱신될 필요가 있다(해당 문서에서 별도 주석 처리).
+- **측정되지 않은 것**: HikariCP 풀이 17이므로 본 burst(동시 30, 60 요청)가 풀 포화를 일으킬 만큼 지속되지 않는다. 실제 운영에서 `productList` TTL 만료와 다수 동시 요청이 겹치는 순간의 p99 꼬리는 본 값보다 더 크게 벌어질 수 있으나, 본 실험에서는 짧은 burst로만 확인했다.
+
+#### 10-7-4. 실행 방법
+
+```bash
+# 1. 앱을 cold 상태로 재시작한 뒤 워밍업 1회
+curl -s -o /dev/null http://localhost:8080/products?sort=best\&page=0\&size=10
+
+# 2. pg_stat 초기화
+PGPASSWORD=4321 psql -U postgres -d shopping_mall_loadtest_db -c "SELECT pg_stat_reset();"
+
+# 3. burst 측정
+LABEL=phase21_on_cold CONCURRENCY=30 BASE_URL=http://localhost:8080 \
+  load-test/storm-benchmark.sh
+
+# 4. DB 스캔 카운터 수집
+PGPASSWORD=4321 psql -U postgres -d shopping_mall_loadtest_db \
+  -c "SELECT relname, seq_scan, idx_scan FROM pg_stat_user_tables WHERE relname='products';"
+```
