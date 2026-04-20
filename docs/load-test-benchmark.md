@@ -231,6 +231,54 @@ Phase 21(COUNT 쿼리 공유 캐시 분리, [`analysis-product-list-count-cache-
 - 본 9분 런 동안 `productListCount`(10분 TTL)는 기본적으로 히트 상태로 유지되므로, Phase 21 단독 효과는 관측되지 않는다.
 - 단독 효과 재측정은 (a) 10분 이상 지속 실행 + (b) 캐시 강제 만료 후 재측정 스크립트가 필요하다 — 후속 과제로 보류한다.
 
-### 10-5. 결론
-- 본 재측정은 **Phase 21이 회귀를 일으키지 않았음**을 500K 스케일에서 확인한다. 이는 `analysis-product-list-count-cache-split.md` §4.2의 "재측정 미실시" 한계를 해소한다.
+### 10-5. Shopping 시나리오 — 500K 재측정 (부가 확인)
+
+500K DB에서 shopping(로그인 → 장바구니 담기 → 체크아웃 → 주문 생성 → 주문 목록) 시나리오도 50 VU·9분으로 돌렸다. browse와 달리 여러 엔드포인트가 혼합되고 POST 쓰기 경로가 포함되므로, 재측정 중 드러난 운영·측정 이슈 2건을 기록으로 남긴다.
+
+#### 10-5-1. 측정 수치 비교
+
+| 지표 | 1차 런(인덱스 누락 상태) | 2차 런(인덱스 복구 후) |
+|:-----|:----:|:----:|
+| RUN_ID | `phase21_shopping_20260421_022632` | `phase21_shopping_indexed_20260421_024123` |
+| 처리량 | 16.9 req/s | 30.1 req/s |
+| overall p95 | **5459ms** | **13.4ms** |
+| overall p99 | 7620ms | 15.4ms |
+| GET /orders p95 | 8410ms | 14.7ms |
+| POST /orders p95 | 1499ms | 13.5ms |
+| order_ok | 93.77% (1068/1139) | 68.34% (1440/2107) |
+
+#### 10-5-2. 1차 런이 느렸던 이유 — 운영 실수(인덱스 누락)
+
+- 500K 생성기(`generate_dummy_data_500k.py`)는 속도를 위해 bulk load 직전 secondary index를 drop하고 마지막에 경고만 출력한 채 재생성은 스킵한다.
+- 1차 런은 이 경고를 놓친 상태에서 실행되어, `orders(user_id, order_date DESC)` 등 다수 인덱스가 없는 채로 측정됐다. `EXPLAIN` 결과 `GET /orders`가 전체 Seq Scan으로 떨어져 p95 8.4s가 관측됐다.
+- 2차 런은 `psql -f src/main/resources/schema.sql`로 58개 `CREATE INDEX` 재실행 + `VACUUM ANALYZE` 수행 후 재측정. p95가 세 자릿수 ms에서 **두 자릿수 ms**로 복구됐다.
+- 이 운영 절차는 [`guide-loadtest-env-setup.md`](./guide-loadtest-env-setup.md) §4에 "§4-2-1 생성기 실행 후 스키마 재적용"으로 명시했다.
+
+#### 10-5-3. 2차 런의 `order_ok` 하락은 성능 회귀가 아님 — 두 가지 확인된 원인
+
+2차 런은 응답 시간이 20배 이상 개선됐는데도 `order_ok`가 93.77% → 68.34%로 낮아졌다. 앱 로그 분석 결과 원인은 성능 회귀가 아니라 별개의 두 가지 요인이다.
+
+**(A) 사전 존재하는 템플릿 버그(`templates/order/list.html` line 25–26, 29)**
+- 템플릿이 `order.orderStatusCode`와 `order.items`를 참조하지만, Phase 18 CQRS 전환 이후 `OrderListReadModel` record는 `orderStatus`, `itemCount`, `firstProductName`만 노출한다.
+- 앱 로그에 `SpelEvaluationException: EL1008E: Property or field 'orderStatusCode' cannot be found on object of type 'com.shop.domain.order.dto.OrderListReadModel'`가 6478회 기록됐다. POST /orders 후 GET /orders 이동 시마다 발생한다.
+- 1차 런에서는 이 경로에 도달하는 성공 요청 수가 적어 드러나지 않았다. 2차 런에서 순서상 뒤쪽 요청의 처리량이 늘어나며 노출 빈도가 증가했다.
+- 본 문서는 측정 중 발견 사실만 기록한다. 수정은 별도 과제로 분리한다.
+
+**(B) `RateLimitFilter`의 ORDER 플랜 상한(정상 동작)**
+- `RateLimitPlan.ORDER`는 capacity 5, refill 5/60s (`RateLimitPlan.java:38`)이다. 정상 사용자가 분당 5건 이상 주문할 이유가 없다는 설계 의도에 따른다.
+- 2차 런은 응답 시간이 빨라져 같은 VU가 분당 5건 이상 POST /orders를 보냈고, 앱 로그에 `event=rate_limit_exceeded plan=ORDER uri=/orders method=POST`가 733건 기록됐다.
+- 즉, 2차 런의 `order_fail_http_4xx: 667`은 상당 부분 rate limit이 의도대로 발동한 결과다. 부하 테스트 설계상 이 상황은 "봇 트래픽을 차단한 것"과 구분되지 않으므로 `order_ok`를 SLO 지표로 쓰려면 시나리오의 요청 간격을 ORDER 플랜에 맞춰 조정해야 한다.
+
+#### 10-5-4. Shopping 재측정에서 확인된 것/되지 않은 것
+
+**확인된 것**
+- 500K 스케일에서 shopping 시나리오의 p95가 두 자릿수 ms 수준임 — Phase 21 이후 쓰기 경로 포함 시에도 회귀 없음.
+- 생성기 이후 secondary index 재적용이 필수 운영 절차라는 점이 운영 경험으로 확정됨.
+
+**확인되지 않은 것**
+- `order_ok` 지표의 순수 의미는 측정되지 않았다. 템플릿 버그와 ORDER 플랜 동작이 섞여 있어 rate limit을 고려한 시나리오 재설계가 필요하다. 후속 과제로 분리한다.
+
+### 10-6. 결론
+- 본 재측정은 **Phase 21이 회귀를 일으키지 않았음**을 500K 스케일 browse + shopping 양쪽에서 확인한다. 이는 `analysis-product-list-count-cache-split.md` §4.2의 "재측정 미실시" 한계를 해소한다.
 - Phase 21 단독 기여 격리 측정은 별도 실험 설계가 필요하므로 본 문서에는 포함하지 않는다.
+- Shopping 시나리오에서 드러난 템플릿 버그(§10-5-3 A)와 rate limit 시나리오 불일치(§10-5-3 B)는 성능 관련 회귀가 아니므로 별도 이슈로 처리한다.

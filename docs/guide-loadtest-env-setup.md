@@ -41,6 +41,17 @@ python3 generate_dummy_data_500k.py
 ```
 첫 실행 기준 총 소요 시간 약 2분 7초 (CSV 생성 + COPY + VACUUM ANALYZE 포함). 마지막에 VACUUM ANALYZE가 자동 실행되므로 별도 통계 갱신은 불필요하다.
 
+### 4-2-1. 생성기 실행 후 스키마 재적용 — 필수
+```bash
+PGPASSWORD=4321 psql -h localhost -U postgres -d shopping_mall_loadtest_db \
+    -f /home/admin0/shopping-mall/src/main/resources/schema.sql
+PGPASSWORD=4321 psql -h localhost -U postgres -d shopping_mall_loadtest_db \
+    -c 'VACUUM ANALYZE;'
+```
+- 생성기는 bulk load 속도를 위해 `CREATE TABLE` 이후 대부분의 secondary index를 drop/skip하고, 마지막에 경고만 출력한 채 재생성을 사용자 손에 맡긴다.
+- 이 단계를 건너뛰면 `orders(user_id, order_date DESC)` 등 핵심 인덱스가 없는 상태로 측정되어 `GET /orders` p95가 수 초로 튀는 현상이 재현된다 (`load-test-benchmark.md` §10-5-1 1차 런 사례).
+- `schema.sql`은 idempotent하지 않은 구문이 일부 있어 `CREATE UNIQUE INDEX` 같은 중복 오류 몇 건이 출력될 수 있다. 58개 인덱스 재생성이 성공하면 정상이다.
+
 ### 4-3. 애플리케이션을 부하 테스트 DB로 기동
 ```bash
 cd /home/admin0/shopping-mall
@@ -70,6 +81,12 @@ Phase 21 준비 중 generator 원본 스크립트가 현행 스키마와 맞지 
 - 원인: generator가 모든 리뷰에 `order_item_id=NULL`을 쓰기 때문에 부분 인덱스가 사실상 전체 행에 걸린다. 50K × 50K 공간에서 200K 쌍을 뽑으면 √2.5B ≈ 50K 근처에서 첫 충돌이 기대된다.
 - 수정: 리뷰 배치 루프 전체에서 `(user_id, product_id)` 쌍을 추적하는 `used_pairs` 세트를 유지해 충돌 시 재시도. 50K × 50K / 200K ≈ 12,500 기대 시도이므로 재시도 오버헤드는 무시 가능.
 - 교훈: 스키마 드리프트 점검 시 `CREATE TABLE` 인라인 `CONSTRAINT`뿐 아니라 독립된 `CREATE UNIQUE INDEX` 문과 `WHERE` 절(부분 인덱스)까지 같이 검사해야 한다.
+
+### 5-4. 생성기가 스킵한 secondary index 재생성 누락
+- 발견 경위: Phase 21 shopping 재측정 1차 런에서 `GET /orders` p95가 8.4s로 튀었다 (`load-test-benchmark.md` §10-5-1). `\d orders`로 확인해 보니 `orders_pkey`와 `orders_order_number_key`만 남아 있고 `idx_order_user`가 없었다.
+- 원인: generator가 bulk load 속도를 위해 `CREATE TABLE` 이후 다수의 secondary index를 drop/skip하고 마지막에 경고만 출력한 채 재생성 책임을 사용자에게 넘긴다. 경고를 놓치면 인덱스 없이 측정이 진행된다.
+- 대응: §4-2-1 단계로 `schema.sql` 재적용 + `VACUUM ANALYZE`를 셋업 절차에 정식 포함. 2차 런에서 `idx_order_user` 복구 후 `GET /orders` p95가 14.7ms로 정상화됐다.
+- 교훈: 속도 최적화된 bulk loader는 index 상태를 사람이 확인해야 한다. `\d <table>` 또는 `pg_indexes` 조회를 셋업 체크리스트로 둬야 같은 실수가 재발하지 않는다.
 
 ## 6. 재측정 시 k6 시나리오 요건
 `load-test-analysis.md`와 비교 가능성을 유지하기 위해 다음 조건을 같게 둔다.
