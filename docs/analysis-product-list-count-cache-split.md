@@ -89,6 +89,8 @@ TTL을 10분으로 길게 둔 이유:
 - 기존 `load-test-analysis.md`와 동일한 시나리오(Narrow/Wide/Longtail, 100 VU)
 - 가상 스레드가 활성화된 상태(Phase 20 이후와 동일)
 
+재측정 환경 구축 절차는 [`guide-loadtest-env-setup.md`](./guide-loadtest-env-setup.md)에 정리되어 있다. 같은 절차로 부하 테스트 전용 DB `shopping_mall_loadtest_db`를 만든 뒤 k6를 실행한다.
+
 ## 5. 검증
 
 - `./gradlew test check` — **BUILD SUCCESSFUL**
