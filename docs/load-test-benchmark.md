@@ -237,15 +237,18 @@ Phase 21(COUNT 쿼리 공유 캐시 분리, [`analysis-product-list-count-cache-
 
 #### 10-5-1. 측정 수치 비교
 
-| 지표 | 1차 런(인덱스 누락 상태) | 2차 런(인덱스 복구 후) |
-|:-----|:----:|:----:|
-| RUN_ID | `phase21_shopping_20260421_022632` | `phase21_shopping_indexed_20260421_024123` |
-| 처리량 | 16.9 req/s | 30.1 req/s |
-| overall p95 | **5459ms** | **13.4ms** |
-| overall p99 | 7620ms | 15.4ms |
-| GET /orders p95 | 8410ms | 14.7ms |
-| POST /orders p95 | 1499ms | 13.5ms |
-| order_ok | 93.77% (1068/1139) | 68.34% (1440/2107) |
+| 지표 | 1차 런(인덱스 누락 상태) | 2차 런(인덱스 복구 후) | 3차 런(템플릿 픽스 후) |
+|:-----|:----:|:----:|:----:|
+| RUN_ID | `phase21_shopping_20260421_022632` | `phase21_shopping_indexed_20260421_024123` | `phase21_shopping_postfix_20260421_062628` |
+| 처리량 | 16.9 req/s | 30.1 req/s | 29.9 req/s |
+| overall p95 | **5459ms** | **13.4ms** | **13.2ms** |
+| overall p99 | 7620ms | 15.4ms | 17.6ms |
+| GET /orders p95 | 8410ms | 14.7ms | 10.4ms |
+| POST /orders p95 | 1499ms | 13.5ms | 14.4ms |
+| HTTP 에러율 | 14.09% | 16.98% | **4.09%** |
+| 체크 통과율 | 88.18% | 88.58% | **100.00%** |
+| order_ok | 93.77% (1068/1139) | 68.34% (1440/2107) | 68.25% (1439/2107) |
+| `SpelEvaluationException` | 수 건 | 6478건 | **0건** |
 
 #### 10-5-2. 1차 런이 느렸던 이유 — 운영 실수(인덱스 누락)
 
@@ -258,27 +261,29 @@ Phase 21(COUNT 쿼리 공유 캐시 분리, [`analysis-product-list-count-cache-
 
 2차 런은 응답 시간이 20배 이상 개선됐는데도 `order_ok`가 93.77% → 68.34%로 낮아졌다. 앱 로그 분석 결과 원인은 성능 회귀가 아니라 별개의 두 가지 요인이다.
 
-**(A) 사전 존재하는 템플릿 버그(`templates/order/list.html` line 25–26, 29)**
-- 템플릿이 `order.orderStatusCode`와 `order.items`를 참조하지만, Phase 18 CQRS 전환 이후 `OrderListReadModel` record는 `orderStatus`, `itemCount`, `firstProductName`만 노출한다.
-- 앱 로그에 `SpelEvaluationException: EL1008E: Property or field 'orderStatusCode' cannot be found on object of type 'com.shop.domain.order.dto.OrderListReadModel'`가 6478회 기록됐다. POST /orders 후 GET /orders 이동 시마다 발생한다.
-- 1차 런에서는 이 경로에 도달하는 성공 요청 수가 적어 드러나지 않았다. 2차 런에서 순서상 뒤쪽 요청의 처리량이 늘어나며 노출 빈도가 증가했다.
-- 본 문서는 측정 중 발견 사실만 기록한다. 수정은 별도 과제로 분리한다.
+**(A) 사전 존재하는 템플릿 버그 — 3차 런에서 해소 확인**
+- 2차 런 시점: 템플릿이 `order.orderStatusCode`와 `order.items`를 참조하지만, Phase 18 CQRS 전환 이후 `OrderListReadModel` record는 `orderStatus`, `itemCount`, `firstProductName`만 노출. 앱 로그에 `SpelEvaluationException: EL1008E: Property or field 'orderStatusCode' cannot be found`가 6478회 기록.
+- 수정: 커밋 `0487a47`에서 템플릿 필드명을 DTO에 맞춰 동기화. `order.orderStatusCode` → `order.orderStatus`, `order.items` 루프 → `firstProductName` + "외 N건".
+- 3차 런 검증: 동일 조건(500K DB·50 VU·9분)으로 재측정 결과 `SpelEvaluationException` **0건**, HTTP 에러율 16.98% → 4.09%, 체크 통과율 88.58% → 100.00%. 템플릿 버그가 전체 원인이었음이 확증.
 
-**(B) `RateLimitFilter`의 ORDER 플랜 상한(정상 동작)**
+**(B) `RateLimitFilter`의 ORDER 플랜 상한 — 3차 런에서 단일 원인으로 격리**
 - `RateLimitPlan.ORDER`는 capacity 5, refill 5/60s (`RateLimitPlan.java:38`)이다. 정상 사용자가 분당 5건 이상 주문할 이유가 없다는 설계 의도에 따른다.
-- 2차 런은 응답 시간이 빨라져 같은 VU가 분당 5건 이상 POST /orders를 보냈고, 앱 로그에 `event=rate_limit_exceeded plan=ORDER uri=/orders method=POST`가 733건 기록됐다.
-- 즉, 2차 런의 `order_fail_http_4xx: 667`은 상당 부분 rate limit이 의도대로 발동한 결과다. 부하 테스트 설계상 이 상황은 "봇 트래픽을 차단한 것"과 구분되지 않으므로 `order_ok`를 SLO 지표로 쓰려면 시나리오의 요청 간격을 ORDER 플랜에 맞춰 조정해야 한다.
+- 2차 런: 응답 시간이 빨라져 같은 VU가 분당 5건 이상 POST /orders를 보냈고, 앱 로그에 `event=rate_limit_exceeded plan=ORDER uri=/orders method=POST`가 733건 기록.
+- 3차 런: rate_limit_exceeded 668건, `order_fail_http_4xx` 668건 — **정확히 일치**. 즉 3차 런의 `order_ok` 68.25% 하락은 **전적으로 ORDER 플랜 rate limit이 의도대로 발동한 결과**이며, 성능 회귀나 버그가 아니다.
+- `order_ok`를 SLO 지표로 쓰려면 시나리오의 요청 간격을 ORDER 플랜(5/min)에 맞춰 늘려야 한다. 후속 과제로 분리(§10-5-4 참조).
 
 #### 10-5-4. Shopping 재측정에서 확인된 것/되지 않은 것
 
 **확인된 것**
 - 500K 스케일에서 shopping 시나리오의 p95가 두 자릿수 ms 수준임 — Phase 21 이후 쓰기 경로 포함 시에도 회귀 없음.
 - 생성기 이후 secondary index 재적용이 필수 운영 절차라는 점이 운영 경험으로 확정됨.
+- 3차 런에서 템플릿 버그(A) 해소가 SpEL 에러 6478건 → 0건·HTTP 에러율 4.09%·체크 통과율 100%로 입증됨.
+- `order_ok` 하락이 ORDER 플랜 rate limit 단일 원인(668/668 정확 일치)임이 로그로 격리됨.
 
-**확인되지 않은 것**
-- `order_ok` 지표의 순수 의미는 측정되지 않았다. 템플릿 버그와 ORDER 플랜 동작이 섞여 있어 rate limit을 고려한 시나리오 재설계가 필요하다. 후속 과제로 분리한다.
+**확인되지 않은 것 — 후속 과제**
+- k6 shopping 시나리오의 per-VU 간격을 ORDER 플랜에 맞춰 조정한 뒤 `order_ok`가 100%에 수렴하는지는 별도 측정이 필요하다. (k6 스크립트 `load-test.js`의 `scenarioShopping` think time 조정)
 
 ### 10-6. 결론
 - 본 재측정은 **Phase 21이 회귀를 일으키지 않았음**을 500K 스케일 browse + shopping 양쪽에서 확인한다. 이는 `analysis-product-list-count-cache-split.md` §4.2의 "재측정 미실시" 한계를 해소한다.
 - Phase 21 단독 기여 격리 측정은 별도 실험 설계가 필요하므로 본 문서에는 포함하지 않는다.
-- Shopping 시나리오에서 드러난 템플릿 버그(§10-5-3 A)와 rate limit 시나리오 불일치(§10-5-3 B)는 성능 관련 회귀가 아니므로 별도 이슈로 처리한다.
+- Shopping 시나리오에서 드러난 템플릿 버그(§10-5-3 A)는 커밋 `0487a47`에서 수정 + 3차 런으로 입증. rate limit 시나리오 불일치(§10-5-3 B)는 k6 스크립트 조정 후속 과제로 분리.
