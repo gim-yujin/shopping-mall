@@ -6,6 +6,7 @@ import com.shop.domain.product.dto.ProductListReadModel;
 import com.shop.domain.product.repository.ProductRepository;
 import com.shop.domain.product.repository.ProductImageRepository;
 import com.shop.global.exception.ResourceNotFoundException;
+import com.github.benmanes.caffeine.cache.Caffeine;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -13,6 +14,9 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.cache.CacheManager;
+import org.springframework.cache.caffeine.CaffeineCache;
+import org.springframework.cache.support.SimpleCacheManager;
 import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageImpl;
@@ -54,7 +58,18 @@ class ProductServiceUnitTest {
     @BeforeEach
     void setUp() {
         productService = new ProductService(productRepository, productImageRepository, categoryService, inventoryAdjustmentPort);
-        productQueryService = new ProductQueryService(productRepository);
+        productQueryService = new ProductQueryService(productRepository, newTestCacheManager());
+    }
+
+    /** [Phase 21] count 캐시 분리에 맞춰 테스트용 CacheManager 제공. */
+    private static CacheManager newTestCacheManager() {
+        SimpleCacheManager mgr = new SimpleCacheManager();
+        mgr.setCaches(List.of(
+                new CaffeineCache("productListCount", Caffeine.newBuilder().maximumSize(10).build()),
+                new CaffeineCache("categoryProductsCount", Caffeine.newBuilder().maximumSize(500).build())
+        ));
+        mgr.initializeCaches();
+        return mgr;
     }
 
     // [Phase 18] search가 ProductQueryService로 이동됨 — 내부적으로 searchByKeywordFlat/searchByKeywordLikeFlat 호출
@@ -113,22 +128,40 @@ class ProductServiceUnitTest {
         verify(productRepository).searchByKeywordLikeFlat(eq("키보드"), any(Pageable.class));
     }
 
-    // [Phase 18] findAllSorted가 ProductQueryService로 이동됨 — findActiveProductsFlat 사용
+    // [Phase 18/21] findAllSorted — content/count 분리 호출 (findActiveProductsFlatContent + countActiveProducts)
     @Test
     @DisplayName("findAllSorted - sort 파라미터에 따라 정렬 필드가 선택됨")
     void findAllSorted_usesExpectedSortField() {
-        when(productRepository.findActiveProductsFlat(any(Pageable.class))).thenReturn(Page.empty());
+        when(productRepository.findActiveProductsFlatContent(any(Pageable.class))).thenReturn(List.of());
+        when(productRepository.countActiveProducts()).thenReturn(0L);
 
         productQueryService.findAllSorted(0, 12, "rating");
 
         ArgumentCaptor<Pageable> pageableCaptor = ArgumentCaptor.forClass(Pageable.class);
-        verify(productRepository).findActiveProductsFlat(pageableCaptor.capture());
+        verify(productRepository).findActiveProductsFlatContent(pageableCaptor.capture());
 
         Pageable pageable = pageableCaptor.getValue();
         // [Phase 18] 네이티브 SQL용 snake_case 정렬 컬럼명 사용
         assertThat(pageable.getSort().toString())
                 .as("rating 정렬은 rating_avg DESC를 사용해야 함 (네이티브 SQL snake_case)")
                 .contains("rating_avg: DESC");
+    }
+
+    // [Phase 21] count 분리 캐시가 정렬/페이지 무관 단일 키 공유를 보장
+    @Test
+    @DisplayName("findAllSorted - 다른 sort/page 조합에서도 countActiveProducts는 한 번만 실행된다")
+    void findAllSorted_sharesCountAcrossSortAndPage() {
+        when(productRepository.findActiveProductsFlatContent(any(Pageable.class))).thenReturn(List.of());
+        when(productRepository.countActiveProducts()).thenReturn(42L);
+
+        Page<ProductListReadModel> p1 = productQueryService.findAllSorted(0, 12, "rating");
+        Page<ProductListReadModel> p2 = productQueryService.findAllSorted(1, 12, "best");
+        Page<ProductListReadModel> p3 = productQueryService.findAllSorted(2, 20, "newest");
+
+        assertThat(p1.getTotalElements()).isEqualTo(42L);
+        assertThat(p2.getTotalElements()).isEqualTo(42L);
+        assertThat(p3.getTotalElements()).isEqualTo(42L);
+        verify(productRepository, times(1)).countActiveProducts();
     }
 
     /**
