@@ -39,7 +39,7 @@
 
 | 문서 | Purpose | Last updated | Status |
 |---|---|---|---|
-| [`docs/load-test-benchmark.md`](./load-test-benchmark.md) | k6 부하 테스트 최적화 Before/After 비교 (5가지 조건, 4개 시나리오) | 2026-04-03 | SSOT |
+| [`docs/load-test-benchmark.md`](./load-test-benchmark.md) | k6 부하 테스트 최적화 Before/After 비교 (5가지 조건, 4개 시나리오) + Phase 21 500K 재측정 | 2026-04-21 | SSOT |
 
 ## Analysis
 
@@ -50,7 +50,7 @@
 | [`docs/backlog-search-log-durability.md`](./backlog-search-log-durability.md) | 검색 로그 내구성 관련 백로그/검토 항목 분석 | 2026-04-10 | Reference |
 | [`docs/analysis-execution-plan-optimization.md`](./analysis-execution-plan-optimization.md) | Execution Plan 관점 최적화 검토: 6건 개선 항목 식별 및 우선순위 매트릭스 | 2026-04-03 | SSOT |
 | [`docs/analysis-map-cache-concurrency-review-2026-04-03.md`](./analysis-map-cache-concurrency-review-2026-04-03.md) | Map/Cache 사용처와 동시성 안전성 점검 (`HashMap`, `LinkedHashMap`, `ConcurrentHashMap`, `ConcurrentMapCache`, `Hashtable`) | 2026-04-03 | SSOT |
-| [`docs/analysis-product-list-count-cache-split.md`](./analysis-product-list-count-cache-split.md) | 상품 목록 p95 병목 — COUNT 쿼리 공유 캐시 분리(Phase 21) 배경/측정/한계 | 2026-04-20 | SSOT |
+| [`docs/analysis-product-list-count-cache-split.md`](./analysis-product-list-count-cache-split.md) | 상품 목록 p95 병목 — COUNT 쿼리 공유 캐시 분리(Phase 21) 배경/측정/한계 | 2026-04-21 | SSOT |
 
 ## Archive
 

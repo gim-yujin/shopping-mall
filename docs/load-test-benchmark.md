@@ -6,6 +6,7 @@
 > **환경:** 로컬 단일 서버 (Spring Boot 3.4.1 + PostgreSQL 14.x)
 > **참고:** 본 문서의 `@Async 검색로그` 항목은 Phase 6 시점의 역사적 측정값이다.
 > 현재 검색 로그 구현은 Phase 19/20에서 `SearchLogBatchAccumulator` + 선택적 WAL로 전환되었다.
+> Phase 21(COUNT 캐시 분리) 이후 500K 스케일 재측정은 §10에 별도 기록한다.
 
 ---
 
@@ -179,3 +180,57 @@
 - 전 시나리오 HTTP 에러율 **0%**, Threshold **전부 PASS**
 - browse/mixed p95 **10ms 이하**, shopping 주문 p95 **19ms**
 - 쿠폰 러시(100 VU 동시 스파이크) **980 req/s** 처리, 초과 발급 **0건**
+
+---
+
+## 10) Phase 21 재측정 — 500K 스케일
+
+Phase 21(COUNT 쿼리 공유 캐시 분리, [`analysis-product-list-count-cache-split.md`](./analysis-product-list-count-cache-split.md)) §4.2 "k6 재측정 미실시" 한계를 해소하기 위해 수행한 재측정 결과.
+
+### 10-1. 환경
+
+| 항목 | 값 |
+|:-----|:---|
+| DB | `shopping_mall_loadtest_db` (500K 시드; users 50K / products 50K / orders 500K / order_items 1.5M / reviews 200K) |
+| 구성 요소 | Caffeine 캐시 ON, 인덱스 ON, OSIV OFF, 가상 스레드 ON (Phase 20), Phase 21 COUNT 캐시 분리 적용 |
+| k6 | v1.7.1 |
+| 시나리오 | browse (`load-test.js` SCENARIO=browse, 100 VU, 9분) |
+| RUN_ID | `phase21_browse_20260421_011311` |
+| 셋업 절차 | [`guide-loadtest-env-setup.md`](./guide-loadtest-env-setup.md) |
+
+### 10-2. 결과
+
+| 지표 | Phase 21 재측정 | §1의 A. Baseline (참고) |
+|:-----|:--:|:--:|
+| browse p50 | 7.7ms | - |
+| browse p95 (overall) | **10.8ms** | 10.0ms |
+| browse p99 | 59.1ms | - |
+| browse 처리량 | 44.0 req/s | 44.1 req/s |
+| HTTP 에러율 | 0.00% | 0.00% |
+| 체크 통과율 | 100.00% | - |
+
+### 10-3. 엔드포인트별 p95 / p99
+
+| 엔드포인트 | p95 | p99 |
+|:-----------|:--:|:--:|
+| GET / | 10.7ms | 56.5ms |
+| **GET /products** (Phase 21 대상) | **9.6ms** | 27.4ms |
+| GET /products/:id | 31.3ms | 35.2ms |
+| GET /search | 10.0ms | 163.2ms |
+| GET /categories/:id | 10.2ms | 96.1ms |
+
+### 10-4. 해석 — 무엇이 확인되었고 무엇이 확인되지 않았는가
+
+**확인된 것**
+- 500K 스케일에서도 Baseline과 동일한 수준의 p95(≈10ms)를 유지한다. Phase 21 이후 **회귀 없음**.
+- `load-test-analysis.md`가 보고한 이전 측정의 p95 3.3~5.0s와 비교하면 수백 배 개선된 수치지만, 해당 수치는 스케일/하드웨어/누적 개선이 다른 환경이므로 Phase 21 단독 기여로 귀속할 수 없다.
+
+**확인되지 않은 것 — Phase 21 단독 기여 격리**
+- Phase 21 최적화의 핵심은 "`productList` 캐시 미스 storm 시 중복 COUNT 실행 제거"다. 이 효과는 다음 조건에서만 드러난다:
+  - `productList`(2분 TTL) 만료 직후 여러 sort/page 조합이 동시에 미스 → 이전에는 조합 수만큼 COUNT 실행, 지금은 `productListCount`(10분 TTL, 단일 키)에서 1회 히트
+- 본 9분 런 동안 `productListCount`(10분 TTL)는 기본적으로 히트 상태로 유지되므로, Phase 21 단독 효과는 관측되지 않는다.
+- 단독 효과 재측정은 (a) 10분 이상 지속 실행 + (b) 캐시 강제 만료 후 재측정 스크립트가 필요하다 — 후속 과제로 보류한다.
+
+### 10-5. 결론
+- 본 재측정은 **Phase 21이 회귀를 일으키지 않았음**을 500K 스케일에서 확인한다. 이는 `analysis-product-list-count-cache-split.md` §4.2의 "재측정 미실시" 한계를 해소한다.
+- Phase 21 단독 기여 격리 측정은 별도 실험 설계가 필요하므로 본 문서에는 포함하지 않는다.

@@ -81,15 +81,15 @@ TTL을 10분으로 길게 둔 이유:
 
 캐시 미스 storm 상황(`productList` TTL 만료 직후 25개 조합 동시 미스)에서 **총 DB 시간 ~575ms → ~23ms**로 감소할 것으로 예상된다. 이는 HikariCP 풀(17) 포화 구간을 축소해 p95 꼬리를 단축한다.
 
-### 4-2. 한계 — k6 부하 테스트 재측정 미실시
+### 4-2. 한계 — k6 부하 테스트 재측정 (해소 완료, 2026-04-21)
 
-본 커밋 시점에는 수정 후 k6 재실행이 **수행되지 않았다**. 다음 조건이 충족될 때 재측정해 별도 커밋으로 `docs/load-test-benchmark.md` 또는 새 벤치마크 문서에 반영한다:
+수정 이후 500K 스케일 `shopping_mall_loadtest_db`에서 browse 시나리오(100 VU, 9분)로 k6 재측정을 수행했다. 결과 요약:
 
-- 500K 시드 데이터(`test-seed.sql` 또는 별도 bulk load)가 갖춰진 환경
-- 기존 `load-test-analysis.md`와 동일한 시나리오(Narrow/Wide/Longtail, 100 VU)
-- 가상 스레드가 활성화된 상태(Phase 20 이후와 동일)
+- browse overall p95 **10.8ms**, `GET /products` p95 **9.6ms**
+- HTTP 에러율 0.00%, 체크 통과율 100.00%
+- Phase 21 이후 **회귀 없음** 확인
 
-재측정 환경 구축 절차는 [`guide-loadtest-env-setup.md`](./guide-loadtest-env-setup.md)에 정리되어 있다. 같은 절차로 부하 테스트 전용 DB `shopping_mall_loadtest_db`를 만든 뒤 k6를 실행한다.
+상세 수치와 한계(단독 기여 격리 미실시)는 [`load-test-benchmark.md`](./load-test-benchmark.md) §10에 기록. 재측정 환경 구축 절차는 [`guide-loadtest-env-setup.md`](./guide-loadtest-env-setup.md)를 참고.
 
 ## 5. 검증
 
