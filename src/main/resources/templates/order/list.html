@@ -22,19 +22,17 @@
                         <span class="font-medium text-sm" th:text="${order.orderNumber}">ORD-001</span>
                     </div>
                     <span class="px-3 py-1 text-xs font-medium rounded-full"
-                          th:classappend="${orderStatusBadgeClasses.getOrDefault(order.orderStatusCode, 'bg-yellow-100 text-yellow-700')}"
-                          th:text="${orderStatusLabels.getOrDefault(order.orderStatusCode, order.orderStatusCode)}">상태</span>
+                          th:classappend="${orderStatusBadgeClasses.getOrDefault(order.orderStatus, 'bg-yellow-100 text-yellow-700')}"
+                          th:text="${orderStatusLabels.getOrDefault(order.orderStatus, order.orderStatus)}">상태</span>
                 </div>
-                <div class="px-6 py-4">
-                    <div th:each="item : ${order.items}" class="flex items-center gap-4 py-2">
-                        <div class="w-12 h-12 bg-gray-100 rounded flex-shrink-0 flex items-center justify-center">
-                            <span class="text-gray-400 text-xs">IMG</span>
-                        </div>
-                        <div class="flex-1">
-                            <p class="font-medium text-sm" th:text="${item.productName}">상품명</p>
-                            <p class="text-xs text-gray-500">수량: <span th:text="${item.quantity}">1</span></p>
-                        </div>
-                        <span class="text-sm font-medium" th:text="${#numbers.formatDecimal(item.subtotal,0,'COMMA',0,'POINT')} + '원'">0원</span>
+                <div class="px-6 py-4 flex items-center gap-4">
+                    <div class="w-12 h-12 bg-gray-100 rounded flex-shrink-0 flex items-center justify-center">
+                        <span class="text-gray-400 text-xs">IMG</span>
+                    </div>
+                    <div class="flex-1">
+                        <p class="font-medium text-sm" th:text="${order.firstProductName}">상품명</p>
+                        <p th:if="${order.itemCount > 1}" class="text-xs text-gray-500"
+                           th:text="'외 ' + ${order.itemCount - 1} + '건'">외 0건</p>
                     </div>
                 </div>
                 <div class="px-6 py-3 bg-gray-50 flex justify-between items-center border-t">
