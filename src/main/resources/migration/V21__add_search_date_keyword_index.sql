@@ -1,0 +1,23 @@
+-- V21: findPopularKeywords() Index-Only Scan 전환용 복합 인덱스
+--
+-- 배경:
+--   SELECT search_keyword, COUNT(*) FROM search_logs
+--   WHERE searched_at > NOW() - INTERVAL '7 days'
+--   GROUP BY search_keyword ORDER BY cnt DESC LIMIT 10
+--   (SearchLogRepository.findPopularKeywords)
+--
+--   기존 idx_search_date(searched_at DESC)는 날짜 Range Scan은 가능하지만
+--   GROUP BY용 search_keyword를 읽기 위해 Heap 접근이 필요했다.
+--   Bitmap Heap Scan으로 7일치 수만 건의 heap 블록을 fetch하여 HashAggregate 직전 비용이 컸다.
+--
+-- 해결:
+--   (searched_at DESC, search_keyword) 복합 인덱스로 날짜 Range Scan 후
+--   search_keyword를 인덱스에서 직접 읽어 Index-Only Scan으로 전환.
+--   docs/analysis-execution-plan-optimization.md §5-1 벤치마크에서
+--   실행 시간 12.408ms → 5.125ms (-59%), 버퍼 접근 -87%, Heap Fetches 0 확인.
+--
+-- CONCURRENTLY 사용 이유:
+--   search_logs는 실시간 INSERT 경로이므로 인덱스 생성 중 쓰기 잠금을 피한다.
+--   CONCURRENTLY는 트랜잭션 블록 외부에서 실행되어야 하므로 단일 문장으로 작성.
+CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_search_date_keyword
+    ON search_logs(searched_at DESC, search_keyword);

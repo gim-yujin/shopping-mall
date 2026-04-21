@@ -12,6 +12,7 @@
 3. [우선순위 매트릭스](#3-우선순위-매트릭스)
 4. [적용 완료: 코드 변경사항](#4-적용-완료-코드-변경사항)
 5. [적용 완료: Before/After 벤치마크](#5-적용-완료-beforeafter-벤치마크)
+6. [인덱스 정합성 보강 (2026-04-21)](#6-인덱스-정합성-보강-2026-04-21)
 
 ---
 
@@ -415,6 +416,9 @@ Index-Only Scan이 가능하다. DB 왕복 2회 → 1회로 감소.
 |---|---|
 | `src/main/resources/schema.sql` | 인덱스 3개 + extension 1개 반영 |
 | `src/main/resources/migration/V19__optimize_yearly_spent_and_return_count.sql` | 연간 실적 집계용 partial covering index 추가 |
+| `src/main/resources/migration/V21__add_search_date_keyword_index.sql` | findPopularKeywords Index-Only Scan용 복합 인덱스 추가 (production validate 모드 정합성) |
+| `src/main/resources/migration/V22__add_product_name_trgm_index.sql` | `pg_trgm` + `idx_product_name_trgm` 추가 (production validate 모드 정합성) |
+| `load-test/drop-indexes-c2.sql`, `load-test/restore-indexes-c2.sql` | schema.sql 58개 idx_*와 1:1 정합성 확보 (drift 해소) |
 | `src/main/java/com/shop/domain/order/repository/OrderItemRepository.java` | `countReturnRequested()` 네이티브 쿼리 추가 |
 | `src/main/java/com/shop/domain/order/service/OrderQueryService.java` | 관리자 대시보드 반품 건수 경로를 리터럴 쿼리로 전환 |
 | `src/test/java/com/shop/domain/order/service/OrderQueryServiceReturnTest.java` | 새 카운트 경로에 맞춰 테스트 갱신 |
@@ -812,3 +816,87 @@ Execution Time: 1.921 ms
 | Seq/Bitmap Heap Scan 비용 | heap 접근 블록 수가 500배 증가 → 수 초 | 전체 테이블 스캔 시간이 200배 증가 → 수 초 |
 | Index-Only/Bitmap Index Scan | 인덱스 크기만 비례 증가, heap 접근 0 | trigram 매칭으로 후보만 접근, 대부분 스킵 |
 | 예상 개선 폭 | **수 초 → 수십~수백 ms** | **수 초 → 수십 ms** |
+
+---
+
+## 6. 인덱스 정합성 보강 (2026-04-21)
+
+§4에서 정리한 최적화 인덱스(`idx_search_date_keyword`, `idx_product_name_trgm` + `pg_trgm` extension)가
+원 커밋 `72d308b`에서 `schema.sql`에만 추가되고 `src/main/resources/migration/V*.sql` 파이프라인과
+`load-test/*-indexes-c2.sql` 벤치마크 스크립트에는 반영되지 않은 정합성 갭이 확인되었다.
+본 절은 그 갭을 해소한 변경과 검증 결과를 기록한다.
+
+### 6-1. 배경 — 왜 `schema.sql`만으로는 부족한가
+
+프로덕션 프로파일(`application.yml`)은 `spring.jpa.hibernate.ddl-auto=validate` +
+`spring.sql.init.mode=never`로 설정되어 있다 (CLAUDE.md "Test Environment" 절 참조).
+이 조합에서는 애플리케이션이 기동해도 `schema.sql`이 자동 실행되지 않는다.
+기존 배포 DB에 새 인덱스를 추가하려면 `src/main/resources/migration/V*__*.sql`을 수동 적용하는 것이
+운영 파이프라인의 기준 경로다. `schema.sql` 직접 수정은 "신규 DB 초기 셋업용"일 뿐이다.
+
+따라서 `72d308b` 커밋은 신규 DB에는 반영되지만 **이미 운영 중인 DB에는 적용 경로가 없는** 상태였다.
+
+### 6-2. 변경 — 마이그레이션 추가 (V21, V22)
+
+| 파일 | 내용 | CONCURRENTLY |
+|---|---|---|
+| `migration/V21__add_search_date_keyword_index.sql` | `idx_search_date_keyword ON search_logs(searched_at DESC, search_keyword)` | ON (search_logs 실시간 INSERT 경로 보호) |
+| `migration/V22__add_product_name_trgm_index.sql` | `CREATE EXTENSION pg_trgm` + `idx_product_name_trgm ON products USING gin(LOWER(product_name) gin_trgm_ops)` | ON (products 쓰기 경로 보호) |
+
+두 마이그레이션 모두 `CREATE INDEX CONCURRENTLY IF NOT EXISTS`로 idempotent하게 작성했다.
+`CREATE EXTENSION pg_trgm`은 superuser/rds_superuser 권한이 필요하므로 V22 헤더 주석에 운영 주의를 명시했다.
+
+### 6-3. 변경 — `load-test/*-indexes-c2.sql` 재정합
+
+C2 조건(캐시 OFF + 인덱스 OFF)의 drop/restore 스크립트는 초기 설계(47개) 이후 V17/V19/V20 및
+§4-1/§4-2의 추가 인덱스를 반영하지 못한 채 drift가 누적되어 있었다. 확인된 drift:
+
+| 종류 | 누락 내역 |
+|---|---|
+| restore 누락 | `idx_product_name_trgm` (V22), `idx_image_thumbnail` (V17), `idx_order_yearly_spent_non_cancelled` (V19), `idx_order_items_status_return_requested` (V8), `idx_user_coupon_order` (Phase 8), `idx_point_history_user/reference/ref_order/type_created/created` (5종), `idx_idempotency_created` (V10), `idx_outbox_pending/processed_at/dead_letter/retry` (V11/V12/V17) |
+| restore stale 엔트리 | `idx_review_helpful_review`(V17 제거), `idx_users_email/username`(V17 제거), `idx_order_number`(V17 제거), `idx_coupon_code`(V17 제거), `idx_review_helpful_user`의 단일 컬럼 구형식 |
+| extension 전제 누락 | `pg_trgm` (V22 인덱스 재생성 시 필수) |
+
+양 스크립트를 `schema.sql`의 `idx_*` 58개와 1:1로 맞춰 재작성했다. `CREATE EXTENSION IF NOT EXISTS pg_trgm`을
+restore 스크립트 선두에 추가해 self-contained 실행을 보장한다. drop 스크립트는 기존 유령 drop을 제거하고
+현재 schema에 존재하는 58개를 테이블별 그룹으로 정리했다.
+
+### 6-4. 검증 — 로컬 DB 왕복 테스트
+
+`shopping_mall_db`(PG 16.13, 로컬)에서 drop→restore 왕복 실행 결과:
+
+| 단계 | `COUNT(*) FROM pg_indexes WHERE indexname LIKE 'idx_%'` |
+|---|---:|
+| 초기 (schema.sql 적용 상태) | 58 |
+| `drop-indexes-c2.sql` 실행 후 | **0** |
+| `restore-indexes-c2.sql` 실행 후 | **58** |
+
+`schema.sql`의 `CREATE INDEX idx_*` 58개와 두 스크립트의 58개가 1:1로 일치함을
+`diff <(grep idx schema.sql) <(grep idx restore-c2.sql)`로 확인했다 (주석 내 유령 참조 5개 제외).
+
+### 6-5. 검증 — 마이그레이션 idempotency
+
+```
+$ psql -f migration/V21__add_search_date_keyword_index.sql
+NOTICE:  relation "idx_search_date_keyword" already exists, skipping
+
+$ psql -f migration/V22__add_product_name_trgm_index.sql
+NOTICE:  extension "pg_trgm" already exists, skipping
+NOTICE:  relation "idx_product_name_trgm" already exists, skipping
+```
+
+기존 적용 환경에서 중복 실행해도 `IF NOT EXISTS` 가드로 안전하게 스킵된다.
+
+### 6-6. 운영 적용 가이드
+
+- **기존 배포 DB**: V21·V22를 순차 적용한다.
+  ```bash
+  psql -U postgres -d shopping_mall_db -f migration/V21__add_search_date_keyword_index.sql
+  psql -U postgres -d shopping_mall_db -f migration/V22__add_product_name_trgm_index.sql
+  ```
+  두 인덱스 모두 `CREATE INDEX CONCURRENTLY`로 생성되어 `INSERT`/`UPDATE`를 차단하지 않는다.
+- **신규 DB**: `schema.sql` 1회 적용으로 58개 인덱스가 모두 생성된다. 별도 V*.sql 실행 불필요.
+- **부하 테스트 재측정**: `drop-indexes-c2.sql`/`restore-indexes-c2.sql`로 C2 조건을 재현할 때
+  이제 `pg_trgm` extension과 누락 인덱스 15종이 함께 drop/restore되므로 "순수 인덱스 OFF" 효과가
+  오염 없이 측정된다. 기존 `load-test-benchmark.md`의 C2 수치는 반영되지 않은 인덱스가 있는
+  상태에서의 측정이므로, 본 변경 이후 재측정 시 약간의 수치 변동 가능성이 있다.
