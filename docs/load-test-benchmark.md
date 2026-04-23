@@ -271,7 +271,7 @@ Phase 21(COUNT 쿼리 공유 캐시 분리, [`analysis-product-list-count-cache-
 - `RateLimitPlan.ORDER`는 capacity 5, refill 5/60s (`RateLimitPlan.java:38`)이다. 정상 사용자가 분당 5건 이상 주문할 이유가 없다는 설계 의도에 따른다.
 - 2차 런: 응답 시간이 빨라져 같은 VU가 분당 5건 이상 POST /orders를 보냈고, 앱 로그에 `event=rate_limit_exceeded plan=ORDER uri=/orders method=POST`가 733건 기록.
 - 3차 런: rate_limit_exceeded 668건, `order_fail_http_4xx` 668건 — **정확히 일치**. 즉 3차 런의 `order_ok` 68.25% 하락은 **전적으로 ORDER 플랜 rate limit이 의도대로 발동한 결과**이며, 성능 회귀나 버그가 아니다.
-- `order_ok`를 SLO 지표로 쓰려면 시나리오의 요청 간격을 ORDER 플랜(5/min)에 맞춰 늘려야 한다. 후속 과제로 분리(§10-5-4 참조).
+- `order_ok`를 SLO 지표로 쓰려면 시나리오의 요청 간격을 ORDER 플랜(5/min)에 맞춰 늘려야 한다 — §10-5-5 4차 런에서 `SHOPPING_ORDER_SPACING=13`으로 페이싱을 강제해 `order_ok` 100%로 복구하여 해소됨.
 
 #### 10-5-4. Shopping 재측정에서 확인된 것
 
