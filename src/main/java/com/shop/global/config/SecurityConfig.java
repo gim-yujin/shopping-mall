@@ -78,6 +78,8 @@ public class SecurityConfig {
                 .requestMatchers("/api/v1/products", "/api/v1/products/**").permitAll()
                 .requestMatchers("/api/v1/search/**").permitAll()
                 .requestMatchers("/api/v1/users/signup").permitAll()
+                .requestMatchers(org.springframework.http.HttpMethod.GET,
+                        "/api/v1/flash-sales", "/api/v1/flash-sales/**").permitAll()
                 .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
                 .anyRequest().authenticated()
             )
@@ -115,7 +117,8 @@ public class SecurityConfig {
             .authenticationProvider(authenticationProvider())
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/", "/products/**", "/categories/**", "/search/**",
-                    "/auth/**", "/static/**", "/css/**", "/images/**", "/error/**").permitAll()
+                    "/auth/**", "/static/**", "/css/**", "/images/**", "/error/**",
+                    "/flash-sales", "/flash-sales/**").permitAll()
                 .requestMatchers("/actuator/health").permitAll()      // 로드밸런서 헬스체크용
                 .requestMatchers("/actuator/prometheus").permitAll()  // Prometheus 스크래핑 허용
                 .requestMatchers("/actuator/**").hasRole("ADMIN")     // 나머지 Actuator는 관리자만

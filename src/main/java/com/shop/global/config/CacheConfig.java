@@ -84,6 +84,12 @@ public class CacheConfig {
                 // 활성 쿠폰: 짧은 TTL(10초)이지만 프로모션 기간 트래픽 급증 시 stampede 위험.
                 perCacheSeconds("activeCoupons", 10, 200),
 
+                // [Phase 23] 플래시 세일 — 목록은 1초 TTL, 상세는 200ms TTL.
+                // 목록: 시작/종료 전환을 1초 이내에 반영. sync=true로 cache-miss storm 차단.
+                // 상세: Admission 사전 판정용. 남은 수량은 근사치이며 최종 판정은 구매 CAS에서.
+                cacheSeconds("flashSaleActiveList", 1, 10),
+                cacheMillis("flashSaleMeta", 200, 500),
+
                 // ── 표준 TTL 캐시: PER 불필요 (상태 관리 또는 저트래픽) ──
 
                 // 리뷰 버전: 캐시 무효화 판단용 메타데이터. thundering herd 위험 없음.
@@ -128,6 +134,24 @@ public class CacheConfig {
     private CaffeineCache cacheMinutes(String name, int ttlMinutes, long maxSize) {
         return new CaffeineCache(name, Caffeine.newBuilder()
                 .expireAfterWrite(ttlMinutes, TimeUnit.MINUTES)
+                .maximumSize(maxSize)
+                .recordStats()
+                .build());
+    }
+
+    /** 표준 TTL 캐시 (초 단위). 짧은 TTL로 burst 트래픽을 흡수하는 용도. */
+    private CaffeineCache cacheSeconds(String name, int ttlSeconds, long maxSize) {
+        return new CaffeineCache(name, Caffeine.newBuilder()
+                .expireAfterWrite(ttlSeconds, TimeUnit.SECONDS)
+                .maximumSize(maxSize)
+                .recordStats()
+                .build());
+    }
+
+    /** 표준 TTL 캐시 (밀리초 단위). sub-second 신선도가 필요한 Admission 판정용. */
+    private CaffeineCache cacheMillis(String name, long ttlMillis, long maxSize) {
+        return new CaffeineCache(name, Caffeine.newBuilder()
+                .expireAfterWrite(ttlMillis, TimeUnit.MILLISECONDS)
                 .maximumSize(maxSize)
                 .recordStats()
                 .build());

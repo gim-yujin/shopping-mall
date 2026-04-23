@@ -121,8 +121,13 @@ CREATE INDEX IF NOT EXISTS idx_outbox_dead_letter ON outbox_events(processed_at)
 CREATE INDEX IF NOT EXISTS idx_outbox_retry ON outbox_events(next_retry_at)
     WHERE status = 'PENDING' AND next_retry_at IS NOT NULL;
 
+-- ── flash_sales / flash_sale_items / flash_sale_purchases (3개) ──
+CREATE INDEX IF NOT EXISTS idx_flash_sale_status_start ON flash_sales(status, start_time);
+CREATE INDEX IF NOT EXISTS idx_fsi_flash_sale          ON flash_sale_items(flash_sale_id);
+CREATE INDEX IF NOT EXISTS idx_fsp_flash_sale          ON flash_sale_purchases(flash_sale_id, purchased_at DESC);
+
 -- ── 확인 ──
 SELECT COUNT(*) AS restored_indexes
 FROM pg_indexes
 WHERE schemaname = 'public' AND indexname LIKE 'idx_%';
--- 기대값: 58 (schema.sql idx_* 전체)
+-- 기대값: 61 (schema.sql idx_* 전체)

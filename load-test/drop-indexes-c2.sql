@@ -126,6 +126,11 @@ DROP INDEX IF EXISTS idx_outbox_processed_at;
 DROP INDEX IF EXISTS idx_outbox_dead_letter;
 DROP INDEX IF EXISTS idx_outbox_retry;
 
+-- ── flash_sales / flash_sale_items / flash_sale_purchases (3개) ──
+DROP INDEX IF EXISTS idx_flash_sale_status_start;
+DROP INDEX IF EXISTS idx_fsi_flash_sale;
+DROP INDEX IF EXISTS idx_fsp_flash_sale;
+
 COMMIT;
 
 -- ── 확인 ──

@@ -549,6 +549,68 @@ CREATE TABLE outbox_events (
 COMMENT ON TABLE outbox_events IS 'Transactional Outbox 이벤트 레코드';
 
 -- ============================================================================
+-- 20. FLASH_SALES / FLASH_SALE_ITEMS / FLASH_SALE_PURCHASES (플래시 세일)
+-- ============================================================================
+-- 플래시 세일 이벤트·할당 재고·1인 1구매 감사 로그.
+-- 일반 재고(products.stock_quantity)와 격리된 세일 전용 재고(remaining_quantity)를
+-- CAS 원자 감분으로 차감하여 burst 부하가 일반 주문 경로와 경합하지 않게 한다.
+CREATE TABLE flash_sales (
+    flash_sale_id   BIGSERIAL    PRIMARY KEY,
+    title           VARCHAR(200) NOT NULL,
+    status          VARCHAR(20)  NOT NULL DEFAULT 'SCHEDULED',
+    start_time      TIMESTAMP    NOT NULL,
+    end_time        TIMESTAMP    NOT NULL,
+    created_at      TIMESTAMP    NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    version         INT          NOT NULL DEFAULT 0,
+
+    CONSTRAINT chk_flash_sale_status
+        CHECK (status IN ('SCHEDULED','ACTIVE','ENDED','CANCELLED')),
+    CONSTRAINT chk_flash_sale_time
+        CHECK (end_time > start_time)
+);
+
+COMMENT ON TABLE flash_sales IS '플래시 세일(타임세일) 이벤트';
+
+CREATE TABLE flash_sale_items (
+    flash_sale_item_id   BIGSERIAL     PRIMARY KEY,
+    flash_sale_id        BIGINT        NOT NULL,
+    product_id           BIGINT        NOT NULL,
+    sale_price           DECIMAL(12,2) NOT NULL,
+    allocated_quantity   INT           NOT NULL,
+    remaining_quantity   INT           NOT NULL,
+    per_user_limit       INT           NOT NULL DEFAULT 1,
+    version              INT           NOT NULL DEFAULT 0,
+
+    CONSTRAINT fk_fsi_flash_sale FOREIGN KEY (flash_sale_id)
+        REFERENCES flash_sales(flash_sale_id) ON DELETE CASCADE,
+    CONSTRAINT fk_fsi_product FOREIGN KEY (product_id)
+        REFERENCES products(product_id),
+    CONSTRAINT chk_fsi_remaining CHECK (remaining_quantity >= 0),
+    CONSTRAINT chk_fsi_allocated CHECK (allocated_quantity > 0),
+    CONSTRAINT chk_fsi_price CHECK (sale_price >= 0),
+    CONSTRAINT chk_fsi_per_user CHECK (per_user_limit >= 1),
+    CONSTRAINT uk_fsi_sale_product UNIQUE (flash_sale_id, product_id)
+);
+
+COMMENT ON TABLE flash_sale_items IS '세일 대상 상품 및 할당 재고 (CAS 대상 remaining_quantity)';
+
+CREATE TABLE flash_sale_purchases (
+    flash_sale_purchase_id  BIGSERIAL PRIMARY KEY,
+    flash_sale_id           BIGINT    NOT NULL,
+    user_id                 BIGINT    NOT NULL,
+    order_id                BIGINT    NOT NULL,
+    purchased_at            TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_fsp_flash_sale FOREIGN KEY (flash_sale_id)
+        REFERENCES flash_sales(flash_sale_id),
+    CONSTRAINT fk_fsp_user FOREIGN KEY (user_id) REFERENCES users(user_id),
+    CONSTRAINT fk_fsp_order FOREIGN KEY (order_id) REFERENCES orders(order_id),
+    CONSTRAINT uk_fsp_user_sale UNIQUE (flash_sale_id, user_id)
+);
+
+COMMENT ON TABLE flash_sale_purchases IS '1인 1구매 감사 로그. uk_fsp_user_sale가 중복 구매의 최종 방어선';
+
+-- ============================================================================
 -- 인덱스 생성
 -- ============================================================================
 
@@ -741,6 +803,13 @@ CREATE INDEX idx_outbox_dead_letter ON outbox_events(processed_at) WHERE status 
 CREATE INDEX idx_outbox_retry ON outbox_events(next_retry_at)
     WHERE status = 'PENDING' AND next_retry_at IS NOT NULL;
 
+-- Flash Sales 인덱스
+-- status·start_time 조합으로 진행중/예정 세일 목록을 Index Range Scan으로 조회.
+CREATE INDEX idx_flash_sale_status_start ON flash_sales(status, start_time);
+CREATE INDEX idx_fsi_flash_sale          ON flash_sale_items(flash_sale_id);
+CREATE INDEX idx_fsp_flash_sale          ON flash_sale_purchases(flash_sale_id, purchased_at DESC);
+-- uk_fsi_sale_product, uk_fsp_user_sale은 UNIQUE 제약이 자동으로 unique index 생성 (PG 내부)
+
 -- ============================================================================
 -- [Phase 18] 읽기 전용 뷰 — CQRS 읽기 모델 분리
 -- ============================================================================
@@ -861,4 +930,4 @@ JOIN products p ON p.product_id = w.product_id;
 -- 이로 인해 DO $$ 블록이 여러 개의 불완전한 SQL 조각으로 분리되어
 -- PSQLException (Parser.java) 파싱 에러가 발생한다.
 -- RAISE NOTICE는 디버깅 편의용이었으므로 주석으로 대체한다.
--- 총 19개 테이블, 61개 인덱스 생성됨 (일반 58 + UNIQUE 3)
+-- 총 22개 테이블, 64개 인덱스 생성됨 (일반 61 + UNIQUE 3)

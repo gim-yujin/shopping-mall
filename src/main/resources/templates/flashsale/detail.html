@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org"
+      xmlns:layout="http://www.ultraq.net.nz/thymeleaf/layout"
+      layout:decorate="~{layout/default}">
+<head><title th:text="${flashSale.title}">플래시 세일 상세</title></head>
+<body>
+<div layout:fragment="content">
+    <div class="max-w-5xl mx-auto px-4 py-8">
+
+        <nav class="text-sm text-gray-500 mb-4">
+            <a th:href="@{/flash-sales}" class="hover:text-indigo-600">플래시 세일</a>
+            <span class="mx-1">/</span>
+            <span th:text="${flashSale.title}" class="text-gray-900"></span>
+        </nav>
+
+        <header class="mb-6">
+            <div class="flex items-center gap-3 mb-2">
+                <h1 class="text-2xl font-bold text-gray-900" th:text="${flashSale.title}"></h1>
+                <span th:if="${flashSale.status.name() == 'ACTIVE'}"
+                      class="inline-block bg-red-100 text-red-700 px-2 py-0.5 rounded text-sm">진행중</span>
+                <span th:if="${flashSale.status.name() == 'SCHEDULED'}"
+                      class="inline-block bg-gray-100 text-gray-600 px-2 py-0.5 rounded text-sm">예정</span>
+                <span th:if="${flashSale.status.name() == 'ENDED'}"
+                      class="inline-block bg-gray-200 text-gray-500 px-2 py-0.5 rounded text-sm">종료</span>
+                <span th:if="${flashSale.status.name() == 'CANCELLED'}"
+                      class="inline-block bg-gray-200 text-gray-500 px-2 py-0.5 rounded text-sm">취소</span>
+            </div>
+            <div class="text-sm text-gray-500">
+                <span th:text="${#temporals.format(flashSale.startTime, 'yyyy-MM-dd HH:mm')}"></span>
+                ~
+                <span th:text="${#temporals.format(flashSale.endTime, 'yyyy-MM-dd HH:mm')}"></span>
+            </div>
+        </header>
+
+        <div class="space-y-4">
+            <div th:each="item : ${flashSale.items}"
+                 class="bg-white border border-gray-200 rounded-lg p-6 flex gap-6">
+                <img th:src="${item.thumbnailUrl}" alt=""
+                     class="w-32 h-32 object-cover rounded border border-gray-100 flex-shrink-0"
+                     onerror="this.src='/images/product-placeholder.svg'"/>
+                <div class="flex-1">
+                    <div class="text-lg font-medium text-gray-900 mb-1" th:text="${item.productName}"></div>
+                    <div class="text-sm text-gray-500 mb-3" th:text="${item.description}"></div>
+                    <div class="flex items-baseline gap-3 mb-2">
+                        <span class="text-3xl font-bold text-red-600"
+                              th:text="${#numbers.formatInteger(item.salePrice, 0, 'COMMA')} + '원'"></span>
+                        <span th:if="${item.originalPrice != null}"
+                              class="text-base text-gray-400 line-through"
+                              th:text="${#numbers.formatInteger(item.originalPrice, 0, 'COMMA')} + '원'"></span>
+                    </div>
+                    <div class="text-xs text-gray-500 mb-3">
+                        남은 수량 <span th:text="${item.remainingApprox}"></span> /
+                        할당 <span th:text="${item.allocatedQuantity}"></span> /
+                        1인 최대 <span th:text="${item.perUserLimit}"></span>개
+                    </div>
+                    <div>
+                        <button th:if="${flashSale.status.name() == 'ACTIVE' and item.remainingApprox > 0}"
+                                type="button" disabled
+                                class="bg-indigo-300 text-white px-6 py-2 rounded cursor-not-allowed"
+                                title="구매 API는 Phase 23-2에서 추가">
+                            구매하기 (준비중)
+                        </button>
+                        <span th:if="${flashSale.status.name() == 'SCHEDULED'}"
+                              class="inline-block bg-gray-100 text-gray-600 px-4 py-2 rounded">시작 전</span>
+                        <span th:if="${flashSale.status.name() == 'ENDED' or flashSale.status.name() == 'CANCELLED'}"
+                              class="inline-block bg-gray-100 text-gray-500 px-4 py-2 rounded">종료된 세일</span>
+                        <span th:if="${flashSale.status.name() == 'ACTIVE' and item.remainingApprox <= 0}"
+                              class="inline-block bg-gray-200 text-gray-500 px-4 py-2 rounded">매진</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+</body>
+</html>
