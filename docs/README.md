@@ -48,6 +48,7 @@
 | [`docs/facade-overhead.md`](./facade-overhead.md) | 파사드 계층 도입에 따른 비용/효과 분석 | 2026-03-14 | Reference |
 | [`docs/tier-policy-decision-log-2026-03-14.md`](./tier-policy-decision-log-2026-03-14.md) | 등급 정책 결정 과정의 논의 로그 보관 | 2026-03-14 | Reference |
 | [`docs/backlog-search-log-durability.md`](./backlog-search-log-durability.md) | 검색 로그 내구성 관련 백로그/검토 항목 분석 | 2026-04-10 | Reference |
+| [`docs/backlog-flash-sale.md`](./backlog-flash-sale.md) | 플래시 세일(타임세일) 기능 설계 제안 — 5계층 동시성 아키텍처, CAS 예약, 실패/보상, Phase 분할 | 2026-04-24 | Reference |
 | [`docs/analysis-execution-plan-optimization.md`](./analysis-execution-plan-optimization.md) | Execution Plan 관점 최적화 검토: 6건 개선 항목 + 인덱스 정합성 보강(V21/V22, C2 drift 해소) | 2026-04-21 | SSOT |
 | [`docs/analysis-map-cache-concurrency-review-2026-04-03.md`](./analysis-map-cache-concurrency-review-2026-04-03.md) | Map/Cache 사용처와 동시성 안전성 점검 (`HashMap`, `LinkedHashMap`, `ConcurrentHashMap`, `ConcurrentMapCache`, `Hashtable`) | 2026-04-03 | SSOT |
 | [`docs/analysis-product-list-count-cache-split.md`](./analysis-product-list-count-cache-split.md) | 상품 목록 p95 병목 — COUNT 쿼리 공유 캐시 분리(Phase 21) 배경/측정/한계 | 2026-04-21 | SSOT |
