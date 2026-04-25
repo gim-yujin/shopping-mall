@@ -91,7 +91,8 @@ public class FlashSaleCommandService {
 
         try {
             Order order = orderFactory.create(userId, reservedItem, FIXED_QUANTITY);
-            purchaseRepository.save(FlashSalePurchase.record(flashSaleId, userId, order.getOrderId()));
+            purchaseRepository.save(FlashSalePurchase.record(
+                    flashSaleId, reservedItem.getFlashSaleItemId(), userId, order.getOrderId()));
             purchaseRepository.flush();
             log.info("event=flash_sale_reserve_success sale_id={} item_id={} user_id={} order_id={} strategy={}",
                     flashSaleId, flashSaleItemId, userId, order.getOrderId(), lockStrategy);

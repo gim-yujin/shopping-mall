@@ -16,6 +16,7 @@ import com.shop.domain.product.repository.ProductRepository;
 import com.shop.domain.user.entity.User;
 import com.shop.domain.user.repository.UserRepository;
 import com.shop.domain.user.repository.UserTierRepository;
+import com.shop.global.event.FlashSaleOrderCancelledEvent;
 import com.shop.global.event.OrderCancelledEvent;
 import com.shop.global.exception.BusinessException;
 import com.shop.global.exception.ResourceNotFoundException;
@@ -102,6 +103,16 @@ public class OrderCancellationService {
     public void cancelOrderInternal(Order order, Long userId) {
         if (!order.isCancellable()) {
             throw new BusinessException("CANCEL_FAIL", "취소할 수 없는 주문 상태입니다.");
+        }
+
+        // [Phase 23-5] 플래시 세일 주문은 일반 주문과 보상 경로가 다르다.
+        // products.stock_quantity는 차감된 적이 없으므로 복원하지 않는다(인플레 방지).
+        // 포인트/쿠폰/티어할인은 모두 0이므로 환불 로직도 우회한다.
+        // 잔여 수량 복원과 flash_sale_purchases 행 삭제는 FlashSaleOrderCancelledEvent
+        // 동기 리스너(같은 트랜잭션) 가 처리한다.
+        if (order.isFlashSaleOrder()) {
+            cancelFlashSaleOrder(order);
+            return;
         }
 
         Long orderId = order.getOrderId();
@@ -196,5 +207,30 @@ public class OrderCancellationService {
 
         // [Phase 6] 주문 취소 이벤트를 Outbox에 기록하여 at-least-once 알림 발송을 보장한다.
         outboxEventPublisher.publishOrderCancelled(orderId, userId, remainingRefundAmount);
+    }
+
+    /**
+     * [Phase 23-5] 플래시 세일 주문 전용 취소 분기.
+     *
+     * <p>일반 보상 경로의 다음을 모두 건너뛴다:
+     * <ul>
+     *   <li>products.stock_quantity 복구 — 플래시 세일은 차감하지 않았으므로 인플레가 됨</li>
+     *   <li>total_spent 차감, 포인트 환불, 쿠폰 복원 — 플래시 세일 주문은 모두 0</li>
+     *   <li>티어 재계산 이벤트 + outbox stock_changed — 플래시 세일에 무의미</li>
+     * </ul>
+     * </p>
+     *
+     * <p>대신 {@link FlashSaleOrderCancelledEvent}를 발행하여 flashsale 도메인의
+     * 동기 리스너가 같은 트랜잭션 안에서 remaining_quantity를 +1 복원하고
+     * flash_sale_purchases 행을 삭제하도록 위임한다(uk_fsp_user_sale 해제로
+     * 같은 사용자가 다시 시도할 수 있게 됨).</p>
+     */
+    private void cancelFlashSaleOrder(Order order) {
+        order.cancel();
+        order.addRefundedAmount(order.getFinalAmount());
+        orderInvariantValidator.validateBeforePersist(order);
+        applicationEventPublisher.publishEvent(new FlashSaleOrderCancelledEvent(order.getOrderId()));
+        log.info("event=flash_sale_order_cancelled order_id={} user_id={}",
+                order.getOrderId(), order.getUserId());
     }
 }

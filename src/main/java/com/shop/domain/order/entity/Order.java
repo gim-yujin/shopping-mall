@@ -25,6 +25,14 @@ public class Order {
     @Column(name = "order_status", nullable = false, length = 20)
     private OrderStatus orderStatus;
 
+    /**
+     * [Phase 23-5] 주문 발행 경로 마커. 일반 주문은 NORMAL, 플래시 세일 경로는 FLASH_SALE.
+     * 취소 시 보상 경로 분기에 사용된다(§13-2 #6 해소).
+     */
+    @Enumerated(EnumType.STRING)
+    @Column(name = "order_origin", nullable = false, length = 20)
+    private OrderOrigin orderOrigin = OrderOrigin.NORMAL;
+
     @Column(name = "total_amount", nullable = false, precision = 15, scale = 2)
     private BigDecimal totalAmount;
 
@@ -159,6 +167,7 @@ public class Order {
                 paymentMethod,
                 "(플래시 세일 주문 — 배송 정보 미입력)",
                 "(플래시 세일)", "(플래시 세일)");
+        o.orderOrigin = OrderOrigin.FLASH_SALE;
         o.markPaid();
         return o;
     }
@@ -259,6 +268,8 @@ public class Order {
     public Long getUserId() { return userId; }
     public OrderStatus getOrderStatus() { return orderStatus; }
     public String getOrderStatusCode() { return orderStatus.name(); }
+    public OrderOrigin getOrderOrigin() { return orderOrigin; }
+    public boolean isFlashSaleOrder() { return orderOrigin == OrderOrigin.FLASH_SALE; }
     public BigDecimal getTotalAmount() { return totalAmount; }
     public BigDecimal getDiscountAmount() { return discountAmount; }
     public BigDecimal getTierDiscountAmount() { return tierDiscountAmount; }

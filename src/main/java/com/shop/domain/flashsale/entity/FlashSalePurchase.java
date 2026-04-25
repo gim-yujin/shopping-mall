@@ -16,6 +16,9 @@ public class FlashSalePurchase {
     @Column(name = "flash_sale_id", nullable = false)
     private Long flashSaleId;
 
+    @Column(name = "flash_sale_item_id", nullable = false)
+    private Long flashSaleItemId;
+
     @Column(name = "user_id", nullable = false)
     private Long userId;
 
@@ -27,9 +30,10 @@ public class FlashSalePurchase {
 
     protected FlashSalePurchase() {}
 
-    public static FlashSalePurchase record(Long flashSaleId, Long userId, Long orderId) {
+    public static FlashSalePurchase record(Long flashSaleId, Long flashSaleItemId, Long userId, Long orderId) {
         FlashSalePurchase p = new FlashSalePurchase();
         p.flashSaleId = flashSaleId;
+        p.flashSaleItemId = flashSaleItemId;
         p.userId = userId;
         p.orderId = orderId;
         p.purchasedAt = LocalDateTime.now();
@@ -38,6 +42,7 @@ public class FlashSalePurchase {
 
     public Long getFlashSalePurchaseId() { return flashSalePurchaseId; }
     public Long getFlashSaleId() { return flashSaleId; }
+    public Long getFlashSaleItemId() { return flashSaleItemId; }
     public Long getUserId() { return userId; }
     public Long getOrderId() { return orderId; }
     public LocalDateTime getPurchasedAt() { return purchasedAt; }

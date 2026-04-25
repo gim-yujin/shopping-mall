@@ -145,6 +145,7 @@ class OrderInvariantValidatorTest {
         when(line.getQuantity()).thenReturn(1);
         when(line.getSubtotal()).thenReturn(new BigDecimal("19900"));
         when(order.getItems()).thenReturn(List.of(line));
+        when(order.getOrderOrigin()).thenReturn(com.shop.domain.order.entity.OrderOrigin.FLASH_SALE);
         when(order.getDiscountAmount()).thenReturn(BigDecimal.ZERO);
         when(order.getTierDiscountAmount()).thenReturn(BigDecimal.ZERO);
         when(order.getCouponDiscountAmount()).thenReturn(BigDecimal.ZERO);
@@ -154,6 +155,17 @@ class OrderInvariantValidatorTest {
         when(order.getTotalAmount()).thenReturn(new BigDecimal("19900"));
         when(order.getFinalAmount()).thenReturn(new BigDecimal("19900"));
         return order;
+    }
+
+    @Test
+    @DisplayName("플래시 세일 주문이 origin=NORMAL이면 예외")
+    void validateFlashSaleOrder_wrongOrigin_throws() {
+        Order order = createValidFlashSaleOrderMock();
+        when(order.getOrderOrigin()).thenReturn(com.shop.domain.order.entity.OrderOrigin.NORMAL);
+        assertThatThrownBy(() -> validator.validateFlashSaleOrder(order))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("code", "FLASH_SALE_INVARIANT_VIOLATION")
+                .hasMessageContaining("order_origin");
     }
 
     @Test

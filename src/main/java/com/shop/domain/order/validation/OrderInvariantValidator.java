@@ -2,6 +2,7 @@ package com.shop.domain.order.validation;
 
 import com.shop.domain.order.entity.Order;
 import com.shop.domain.order.entity.OrderItem;
+import com.shop.domain.order.entity.OrderOrigin;
 import com.shop.global.exception.BusinessException;
 import org.springframework.stereotype.Component;
 
@@ -38,6 +39,9 @@ public class OrderInvariantValidator {
      * </ul>
      */
     public void validateFlashSaleOrder(Order order) {
+        if (order.getOrderOrigin() != OrderOrigin.FLASH_SALE) {
+            throw flashInvariant("order_origin must be FLASH_SALE");
+        }
         if (order.getItems() == null || order.getItems().size() != 1) {
             throw new BusinessException(
                     "FLASH_SALE_INVARIANT_VIOLATION",

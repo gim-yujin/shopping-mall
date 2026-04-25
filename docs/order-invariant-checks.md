@@ -105,3 +105,44 @@ HAVING COUNT(*) > 1;
 ```
 
 0행이 정상. 1행 이상은 UNIQUE 제약이 누락된 환경(스키마 드리프트)을 의미한다.
+
+## [Phase 23-5] 플래시 세일 주문 취소 보상 정합성
+
+§13-2 #6 해소 이후, 플래시 세일 주문 취소는 일반 보상 경로를 우회하고 `flash_sale_items.remaining_quantity` 복원 + `flash_sale_purchases` 삭제로만 끝난다. 운영에서 보상 누락을 감지하기 위한 점검 SQL.
+
+### 점검 4 — `order_origin` 마커 정합성
+`flash_sale_purchases`에 등재된 주문은 모두 `order_origin = 'FLASH_SALE'`이어야 한다. V24 적용 이전 데이터 또는 수동 변경의 흔적을 찾는다.
+
+```sql
+SELECT o.order_id, o.order_number, o.order_origin
+FROM orders o
+JOIN flash_sale_purchases fsp ON fsp.order_id = o.order_id
+WHERE o.order_origin <> 'FLASH_SALE';
+```
+
+0행이면 OK. 1행 이상이면 V24 마이그레이션 누락 또는 데이터 정합 이상.
+
+### 점검 5 — CANCELLED 상태이지만 보상이 안 된 행
+플래시 세일 주문이 `CANCELLED`로 전이됐는데 `flash_sale_purchases` 행이 아직 살아 있다면, 동기 리스너가 동작하지 않았거나 운영자가 수동 cancel 한 경우다.
+
+```sql
+SELECT o.order_id, o.cancelled_at, fsp.flash_sale_purchase_id, fsp.flash_sale_item_id
+FROM orders o
+JOIN flash_sale_purchases fsp ON fsp.order_id = o.order_id
+WHERE o.order_origin = 'FLASH_SALE'
+  AND o.order_status = 'CANCELLED';
+```
+
+0행이 정상. 1행 이상이면 해당 주문에 대해 수동 보상이 필요하다.
+
+복구 SQL(주문 1건):
+```sql
+BEGIN;
+-- 1) remaining_quantity 복원
+UPDATE flash_sale_items
+   SET remaining_quantity = remaining_quantity + 1, version = version + 1
+ WHERE flash_sale_item_id = (SELECT flash_sale_item_id FROM flash_sale_purchases WHERE order_id = :orderId);
+-- 2) purchase 행 삭제 (UNIQUE 해제)
+DELETE FROM flash_sale_purchases WHERE order_id = :orderId;
+COMMIT;
+```

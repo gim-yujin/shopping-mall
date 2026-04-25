@@ -602,7 +602,35 @@ T+30min  FlashSaleReconciliationJob 수동 실행 (§8-3)
 3. **서킷 브레이커**: HikariCP 포화 시 구매 경로만 차단하고 조회 경로는 살리는 로컬 브레이커(Resilience4j)의 필요성 — Phase 23-4 벤치 결과로 판단.
 4. **결제 게이트웨이 연동**: 외부 호출이 개입하면 §8-2의 "트랜잭션 경계 == 예약 경계" 전제가 무너진다. 외부 결제는 별도 TX로 분리하고 `restoreAtomic` 보상 + Outbox 이벤트로 재설계 필요.
 5. **세일 CRUD 어드민 UI**: Phase 23-5. 현재는 DB 직접 INSERT로 충분.
-6. **세일 주문 취소 정책**: 현재 `/orders/{id}` 상세 페이지의 "주문 취소" 버튼은 `orderStatusCode in (PENDING|PAID)` 조건만으로 노출되어 세일 주문에도 표시된다. `OrderCancellationService.cancelOrderInternal`은 `products.stock_quantity`를 복원(증가)하지만 세일 주문은 일반 재고를 차감하지 않았으므로 잘못된 인플레가 발생하고, `flash_sale_items.remaining_quantity`도 복원되지 않는다. Phase 23-5+ 에서 (a) 세일 주문 식별 + 취소 차단 또는 (b) 정상 보상 경로(remaining 증가 + products 인플레 방지)로 분기 처리 필요. 도메인 의존성 규칙(`order ↔ flashsale` 양방향 금지)을 우회하기 위해 이벤트/어댑터 패턴 또는 Order 엔티티에 origin 마커 도입 고려.
+6. **세일 주문 취소 정책** ✅ Phase 23-5에서 해소 (커밋 — 본 절 §13-4 참고):
+   `orders.order_origin` 마커(`NORMAL`|`FLASH_SALE`) + `FlashSaleOrderCancelledEvent` 동기 리스너 패턴으로 분기 처리.
+   `OrderCancellationService.cancelOrderInternal`이 origin=FLASH_SALE 주문에 대해 일반 보상(products 복원·포인트·쿠폰·티어)을 모두 우회하고, flashsale 도메인 `FlashSalePurchaseCancellationHandler`가 같은 트랜잭션에서 `flash_sale_items.remaining_quantity`를 +1 복원 + `flash_sale_purchases` 행을 삭제하도록 위임. 양방향 의존성 없음(order는 generic event만 발행, flashsale이 구독).
+
+### 13-4. Phase 23-5 — 세일 주문 취소 보상 경로 (§13-2 #6 해소)
+
+**문제 재진술**: §13-2 #6의 인플레 시나리오는 다음과 같다.
+1. 사용자 A가 플래시 세일에서 1건 구매 → `flash_sale_items.remaining_quantity` -1, `flash_sale_purchases` 행 추가, `orders` 행 추가. **`products.stock_quantity`는 차감하지 않음**(설계상).
+2. A가 `/orders/{id}`에서 취소 클릭 → `OrderCancellationService.cancelOrderInternal`이 모든 OrderItem에 대해 `products.increaseStockAndRollbackSales(remainingQuantity)`를 수행 → `products.stock_quantity`가 차감하지도 않은 만큼 **인플레**됨. `flash_sale_items.remaining_quantity`는 그대로 두고, `flash_sale_purchases` 행도 그대로 → A는 `uk_fsp_user_sale` 때문에 같은 세일에 다시 시도 불가.
+
+**해결 — 마커 + 이벤트 위임 패턴**
+
+| 구성요소 | 역할 |
+|---|---|
+| `OrderOrigin` enum (`NORMAL`/`FLASH_SALE`) | 주문 발행 경로 식별. 컬럼 `orders.order_origin VARCHAR(20) NOT NULL DEFAULT 'NORMAL'`(V24) |
+| `Order.createForFlashSale(...)` | origin 자동 셋업 |
+| `OrderCancellationService.cancelFlashSaleOrder(order)` | 일반 보상 분기를 모두 건너뛰고 `FlashSaleOrderCancelledEvent` 발행 + `order.cancel()` + `addRefundedAmount(finalAmount)` |
+| `FlashSaleOrderCancelledEvent(orderId)` | order 도메인이 발행하는 generic event. 양방향 의존 없음 |
+| `FlashSalePurchaseCancellationHandler` | flashsale 도메인 동기 리스너(`@EventListener` + `@Transactional(MANDATORY)`). 같은 TX 안에서 `restoreAtomic(itemId, 1)` + `flash_sale_purchases` 행 삭제 |
+| `flash_sale_purchases.flash_sale_item_id` | V25 추가. 어떤 아이템을 차감했는지 즉답 가능(MVP는 1세일=1아이템이라 이전 행도 retroactive 채움) |
+| `OrderInvariantValidator.validateFlashSaleOrder` | `order_origin == FLASH_SALE` 체크 추가(저장 전 강검증) |
+
+**왜 동기 리스너인가** — `@TransactionalEventListener(AFTER_COMMIT)`로 비동기 처리하면 cancel 트랜잭션 커밋 후 본 핸들러가 별도 TX로 도는데, 핸들러 실패 시 사용자는 "취소 성공"으로 보지만 `remaining`이 복원 안 되고 `flash_sale_purchases`가 살아있어 1인 1구매 제약이 깨진다. 동기 리스너는 publish 호출 즉시 같은 TX 안에서 실행되므로 atomic 보장이 유지된다(실패 시 cancel TX 자체가 롤백 → 더 안전한 실패 모드).
+
+**검증** — `FlashSaleCancellationIT` 2건:
+1. `cancelFlashSaleOrder_compensatesCorrectly`: 구매 후 취소하면 `products.stock_quantity` 인플레 없음, `remaining_quantity` 정확히 +1 복원, `flash_sale_purchases` 행 삭제, `orders.order_status=CANCELLED`, `refunded_amount=final_amount`, `order_origin=FLASH_SALE` 보존.
+2. `cancelFlashSaleOrder_allowsReentry`: 취소 후 같은 사용자가 같은 세일에 다시 구매 시도 → 정상 성공(UNIQUE 해제).
+
+**도메인 의존성 점검** — `scripts/check-domain-dependencies.sh` PASS. order 도메인은 generic event만 발행하고 flashsale 도메인은 자체 repo만 사용. 양방향 cycle 없음.
 
 ### 13-3. 결정해야 할 사항(합의 전)
 

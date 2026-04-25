@@ -176,6 +176,7 @@ CREATE TABLE orders (
     order_number VARCHAR(50) UNIQUE NOT NULL,
     user_id BIGINT NOT NULL,
     order_status VARCHAR(20) NOT NULL,
+    order_origin VARCHAR(20) NOT NULL DEFAULT 'NORMAL',
     total_amount DECIMAL(15, 2) NOT NULL,
     discount_amount DECIMAL(15, 2) DEFAULT 0 NOT NULL,
     tier_discount_amount DECIMAL(15, 2) DEFAULT 0 NOT NULL,
@@ -202,8 +203,9 @@ CREATE TABLE orders (
     
     CONSTRAINT fk_order_user FOREIGN KEY (user_id) 
         REFERENCES users(user_id),
-    CONSTRAINT chk_order_status CHECK (order_status IN 
+    CONSTRAINT chk_order_status CHECK (order_status IN
         ('PENDING', 'PAID', 'SHIPPED', 'DELIVERED', 'CANCELLED')),
+    CONSTRAINT chk_order_origin CHECK (order_origin IN ('NORMAL', 'FLASH_SALE')),
     CONSTRAINT chk_payment_method CHECK (payment_method IN 
         ('CARD', 'BANK', 'KAKAO', 'NAVER', 'PAYCO')),
     CONSTRAINT chk_amounts CHECK (final_amount >= 0),
@@ -222,6 +224,7 @@ COMMENT ON COLUMN orders.used_points IS '주문 시 사용한 포인트 (1P = 1�
 COMMENT ON COLUMN orders.refunded_amount IS '부분취소/반품/전체취소 누적 환불 금액';
 COMMENT ON COLUMN orders.refunded_points IS '부분취소/반품 누적 환불 포인트 (비례 배분, 초과 환불 방지용)';
 COMMENT ON COLUMN orders.points_settled IS '포인트 정산 완료 여부 (배송 완료 시 TRUE로 전환, 중복 정산 방지)';
+COMMENT ON COLUMN orders.order_origin IS '주문 발행 경로: NORMAL|FLASH_SALE. 취소 보상 분기에 사용';
 
 -- ============================================================================
 -- 8. ORDER_ITEMS (주문 상세) ⭐️ 1억 건 주인공
@@ -597,12 +600,15 @@ COMMENT ON TABLE flash_sale_items IS '세일 대상 상품 및 할당 재고 (CA
 CREATE TABLE flash_sale_purchases (
     flash_sale_purchase_id  BIGSERIAL PRIMARY KEY,
     flash_sale_id           BIGINT    NOT NULL,
+    flash_sale_item_id      BIGINT    NOT NULL,
     user_id                 BIGINT    NOT NULL,
     order_id                BIGINT    NOT NULL,
     purchased_at            TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT fk_fsp_flash_sale FOREIGN KEY (flash_sale_id)
         REFERENCES flash_sales(flash_sale_id),
+    CONSTRAINT fk_fsp_item FOREIGN KEY (flash_sale_item_id)
+        REFERENCES flash_sale_items(flash_sale_item_id),
     CONSTRAINT fk_fsp_user FOREIGN KEY (user_id) REFERENCES users(user_id),
     CONSTRAINT fk_fsp_order FOREIGN KEY (order_id) REFERENCES orders(order_id),
     CONSTRAINT uk_fsp_user_sale UNIQUE (flash_sale_id, user_id)

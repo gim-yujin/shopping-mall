@@ -104,7 +104,7 @@ class FlashSaleCommandServiceTest {
         when(itemRepository.reserveAtomic(eq(100L), eq(1))).thenReturn(1);
         when(orderFactory.create(eq(7L), eq(item), eq(1))).thenReturn(order);
         when(purchaseRepository.save(any(FlashSalePurchase.class)))
-                .thenReturn(FlashSalePurchase.record(10L, 7L, 500L));
+                .thenReturn(FlashSalePurchase.record(10L, 100L, 7L, 500L));
         org.mockito.Mockito.doThrow(new DataIntegrityViolationException("uk_fsp_user_sale"))
                 .when(purchaseRepository).flush();
 
