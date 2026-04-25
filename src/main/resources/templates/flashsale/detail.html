@@ -55,10 +55,11 @@
                     </div>
                     <div>
                         <button th:if="${flashSale.status.name() == 'ACTIVE' and item.remainingApprox > 0}"
-                                type="button" disabled
-                                class="bg-indigo-300 text-white px-6 py-2 rounded cursor-not-allowed"
-                                title="구매 API는 Phase 23-2에서 추가">
-                            구매하기 (준비중)
+                                type="button"
+                                class="flash-sale-purchase-btn bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2 rounded"
+                                th:data-sale-id="${flashSale.flashSaleId}"
+                                th:data-item-id="${item.flashSaleItemId}">
+                            구매하기
                         </button>
                         <span th:if="${flashSale.status.name() == 'SCHEDULED'}"
                               class="inline-block bg-gray-100 text-gray-600 px-4 py-2 rounded">시작 전</span>
@@ -71,6 +72,41 @@
             </div>
         </div>
     </div>
+    <script th:inline="javascript">
+        document.addEventListener('DOMContentLoaded', function () {
+            document.querySelectorAll('.flash-sale-purchase-btn').forEach(function (btn) {
+                btn.addEventListener('click', function () {
+                    var saleId = btn.getAttribute('data-sale-id');
+                    var itemId = btn.getAttribute('data-item-id');
+                    btn.disabled = true;
+                    btn.textContent = '처리 중...';
+                    fetch('/api/v1/flash-sales/' + saleId + '/items/' + itemId + '/purchase', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-Idempotency-Key': (crypto.randomUUID ? crypto.randomUUID()
+                                : Date.now() + '-' + Math.random().toString(36).slice(2))
+                        }
+                    }).then(function (r) {
+                        return r.json().then(function (body) { return { status: r.status, body: body }; });
+                    }).then(function (res) {
+                        if (res.body && res.body.success && res.body.data && res.body.data.orderId) {
+                            window.location.href = '/orders/' + res.body.data.orderId;
+                            return;
+                        }
+                        var msg = (res.body && res.body.error && res.body.error.message) || '구매에 실패했습니다.';
+                        alert(msg);
+                        btn.disabled = false;
+                        btn.textContent = '구매하기';
+                    }).catch(function () {
+                        alert('네트워크 오류가 발생했습니다. 잠시 후 다시 시도해주세요.');
+                        btn.disabled = false;
+                        btn.textContent = '구매하기';
+                    });
+                });
+            });
+        });
+    </script>
 </div>
 </body>
 </html>

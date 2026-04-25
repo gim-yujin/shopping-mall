@@ -552,8 +552,8 @@ T+30min  FlashSaleReconciliationJob 수동 실행 (§8-3)
 
 | Phase | 범위 | 예상 소요 | 종료 기준 |
 |---|---|---|---|
-| 23-1 | 엔티티·스키마·V23·읽기 API(`GET /flash-sales`, 상세) | 1.5일 | `./gradlew test check` PASS, SSR 페이지 렌더 |
-| 23-2 | 구매 API + CAS 예약 + `FLASH_SALE` RateLimit + Idempotency | 2일 | 단위 테스트 PASS, 수동 POST로 성공/sold_out/one_per_user 재현 |
+| 23-1 ✅ | 엔티티·스키마·V23·읽기 API(`GET /flash-sales`, 상세) | 1.5일 | `./gradlew test check` PASS, SSR 페이지 렌더 |
+| 23-2 ✅ | 구매 API + CAS 예약 + `FLASH_SALE` RateLimit + Idempotency | 2일 | 단위 테스트 PASS, 수동 POST로 성공/sold_out/one_per_user 재현 |
 | 23-3 | `FlashSaleConcurrencyIT` + 보상 경로 + Reconciliation 쿼리 | 1.5일 | 오버셀 0 검증 테스트 그린, JaCoCo 60% 유지 |
 | 23-4 | k6 burst 시나리오 + CAS vs 비관적 락 벤치 + 문서화 | 1일 | `load-test-benchmark.md` §11 신규 절에 p95·오버셀·처리량 기록 |
 | 23-5 (선택) | 어드민 CRUD + 상세 대시보드 | 2일 | out of MVP |
@@ -566,6 +566,10 @@ T+30min  FlashSaleReconciliationJob 수동 실행 (§8-3)
 
 - 23-1: `schema.sql`·V23·C2 스크립트 3 파일 정합성 확인.
 - 23-2: `RateLimitPlan` 확장 + `RateLimitPlanResolver` 매핑 + `rest-api-guide.md` 갱신.
+  - **구현 시 확정된 규약 차이**: 설계안 `/api/v1/flash-sales/{id}/purchase` 대신
+    실제 경로는 `/api/v1/flash-sales/{id}/items/{itemId}/purchase` 로 `items/{itemId}` 세그먼트를 추가했다.
+    한 세일에 여러 아이템이 달리는 구조(`flash_sale_items`)에서 어느 아이템을 구매하는지 URL이 드러내야 하기 때문.
+    수량은 `1` 고정(MVP), per_user_limit은 `uk_fsp_user_sale`로 강제되어 무시.
 - 23-3: `OrderInvariantValidator`에 세일 주문 규칙 추가 + `order-invariant-checks.md` 갱신.
 - 23-4: `load-test-benchmark.md`에 §11절(플래시 세일) 신규 추가, 수치·결론·재현 스크립트 포함.
 

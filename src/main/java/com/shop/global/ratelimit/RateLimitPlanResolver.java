@@ -55,6 +55,14 @@ public final class RateLimitPlanResolver {
             return RateLimitPlan.COUPON;
         }
 
+        // ── 플래시 세일 구매 ───────────────────────
+        // 경로 형태: POST /api/v1/flash-sales/{id}/items/{itemId}/purchase
+        if ("POST".equals(method)
+                && uri.startsWith("/api/v1/flash-sales/")
+                && uri.endsWith("/purchase")) {
+            return RateLimitPlan.FLASH_SALE;
+        }
+
         // ── REST API 읽기/쓰기 분류 ─────────────────
         if (uri.startsWith("/api/")) {
             return isReadMethod(method) ? RateLimitPlan.READ : RateLimitPlan.WRITE;

@@ -140,6 +140,29 @@ public class Order {
 
     protected Order() {}
 
+    /**
+     * [Phase 23-2] 플래시 세일 전용 최소 주문 팩토리.
+     *
+     * <p>장바구니·쿠폰·포인트·티어 할인·배송비 계산을 모두 건너뛰고
+     * 단일 상품을 할인가(sale_price) 그대로 주문으로 기록한다.
+     * 배송비 0, 할인 0, 적립 0, PaymentMethod는 CARD 고정.
+     * 배송 정보는 placeholder로 주문 상세 페이지에서 보충하는 구조
+     * (Phase 23-3 이후 개선 여지).</p>
+     */
+    public static Order createForFlashSale(String orderNumber, Long userId,
+                                            BigDecimal totalAmount, String paymentMethod) {
+        Order o = new Order(orderNumber, userId, totalAmount,
+                BigDecimal.ZERO, BigDecimal.ZERO, BigDecimal.ZERO,
+                BigDecimal.ZERO, totalAmount,
+                BigDecimal.ZERO, 0,
+                0,
+                paymentMethod,
+                "(플래시 세일 주문 — 배송 정보 미입력)",
+                "(플래시 세일)", "(플래시 세일)");
+        o.markPaid();
+        return o;
+    }
+
     public Order(String orderNumber, Long userId, BigDecimal totalAmount, BigDecimal discountAmount,
                  BigDecimal tierDiscountAmount, BigDecimal couponDiscountAmount,
                  BigDecimal shippingFee, BigDecimal finalAmount,

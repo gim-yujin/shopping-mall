@@ -1010,6 +1010,93 @@ POST /api/v1/admin/inventory/{productId}/adjust
 
 ---
 
+## 플래시 세일 (Flash Sale)
+
+### 진행/예정 세일 목록 조회 (공개)
+
+`GET /api/v1/flash-sales`
+
+진행중(`ACTIVE`) + 24시간 내 예정(`SCHEDULED`) 세일을 각 세일별 상품 리스트와 함께 반환한다.
+응답은 `flashSaleActiveList` 캐시(TTL 1s)를 통해 서빙된다.
+
+**응답 예시**
+```json
+{
+  "success": true,
+  "data": [
+    {
+      "flashSaleId": 1,
+      "title": "오전 특가",
+      "status": "ACTIVE",
+      "startTime": "2026-04-25T10:00:00",
+      "endTime": "2026-04-25T12:00:00",
+      "items": [
+        {
+          "flashSaleItemId": 10,
+          "productId": 100,
+          "productName": "테스트 상품",
+          "salePrice": 19900,
+          "originalPrice": 39900,
+          "remainingApprox": 47,
+          "allocatedQuantity": 100,
+          "perUserLimit": 1
+        }
+      ]
+    }
+  ]
+}
+```
+
+### 세일 상세 조회 (공개)
+
+`GET /api/v1/flash-sales/{flashSaleId}`
+
+특정 세일의 상품·설명·남은 수량(근사치)을 반환한다. 응답은 `flashSaleMeta` 캐시(TTL 200ms)를 통해 서빙된다.
+정확한 재고 확정 판정은 구매 시 CAS에서 수행하므로, 이 응답의 `remainingApprox`는 표시 전용이다.
+
+### 플래시 세일 구매 (인증 필요)
+
+`POST /api/v1/flash-sales/{flashSaleId}/items/{flashSaleItemId}/purchase`
+
+선착순 CAS 예약 기반 단건 구매 엔드포인트.
+`X-Idempotency-Key` 헤더가 **필수**다. 헤더가 없으면 400을 반환한다.
+RateLimit 플랜은 `FLASH_SALE`(분당 3회)이 적용된다.
+
+**요청 헤더**
+
+| 헤더 | 필수 | 설명 |
+|---|---|---|
+| `X-Idempotency-Key` | O | UUID 형식 문자열. 동일 키 재시도는 최초 응답을 재사용한다. |
+
+**성공 응답 (201)**
+```json
+{
+  "success": true,
+  "data": {
+    "orderId": 12345,
+    "orderNumber": "20260425103012345-ABC123DEF456",
+    "flashSaleItemId": 10,
+    "productName": "테스트 상품",
+    "salePrice": 19900,
+    "quantity": 1,
+    "totalAmount": 19900
+  }
+}
+```
+
+**에러 코드**
+
+| HTTP | code | 의미 |
+|---|---|---|
+| 400 | `WINDOW_CLOSED` | 세일이 진행 중이 아님(시작 전·종료 후·취소) |
+| 400 | `Missing request header 'X-Idempotency-Key'` | 멱등성 키 헤더 누락 |
+| 401 | `UNAUTHORIZED` | 인증되지 않음 |
+| 404 | `RESOURCE_NOT_FOUND` | 존재하지 않는 세일/아이템 |
+| 409 | `SOLD_OUT` | CAS 예약 실패 — 재고 소진 |
+| 409 | `ONE_PER_USER` | 동일 사용자가 이미 해당 세일에서 구매함 |
+| 409 | `IDEMPOTENCY_PROCESSING` | 동일 키로 이전 요청이 처리 중 |
+| 429 | `RATE_LIMIT_EXCEEDED` | 분당 3회 토큰 고갈 |
+
 ## 엔드포인트 요약
 
 | 메서드 | 경로 | 인증 | 멱등성 키 | 설명 |
@@ -1029,6 +1116,9 @@ POST /api/v1/admin/inventory/{productId}/adjust
 | POST | `/api/v1/orders/{id}/partial-cancel` | O | 지원 | 부분 취소 |
 | POST | `/api/v1/orders/{id}/return` | O | - | 반품 신청 |
 | POST | `/api/v1/coupons/issue/{couponId}` | O | 지원 | 쿠폰 발급 |
+| GET | `/api/v1/flash-sales` | - | - | 진행/예정 플래시 세일 목록 |
+| GET | `/api/v1/flash-sales/{id}` | - | - | 플래시 세일 상세 조회 |
+| POST | `/api/v1/flash-sales/{id}/items/{itemId}/purchase` | O | 필수 | 플래시 세일 구매 |
 | GET | `/api/v1/wishlist` | O | - | 위시리스트 조회 |
 | POST | `/api/v1/wishlist/toggle` | O | - | 위시리스트 토글 |
 | GET | `/api/v1/products/{id}/reviews` | - | - | 상품 리뷰 목록 |

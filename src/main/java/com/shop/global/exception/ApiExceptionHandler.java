@@ -1,5 +1,7 @@
 package com.shop.global.exception;
 
+import com.shop.domain.flashsale.exception.DuplicateFlashSalePurchaseException;
+import com.shop.domain.flashsale.exception.FlashSaleSoldOutException;
 import com.shop.global.dto.ApiResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -40,6 +42,15 @@ public class ApiExceptionHandler {
     public ResponseEntity<ApiResponse<Void>> handleNotFound(ResourceNotFoundException e) {
         log.warn("API Resource not found: {}", e.getMessage());
         return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(ApiResponse.error(e.getCode(), e.getMessage()));
+    }
+
+    // [Phase 23-2] 플래시 세일 충돌 상태(소진/중복 구매)는 HTTP 409로 응답한다.
+    // BusinessException.class 핸들러보다 먼저 매칭되도록 구체 타입 핸들러로 선언한다.
+    @ExceptionHandler({FlashSaleSoldOutException.class, DuplicateFlashSalePurchaseException.class})
+    public ResponseEntity<ApiResponse<Void>> handleFlashSaleConflict(BusinessException e) {
+        log.warn("API Flash sale conflict [{}]: {}", e.getCode(), e.getMessage());
+        return ResponseEntity.status(HttpStatus.CONFLICT)
                 .body(ApiResponse.error(e.getCode(), e.getMessage()));
     }
 
