@@ -52,3 +52,56 @@ ALTER TABLE orders VALIDATE CONSTRAINT chk_discount_breakdown;
 ALTER TABLE orders VALIDATE CONSTRAINT chk_refunded_amount_limit;
 ALTER TABLE orders VALIDATE CONSTRAINT chk_refunded_points_limit;
 ```
+
+## [Phase 23-3] 플래시 세일 주문 정합성 점검
+
+플래시 세일 주문은 일반 주문 경로(쿠폰·포인트·티어할인·배송비)를 모두 우회하므로
+다른 검증 규칙이 적용된다. 애플리케이션 레벨에서는 `OrderInvariantValidator.validateFlashSaleOrder(...)`
+가 저장 전 검증을 수행하지만, 운영 점검을 위한 SQL은 다음과 같다.
+
+### 점검 1 — 세일 주문 메타 일치
+세일 주문(`flash_sale_purchases.order_id`)이 다음 조건을 모두 만족하는지 확인한다.
+
+```sql
+SELECT o.order_id, o.order_number, o.total_amount, o.discount_amount,
+       o.coupon_discount_amount, o.tier_discount_amount,
+       o.shipping_fee, o.used_points, o.earned_points_snapshot
+FROM orders o
+JOIN flash_sale_purchases fsp ON fsp.order_id = o.order_id
+WHERE  o.discount_amount        <> 0
+   OR  o.coupon_discount_amount <> 0
+   OR  o.tier_discount_amount   <> 0
+   OR  o.shipping_fee           <> 0
+   OR  o.used_points            <> 0
+   OR  o.earned_points_snapshot <> 0;
+```
+
+0행이면 OK. 1행 이상이면 일반 주문 경로가 잘못 호출되었거나 데이터가 수동으로 변경된 것이다.
+
+### 점검 2 — 재고 vs 성공 건수 일치 (§8-3 정합성)
+세일 종료 후 (allocated − remaining)이 성공 구매 건수와 일치하는지 확인한다.
+
+```sql
+SELECT fsi.flash_sale_item_id,
+       fsi.allocated_quantity - fsi.remaining_quantity AS sold,
+       (SELECT COUNT(*) FROM flash_sale_purchases fsp
+         WHERE fsp.flash_sale_id = fsi.flash_sale_id) AS purchases
+FROM flash_sale_items fsi
+WHERE (fsi.allocated_quantity - fsi.remaining_quantity)
+   <> (SELECT COUNT(*) FROM flash_sale_purchases fsp
+        WHERE fsp.flash_sale_id = fsi.flash_sale_id);
+```
+
+0행이면 정합성 OK. 0행이 아니면 보상 경로(`restoreAtomic`)가 동작하지 않았거나 직접 SQL 변경이 있었다.
+
+### 점검 3 — 1인 1구매 강제
+DB UNIQUE(`uk_fsp_user_sale`)가 활성 상태인지 점검한다.
+
+```sql
+SELECT flash_sale_id, user_id, COUNT(*) AS dup
+FROM flash_sale_purchases
+GROUP BY flash_sale_id, user_id
+HAVING COUNT(*) > 1;
+```
+
+0행이 정상. 1행 이상은 UNIQUE 제약이 누락된 환경(스키마 드리프트)을 의미한다.

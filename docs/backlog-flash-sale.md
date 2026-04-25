@@ -554,7 +554,7 @@ T+30min  FlashSaleReconciliationJob 수동 실행 (§8-3)
 |---|---|---|---|
 | 23-1 ✅ | 엔티티·스키마·V23·읽기 API(`GET /flash-sales`, 상세) | 1.5일 | `./gradlew test check` PASS, SSR 페이지 렌더 |
 | 23-2 ✅ | 구매 API + CAS 예약 + `FLASH_SALE` RateLimit + Idempotency | 2일 | 단위 테스트 PASS, 수동 POST로 성공/sold_out/one_per_user 재현 |
-| 23-3 | `FlashSaleConcurrencyIT` + 보상 경로 + Reconciliation 쿼리 | 1.5일 | 오버셀 0 검증 테스트 그린, JaCoCo 60% 유지 |
+| 23-3 ✅ | `FlashSaleConcurrencyIT` + 보상 경로 + Reconciliation 쿼리 | 1.5일 | 오버셀 0 검증 테스트 그린, JaCoCo 60% 유지 |
 | 23-4 | k6 burst 시나리오 + CAS vs 비관적 락 벤치 + 문서화 | 1일 | `load-test-benchmark.md` §11 신규 절에 p95·오버셀·처리량 기록 |
 | 23-5 (선택) | 어드민 CRUD + 상세 대시보드 | 2일 | out of MVP |
 
@@ -570,7 +570,9 @@ T+30min  FlashSaleReconciliationJob 수동 실행 (§8-3)
     실제 경로는 `/api/v1/flash-sales/{id}/items/{itemId}/purchase` 로 `items/{itemId}` 세그먼트를 추가했다.
     한 세일에 여러 아이템이 달리는 구조(`flash_sale_items`)에서 어느 아이템을 구매하는지 URL이 드러내야 하기 때문.
     수량은 `1` 고정(MVP), per_user_limit은 `uk_fsp_user_sale`로 강제되어 무시.
-- 23-3: `OrderInvariantValidator`에 세일 주문 규칙 추가 + `order-invariant-checks.md` 갱신.
+- 23-3: `OrderInvariantValidator.validateFlashSaleOrder(...)` 추가(쿠폰/포인트/배송비 0, 단일 라인, 금액 정합) +
+  `FlashSaleOrderFactory`가 저장 전에 호출 + `order-invariant-checks.md`에 §"플래시 세일 주문 정합성 점검"
+  3종 SQL 추가 + `FlashSaleConcurrencyIT` 3종(오버셀 0 / 1인1구매 보상 / 정합성 항등식).
 - 23-4: `load-test-benchmark.md`에 §11절(플래시 세일) 신규 추가, 수치·결론·재현 스크립트 포함.
 
 ---
@@ -596,6 +598,7 @@ T+30min  FlashSaleReconciliationJob 수동 실행 (§8-3)
 3. **서킷 브레이커**: HikariCP 포화 시 구매 경로만 차단하고 조회 경로는 살리는 로컬 브레이커(Resilience4j)의 필요성 — Phase 23-4 벤치 결과로 판단.
 4. **결제 게이트웨이 연동**: 외부 호출이 개입하면 §8-2의 "트랜잭션 경계 == 예약 경계" 전제가 무너진다. 외부 결제는 별도 TX로 분리하고 `restoreAtomic` 보상 + Outbox 이벤트로 재설계 필요.
 5. **세일 CRUD 어드민 UI**: Phase 23-5. 현재는 DB 직접 INSERT로 충분.
+6. **세일 주문 취소 정책**: 현재 `/orders/{id}` 상세 페이지의 "주문 취소" 버튼은 `orderStatusCode in (PENDING|PAID)` 조건만으로 노출되어 세일 주문에도 표시된다. `OrderCancellationService.cancelOrderInternal`은 `products.stock_quantity`를 복원(증가)하지만 세일 주문은 일반 재고를 차감하지 않았으므로 잘못된 인플레가 발생하고, `flash_sale_items.remaining_quantity`도 복원되지 않는다. Phase 23-5+ 에서 (a) 세일 주문 식별 + 취소 차단 또는 (b) 정상 보상 경로(remaining 증가 + products 인플레 방지)로 분기 처리 필요. 도메인 의존성 규칙(`order ↔ flashsale` 양방향 금지)을 우회하기 위해 이벤트/어댑터 패턴 또는 Order 엔티티에 origin 마커 도입 고려.
 
 ### 13-3. 결정해야 할 사항(합의 전)
 

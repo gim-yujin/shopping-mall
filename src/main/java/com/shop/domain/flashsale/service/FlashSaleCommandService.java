@@ -28,12 +28,16 @@ import java.time.LocalDateTime;
  *   <li><b>L4 CAS</b>: {@code reserveAtomic} 단일 시도 — 0 반환 시 {@code SOLD_OUT}</li>
  *   <li>주문 발행: {@link FlashSaleOrderFactory}가 최소 Order + 단일 OrderItem 저장</li>
  *   <li>감사 로그: {@code FlashSalePurchase} 저장 & 즉시 flush</li>
- *   <li><b>L5 UNIQUE</b>: {@code uk_fsp_user_sale} 위반 시 보상 복구 후 {@code ONE_PER_USER}</li>
+ *   <li><b>L5 UNIQUE</b>: {@code uk_fsp_user_sale} 위반 시 {@code ONE_PER_USER}</li>
  * </ol>
  *
- * <p>CAS 재시도는 하지 않는다(선착순 공정성 보존). 예약 후 UNIQUE 위반 외 모든 예외는
- * 트랜잭션 롤백에 맡기고, UNIQUE 위반만 즉시 {@code restoreAtomic}으로 보상한다
- * (즉시 flush가 일어났을 수 있어 명시적 복구가 안전망으로 동작).</p>
+ * <p>CAS 재시도는 하지 않는다(선착순 공정성 보존). UNIQUE 위반 시 보상은 {@code @Transactional}
+ * 롤백에만 맡긴다. 명시적 {@code restoreAtomic} 호출은 사용하지 않는데, Hibernate 세션이
+ * {@link org.springframework.dao.DataIntegrityViolationException} 이후
+ * "rollback-only / don't flush after exception" 상태로 전이하기 때문이다 — 같은 세션으로
+ * 추가 JPQL UPDATE를 발행하면 {@code AssertionFailure}가 터지면서 오히려 정합성을 해친다.
+ * Phase 23-3 IT(`FlashSaleConcurrencyIT.sameUser_onePerUser_compensatesRemaining`)가
+ * 트랜잭션 롤백만으로 remaining_quantity가 정확히 복원되는지를 검증한다.</p>
  */
 @Service
 public class FlashSaleCommandService {
@@ -78,7 +82,8 @@ public class FlashSaleCommandService {
                     flashSaleId, flashSaleItemId, userId, order.getOrderId());
             return FlashSalePurchaseResponse.of(order, item, FIXED_QUANTITY);
         } catch (DataIntegrityViolationException e) {
-            itemRepository.restoreAtomic(flashSaleItemId, FIXED_QUANTITY);
+            // 보상은 @Transactional 롤백이 처리한다. Hibernate 세션이 이미
+            // rollback-only로 전이했으므로 명시적 JPQL UPDATE(restoreAtomic)는 호출하지 않는다.
             log.info("event=flash_sale_purchase_duplicate sale_id={} user_id={}", flashSaleId, userId);
             throw new DuplicateFlashSalePurchaseException(flashSaleId, userId);
         }

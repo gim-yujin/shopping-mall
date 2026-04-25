@@ -4,6 +4,7 @@ import com.shop.domain.flashsale.entity.FlashSaleItem;
 import com.shop.domain.order.entity.Order;
 import com.shop.domain.order.entity.OrderItem;
 import com.shop.domain.order.repository.OrderRepository;
+import com.shop.domain.order.validation.OrderInvariantValidator;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
@@ -30,9 +31,12 @@ public class FlashSaleOrderFactory {
     private static final String PAYMENT_METHOD_CARD = "CARD";
 
     private final OrderRepository orderRepository;
+    private final OrderInvariantValidator invariantValidator;
 
-    public FlashSaleOrderFactory(OrderRepository orderRepository) {
+    public FlashSaleOrderFactory(OrderRepository orderRepository,
+                                 OrderInvariantValidator invariantValidator) {
         this.orderRepository = orderRepository;
+        this.invariantValidator = invariantValidator;
     }
 
     public Order create(Long userId, FlashSaleItem item, int qty) {
@@ -48,6 +52,7 @@ public class FlashSaleOrderFactory {
                 total);
         order.addItem(line);
 
+        invariantValidator.validateFlashSaleOrder(order);
         return orderRepository.save(order);
     }
 

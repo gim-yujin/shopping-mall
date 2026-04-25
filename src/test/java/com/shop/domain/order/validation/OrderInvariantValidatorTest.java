@@ -1,12 +1,14 @@
 package com.shop.domain.order.validation;
 
 import com.shop.domain.order.entity.Order;
+import com.shop.domain.order.entity.OrderItem;
 import com.shop.global.exception.BusinessException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
@@ -132,5 +134,89 @@ class OrderInvariantValidatorTest {
                 .isInstanceOf(BusinessException.class)
                 .hasFieldOrPropertyWithValue("code", "ORDER_INVARIANT_VIOLATION")
                 .hasMessageContaining("환불 포인트 불변식 위반");
+    }
+
+    // ── [Phase 23-3] 플래시 세일 주문 불변식 ──────────────────────
+
+    private Order createValidFlashSaleOrderMock() {
+        Order order = mock(Order.class);
+        OrderItem line = mock(OrderItem.class);
+        when(line.getUnitPrice()).thenReturn(new BigDecimal("19900"));
+        when(line.getQuantity()).thenReturn(1);
+        when(line.getSubtotal()).thenReturn(new BigDecimal("19900"));
+        when(order.getItems()).thenReturn(List.of(line));
+        when(order.getDiscountAmount()).thenReturn(BigDecimal.ZERO);
+        when(order.getTierDiscountAmount()).thenReturn(BigDecimal.ZERO);
+        when(order.getCouponDiscountAmount()).thenReturn(BigDecimal.ZERO);
+        when(order.getShippingFee()).thenReturn(BigDecimal.ZERO);
+        when(order.getUsedPoints()).thenReturn(0);
+        when(order.getEarnedPointsSnapshot()).thenReturn(0);
+        when(order.getTotalAmount()).thenReturn(new BigDecimal("19900"));
+        when(order.getFinalAmount()).thenReturn(new BigDecimal("19900"));
+        return order;
+    }
+
+    @Test
+    @DisplayName("플래시 세일 정상 주문 → 예외 없음")
+    void validateFlashSaleOrder_valid_passes() {
+        Order order = createValidFlashSaleOrderMock();
+        assertThatCode(() -> validator.validateFlashSaleOrder(order)).doesNotThrowAnyException();
+    }
+
+    @Test
+    @DisplayName("플래시 세일 주문 라인이 0 또는 2개 이상이면 예외")
+    void validateFlashSaleOrder_wrongLineCount_throws() {
+        Order zero = createValidFlashSaleOrderMock();
+        when(zero.getItems()).thenReturn(List.of());
+        assertThatThrownBy(() -> validator.validateFlashSaleOrder(zero))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("code", "FLASH_SALE_INVARIANT_VIOLATION")
+                .hasMessageContaining("정확히 1개");
+    }
+
+    @Test
+    @DisplayName("플래시 세일 주문에 쿠폰 할인이 들어가면 예외")
+    void validateFlashSaleOrder_couponDiscount_throws() {
+        Order order = createValidFlashSaleOrderMock();
+        when(order.getCouponDiscountAmount()).thenReturn(new BigDecimal("1000"));
+        assertThatThrownBy(() -> validator.validateFlashSaleOrder(order))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("code", "FLASH_SALE_INVARIANT_VIOLATION")
+                .hasMessageContaining("coupon_discount_amount");
+    }
+
+    @Test
+    @DisplayName("플래시 세일 주문에 사용 포인트가 있으면 예외")
+    void validateFlashSaleOrder_usedPoints_throws() {
+        Order order = createValidFlashSaleOrderMock();
+        when(order.getUsedPoints()).thenReturn(500);
+        assertThatThrownBy(() -> validator.validateFlashSaleOrder(order))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("code", "FLASH_SALE_INVARIANT_VIOLATION")
+                .hasMessageContaining("used_points");
+    }
+
+    @Test
+    @DisplayName("플래시 세일 line.subtotal != unit × qty → 예외")
+    void validateFlashSaleOrder_subtotalMismatch_throws() {
+        Order order = createValidFlashSaleOrderMock();
+        OrderItem line = order.getItems().get(0);
+        when(line.getQuantity()).thenReturn(2);
+        // subtotal=19900인데 unit*qty=39800이므로 불일치
+        assertThatThrownBy(() -> validator.validateFlashSaleOrder(order))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("code", "FLASH_SALE_INVARIANT_VIOLATION")
+                .hasMessageContaining("subtotal");
+    }
+
+    @Test
+    @DisplayName("플래시 세일 totalAmount != line subtotal → 예외")
+    void validateFlashSaleOrder_totalMismatch_throws() {
+        Order order = createValidFlashSaleOrderMock();
+        when(order.getTotalAmount()).thenReturn(new BigDecimal("9900"));
+        assertThatThrownBy(() -> validator.validateFlashSaleOrder(order))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("code", "FLASH_SALE_INVARIANT_VIOLATION")
+                .hasMessageContaining("total_amount");
     }
 }

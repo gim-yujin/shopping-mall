@@ -35,7 +35,6 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
-import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -93,8 +92,8 @@ class FlashSaleCommandServiceTest {
     }
 
     @Test
-    @DisplayName("중복 구매(UNIQUE 위반) 시 restoreAtomic을 호출하고 DuplicateFlashSalePurchaseException을 던진다")
-    void purchase_uniqueViolation_triggersRestore() {
+    @DisplayName("중복 구매(UNIQUE 위반) 시 DuplicateFlashSalePurchaseException을 던지고 restoreAtomic은 호출하지 않는다")
+    void purchase_uniqueViolation_throwsDuplicateAndSkipsExplicitRestore() {
         FlashSaleItem item = activeItem(100L, 10L, 50);
         Order order = mock(500L, "2026-04-25-ABC", new BigDecimal("19900"));
         when(itemRepository.findByItemAndSale(eq(100L), eq(10L))).thenReturn(Optional.of(item));
@@ -108,7 +107,9 @@ class FlashSaleCommandServiceTest {
         assertThatThrownBy(() -> commandService.purchase(10L, 100L, 7L))
                 .isInstanceOf(DuplicateFlashSalePurchaseException.class);
 
-        verify(itemRepository, times(1)).restoreAtomic(eq(100L), eq(1));
+        // Phase 23-3: Hibernate 세션이 rollback-only로 전이했으므로 명시적 보상은 하지 않는다.
+        // remaining_quantity 복원은 @Transactional 롤백이 책임진다.
+        verify(itemRepository, never()).restoreAtomic(anyLong(), anyInt());
     }
 
     @Test
