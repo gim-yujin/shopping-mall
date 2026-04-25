@@ -1,0 +1,37 @@
+{
+  "run_id": "fs_pess_run2",
+  "base_url": "http://localhost:8080",
+  "vus": 200,
+  "sale_id": "1",
+  "item_id": "1",
+  "counts": {
+    "success": 100,
+    "soldout": 100,
+    "duplicate": 0,
+    "ratelimit": 0,
+    "window": 0,
+    "auth_fail": 0,
+    "server_err": 0,
+    "other": 0,
+    "login_fail": 0
+  },
+  "purchase": {
+    "avg": 366.455,
+    "med": 447,
+    "p90": 480.1,
+    "p95": 498.04999999999995,
+    "p99": 504.01,
+    "max": 506
+  },
+  "http": {
+    "reqs_total": 800,
+    "rps": 15.45775636796131,
+    "failed": 0.125,
+    "duration_p95": 464.2053764,
+    "duration_p99": 494.14741741999995
+  },
+  "iter_duration": {
+    "avg": 366.6375312849999,
+    "p95": 497.9590467
+  }
+}

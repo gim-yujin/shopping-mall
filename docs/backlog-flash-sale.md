@@ -555,7 +555,7 @@ T+30min  FlashSaleReconciliationJob 수동 실행 (§8-3)
 | 23-1 ✅ | 엔티티·스키마·V23·읽기 API(`GET /flash-sales`, 상세) | 1.5일 | `./gradlew test check` PASS, SSR 페이지 렌더 |
 | 23-2 ✅ | 구매 API + CAS 예약 + `FLASH_SALE` RateLimit + Idempotency | 2일 | 단위 테스트 PASS, 수동 POST로 성공/sold_out/one_per_user 재현 |
 | 23-3 ✅ | `FlashSaleConcurrencyIT` + 보상 경로 + Reconciliation 쿼리 | 1.5일 | 오버셀 0 검증 테스트 그린, JaCoCo 60% 유지 |
-| 23-4 | k6 burst 시나리오 + CAS vs 비관적 락 벤치 + 문서화 | 1일 | `load-test-benchmark.md` §11 신규 절에 p95·오버셀·처리량 기록 |
+| 23-4 ✅ | k6 burst 시나리오 + CAS vs 비관적 락 벤치 + 문서화 | 1일 | `load-test-benchmark.md` §11 신규 절에 p95·오버셀·처리량 기록 |
 | 23-5 (선택) | 어드민 CRUD + 상세 대시보드 | 2일 | out of MVP |
 
 **총 MVP 예상**: 5~6일. Phase 23-5 제외.
@@ -573,7 +573,11 @@ T+30min  FlashSaleReconciliationJob 수동 실행 (§8-3)
 - 23-3: `OrderInvariantValidator.validateFlashSaleOrder(...)` 추가(쿠폰/포인트/배송비 0, 단일 라인, 금액 정합) +
   `FlashSaleOrderFactory`가 저장 전에 호출 + `order-invariant-checks.md`에 §"플래시 세일 주문 정합성 점검"
   3종 SQL 추가 + `FlashSaleConcurrencyIT` 3종(오버셀 0 / 1인1구매 보상 / 정합성 항등식).
-- 23-4: `load-test-benchmark.md`에 §11절(플래시 세일) 신규 추가, 수치·결론·재현 스크립트 포함.
+- 23-4: `load-test-benchmark.md`에 §11절(플래시 세일) 신규 추가 — 200 VU burst·재고 100·동일 코드 경로에서
+  CAS vs 비관적 락 비교, p95 416ms vs 472ms(+13%), 양 전략 모두 오버셀 0, server_err 0,
+  `EntityManager.refresh(PESSIMISTIC_WRITE)`로 1차 캐시 우회 함정 해소까지 기록.
+  스크립트(`load-test/flash-sale-burst.js`, `setup-flash-sale.sql`, `reset-flash-sale.sql`)와
+  `flash-sale.lock-strategy` 환경변수 스위치로 재현 가능.
 
 ---
 

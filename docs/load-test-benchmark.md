@@ -375,3 +375,133 @@ LABEL=phase21_on_cold CONCURRENCY=30 BASE_URL=http://localhost:8080 \
 PGPASSWORD=4321 psql -U postgres -d shopping_mall_loadtest_db \
   -c "SELECT relname, seq_scan, idx_scan FROM pg_stat_user_tables WHERE relname='products';"
 ```
+
+---
+
+## 11) Phase 23-4 — 플래시 세일 burst (CAS vs 비관적 락)
+
+`docs/backlog-flash-sale.md` §5-5에서 "비관적 락이 아닌 CAS를 쓰는 이유"를 정성적으로 기술했다. 본 절은 **동일 부하·동일 코드 경로**에서 두 변종을 측정해 그 결론을 실측 수치로 검증한다.
+
+### 11-1. 환경
+
+| 항목 | 값 |
+|:-----|:---|
+| 앱 | Spring Boot 3.4.1, Java 21(가상 스레드 ON), 단일 인스턴스 |
+| DB | PostgreSQL 16, `shopping_mall_loadtest_db` (200 loaduser + product_id=1 stock 충분) |
+| HikariCP | maximum-pool-size 17, lock_timeout 5s |
+| k6 | v1.7.1 |
+| 시나리오 | `load-test/flash-sale-burst.js` — 200 VU per-vu-iterations 1회, setup()에서 200 사용자 사전 로그인 |
+| 시드 | `flash_sale_items.allocated_quantity=100`, `remaining_quantity=100` (재고 100) |
+| 전략 스위치 | `FLASH_SALE_LOCK_STRATEGY={cas,pessimistic}` 환경변수로 같은 코드 경로의 dispatcher만 변경 |
+
+설계 의도: **VU 200 > 재고 100** 이라 200건 시도 중 정확히 100건이 성공해야 한다. CAS는 `UPDATE … WHERE remaining >= qty`의 결과 0으로 즉시 sold_out을 판정하고, 비관적은 `SELECT … FOR UPDATE` 후 dirty checking으로 차감한다. 두 변종 모두 동일한 `@Transactional` 경계 안에서 동작한다(`FlashSaleCommandService.purchase`).
+
+### 11-2. 측정 절차
+
+각 전략별 다음을 수행했다.
+
+1. 환경변수만 다르게 두고 앱을 fresh 재시작(이전 JIT/HikariCP 풀 워밍 상태가 한 쪽만 살아 있어 비교가 왜곡되지 않도록 보장).
+2. `psql -f load-test/reset-flash-sale.sql` — `flash_sale_purchases` 정리, 관련 `orders`/`order_items` 삭제, `remaining_quantity=allocated_quantity` 복구, `idempotency_records` (resource_type=FLASH_SALE) 정리, status 재설정.
+3. `k6 run load-test/flash-sale-burst.js` — 200 VU 동시 1회 시도.
+4. 단계 2~3을 **연속 3회 반복**, 첫 런(cold)을 워밍업으로 폐기하고 2~3번째 런 중앙값을 데이터 포인트로 사용.
+
+### 11-3. 응답 분포 — 양 전략 모두 오버셀 0
+
+3회 모두 200건의 응답 분포가 동일했다.
+
+| 응답 분류 | CAS run1/2/3 | Pessimistic run1/2/3 |
+|:---------|:--:|:--:|
+| ✅ success | 100 / 100 / 100 | 100 / 100 / 100 |
+| 🟠 sold_out | 100 / 100 / 100 | 100 / 100 / 100 |
+| 🟡 duplicate | 0 / 0 / 0 | 0 / 0 / 0 |
+| 🔐 auth_fail | 0 / 0 / 0 | 0 / 0 / 0 |
+| 💥 server_err | 0 / 0 / 0 | 0 / 0 / 0 |
+
+DB 사후 검증(직접 쿼리):
+
+```sql
+SELECT i.allocated_quantity, i.remaining_quantity,
+       (i.allocated_quantity - i.remaining_quantity) AS sold,
+       (SELECT count(*) FROM flash_sale_purchases p
+          WHERE p.flash_sale_id = i.flash_sale_id) AS purchases
+  FROM flash_sale_items i
+  JOIN flash_sales s ON s.flash_sale_id = i.flash_sale_id
+ WHERE s.title = 'LOADTEST_FLASH';
+-- allocated_quantity | remaining_quantity | sold | purchases
+--                100 |                  0 |  100 |       100
+```
+
+§8-3의 항등식 `(allocated − remaining) == COUNT(purchases) == fs_success Counter` 가 두 전략 모두에서 정확히 100으로 일치 — **오버셀 0** 이 실측으로 확증.
+
+### 11-4. 응답 시간 비교
+
+워밍업(run1) 폐기 후 run2/run3의 중앙값.
+
+| 지표 | A. CAS | B. Pessimistic | Δ (B-A) | Δ% |
+|:-----|:--:|:--:|:--:|:--:|
+| `purchase_duration` p95 | **416 ms** | 472 ms | +56 ms | **+13.5%** |
+| `purchase_duration` p99 | 426 ms | 480 ms | +54 ms | +12.7% |
+| `purchase_duration` max | 430 ms | 482 ms | +52 ms | +12.1% |
+| `http_req_duration` p95 | 392 ms | 445 ms | +53 ms | +13.5% |
+| burst wall time (200 iter 완료) | ~430 ms | ~482 ms | +52 ms | +12.1% |
+| 추정 burst RPS | **~465 req/s** | ~415 req/s | −50 | −10.8% |
+
+원시 데이터:
+
+| run | CAS p95/p99/max (ms) | Pessimistic p95/p99/max (ms) |
+|:----|:--|:--|
+| run1 (cold, 폐기) | 766 / 782 / 786 | 812 / 814 / 816 |
+| run2 | 463 / 473 / 477 | 498 / 504 / 506 |
+| run3 | 369 / 380 / 384 | 447 / 455 / 458 |
+
+아티팩트: `load-test/test_phase23_4/flash-sale-result.fs_{cas,pess}_run{1,2,3}.json`.
+
+### 11-5. 해석 — 왜 일관되게 ~13% 느린가
+
+200 VU 동시 시도 중 동일 row(`flash_sale_item_id=1`)에 대한 경합이 직렬화되는 구간이 두 전략의 차이를 만든다.
+
+- **CAS (`UPDATE … WHERE remaining >= 1`)**: PostgreSQL이 UPDATE 실행 시점에 row 락을 획득하고, **단일 SQL 명령 종료(수 ms)와 동시에 락을 해제**. 트랜잭션의 나머지(주문 생성/감사 로그/flush)는 락 보유 없이 진행되며, commit이 단지 lazy WAL flush + lock release를 finalize한다. 행 잠금은 거의 SQL 한 줄 시간만큼만 점유.
+- **Pessimistic (`SELECT … FOR UPDATE`)**: row 락을 acquire한 시점부터 트랜잭션 commit까지 락을 보유. 우리 경로의 commit 직전 작업(`FlashSaleOrderFactory.create` + `FlashSalePurchase` save + `flush()`)이 모두 락 점유 시간에 포함됨 → **다음 대기자의 큐잉 시간이 늘어난다**.
+
+p95 +13% / max +12% 의 절대량(50 ms 수준)이 곧 "비관적 락이 평균적으로 점유하는 추가 락 시간"의 누적 영향으로 해석된다. **본 워크로드(트랜잭션 짧음, qty=1, 단일 row 경합)에서도** 일관되게 차이가 관측되며, 트랜잭션 본문이 더 긴 워크로드(외부 결제 호출, 다중 라인 등)에선 격차가 더 벌어질 것으로 예상된다.
+
+또한 비관적 락 변종 구현 중 한 가지 함정을 발견하고 본 Phase에 반영했다 — 진입부 `findByItemAndSale`이 entity를 1차 캐시에 올린 뒤 별도의 `@Lock(PESSIMISTIC_WRITE) @Query` 메서드를 호출하면, Hibernate가 캐시된 stale 인스턴스를 반환해 commit 시점 dirty checking이 `ObjectOptimisticLockingFailureException`으로 떨어진다. 첫 번째 측정에서 200건 중 180건 5xx로 드러났고, `EntityManager.refresh(item, PESSIMISTIC_WRITE)`로 캐시를 우회해 lock 획득과 동시에 row를 다시 로드하도록 고친 뒤 server_err 0 으로 안정화됐다(`FlashSaleCommandService#reservePessimistic`).
+
+### 11-6. 결론
+
+| 항목 | CAS | Pessimistic |
+|:-----|:----:|:----:|
+| 정합성 (오버셀 0, allocated−remaining==purchases==success) | ✅ | ✅ |
+| p95 / p99 / max | 더 빠름 | +13% / +13% / +12% |
+| burst RPS (200 시도 wall time) | ~465/s | ~415/s |
+| 코드 복잡도 | 단일 UPDATE | 별도 refresh + setter + version 충돌 처리 필요 |
+
+§5-5 설계 결정("CAS 1회 UPDATE는 PostgreSQL Row Lock을 UPDATE 실행 시간 동안만 보유")이 정확히 동작함을 본 측정으로 검증. **단일 인스턴스 + 200 VU + 재고 100** 워크로드에서 비관적 락은 정합성을 보장하지만, 같은 정합성을 더 짧은 락 보유 시간으로 달성하는 CAS가 항상 더 좋은 latency·throughput을 낸다.
+
+§13-2 #3(서킷 브레이커)의 판단 근거: 본 200 VU burst는 HikariCP 17 풀에서 5xx 0건으로 처리되었고, 응답 시간도 가장 느린 비관락 변종에서도 max 506ms < `connection-timeout=5s`로 풀 포화 신호가 없다. 현재 설계 규모(단일 세일·재고 100·200 VU)에서는 Resilience4j 도입의 ROI가 낮음을 보여주며, 도입은 더 큰 burst(1k+ VU) 측정에서 풀 포화가 관측될 때로 미룬다.
+
+### 11-7. 재현 절차
+
+```bash
+# 0) 1회 준비 — loaduser 200명 + flash sale 시드
+PGPASSWORD=4321 psql -U postgres -h localhost -d shopping_mall_loadtest_db \
+  -f load-test/setup-loadtest.sql
+PGPASSWORD=4321 psql -U postgres -h localhost -d shopping_mall_loadtest_db \
+  -f load-test/setup-flash-sale.sql
+
+# 1) CAS 측정 (3회)
+SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:5432/shopping_mall_loadtest_db \
+SPRING_DATASOURCE_USERNAME=postgres SPRING_DATASOURCE_PASSWORD=4321 \
+FLASH_SALE_LOCK_STRATEGY=cas ./gradlew bootRun &  # 별도 터미널에서
+
+for i in 1 2 3; do
+  PGPASSWORD=4321 psql -U postgres -h localhost -d shopping_mall_loadtest_db \
+    -f load-test/reset-flash-sale.sql -q > /dev/null
+  k6 run --quiet --env RUN_ID=fs_cas_run${i} --env VUS=200 \
+    load-test/flash-sale-burst.js
+done
+
+# 앱 종료 후 비관적 락 변종으로 재기동
+FLASH_SALE_LOCK_STRATEGY=pessimistic ./gradlew bootRun &
+# 위 for 루프를 RUN_ID=fs_pess_run${i} 로 동일 반복
+```

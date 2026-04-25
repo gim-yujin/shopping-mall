@@ -14,11 +14,11 @@ import com.shop.domain.flashsale.repository.FlashSalePurchaseRepository;
 import com.shop.domain.order.entity.Order;
 import com.shop.domain.product.entity.Product;
 import com.shop.global.exception.ResourceNotFoundException;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -50,8 +50,12 @@ class FlashSaleCommandServiceTest {
     @Mock
     private FlashSaleOrderFactory orderFactory;
 
-    @InjectMocks
     private FlashSaleCommandService commandService;
+
+    @BeforeEach
+    void setUp() {
+        commandService = new FlashSaleCommandService(itemRepository, purchaseRepository, orderFactory, "cas");
+    }
 
     @Test
     @DisplayName("CAS 성공 시 주문을 생성하고 구매 기록을 저장한 뒤 응답을 반환한다")

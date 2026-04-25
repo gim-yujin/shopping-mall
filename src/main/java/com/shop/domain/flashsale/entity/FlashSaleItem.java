@@ -68,6 +68,21 @@ public class FlashSaleItem {
         return remainingQuantity <= 0;
     }
 
+    /**
+     * [Phase 23-4] 비관적 락 경로(`flash-sale.lock-strategy=pessimistic`)에서
+     * SELECT FOR UPDATE로 행을 잡은 뒤 수량을 차감할 때만 사용한다.
+     * CAS 경로는 이 메서드를 거치지 않고 JPQL UPDATE로 직접 감분한다.
+     */
+    public void decreaseRemainingForLockedReserve(int qty) {
+        if (qty <= 0) {
+            throw new IllegalArgumentException("차감 수량은 1 이상이어야 합니다.");
+        }
+        if (this.remainingQuantity < qty) {
+            throw new IllegalStateException("남은 수량 부족: remaining=" + this.remainingQuantity);
+        }
+        this.remainingQuantity -= qty;
+    }
+
     public Long getFlashSaleItemId() { return flashSaleItemId; }
     public FlashSale getFlashSale() { return flashSale; }
     public Product getProduct() { return product; }
