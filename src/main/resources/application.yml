@@ -301,6 +301,18 @@ resilience4j:
         maxAttempts: 2
         waitDuration: 500ms
 
+# ── springdoc-openapi (Swagger UI) ────────────────────────────────────
+# /swagger-ui.html 진입점. /v3/api-docs 에서 OpenAPI 3 JSON 노출.
+# 컨트롤러/DTO 어노테이션 없이 자동 추론으로 동작하며, 인증은 OpenApiConfig의
+# cookieAuth(JSESSIONID) SecurityScheme으로 표현된다.
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    operations-sorter: method
+    tags-sorter: alpha
+
 logging:
   level:
     root: INFO

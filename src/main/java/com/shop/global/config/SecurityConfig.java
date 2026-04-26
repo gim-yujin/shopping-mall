@@ -119,6 +119,9 @@ public class SecurityConfig {
                 .requestMatchers("/", "/products/**", "/categories/**", "/search/**",
                     "/auth/**", "/static/**", "/css/**", "/images/**", "/error/**",
                     "/flash-sales", "/flash-sales/**").permitAll()
+                .requestMatchers("/swagger-ui.html", "/swagger-ui/**",
+                    "/v3/api-docs", "/v3/api-docs/**",
+                    "/swagger-resources/**").permitAll()  // springdoc-openapi 문서/UI
                 .requestMatchers("/actuator/health").permitAll()      // 로드밸런서 헬스체크용
                 .requestMatchers("/actuator/prometheus").permitAll()  // Prometheus 스크래핑 허용
                 .requestMatchers("/actuator/**").hasRole("ADMIN")     // 나머지 Actuator는 관리자만

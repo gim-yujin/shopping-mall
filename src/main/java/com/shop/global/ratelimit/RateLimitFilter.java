@@ -99,7 +99,10 @@ public class RateLimitFilter extends OncePerRequestFilter {
                 || uri.startsWith("/images/")
                 || uri.startsWith("/js/")
                 || uri.startsWith("/favicon")
-                || uri.startsWith("/actuator/");
+                || uri.startsWith("/actuator/")
+                || uri.startsWith("/swagger-ui")
+                || uri.startsWith("/v3/api-docs")
+                || uri.startsWith("/swagger-resources");
     }
 
     /**

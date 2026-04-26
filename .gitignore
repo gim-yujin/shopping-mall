@@ -12,6 +12,8 @@ optimization/
 *.log
 # Local env files
 .env
+# 로컬 개발 프로파일 (DB 자격증명 포함)
+src/main/resources/application-local.yml
 # Local compressed files
 *.zip
 # WAL data directory (runtime-generated, not source)

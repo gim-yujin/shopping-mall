@@ -203,9 +203,9 @@ CREATE DATABASE shopping_mall_db;
 
 ### 6-4. 애플리케이션 설정
 
-애플리케이션은 DB 접속 정보를 파일 기본값으로 갖지 않습니다. 아래 환경변수를 설정하세요.
+애플리케이션은 DB 접속 정보를 파일 기본값으로 갖지 않습니다. 아래 두 방식 중 하나를 선택하세요.
 
-가장 간단한 방법은 저장소 루트의 `.env.example`을 기반으로 로컬 `.env`를 준비한 뒤 셸에 로드하는 것입니다.
+**방식 A — 환경변수 주입(`.env`)**: 운영/CI와 동일 규약.
 
 ```bash
 cp .env.example .env
@@ -215,6 +215,19 @@ source .env
 set +a
 ```
 
+**방식 B — 로컬 프로파일(`application-local.yml`, 권장)**: `./gradlew bootRun` 시 환경변수가 없으면 자동으로 `local` 프로파일이 활성화됩니다. `src/main/resources/application-local.yml`(gitignored)에 DB 자격증명을 한 번 적어두면 매번 환경변수를 주입할 필요가 없습니다.
+
+```yaml
+# src/main/resources/application-local.yml
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/shopping_mall_db
+    username: postgres
+    password: 4321
+```
+
+운영 환경에서는 이 파일이 없고 환경변수가 우선 적용됩니다. CLI 오버라이드: `./gradlew bootRun --args='--spring.profiles.active=prod'`.
+
 ### 6-5. 실행
 
 ```bash
@@ -222,7 +235,11 @@ set +a
 ```
 
 - 앱 접속: http://localhost:8080
+- API 문서(Swagger UI): http://localhost:8080/swagger-ui.html
+- OpenAPI JSON: http://localhost:8080/v3/api-docs
 - 메트릭: http://localhost:8080/actuator/prometheus
+
+> Swagger UI의 'Try it out'은 세션 쿠키(JSESSIONID) 기반 인증을 사용합니다. 같은 브라우저에서 `/auth/login`으로 폼 로그인한 뒤 사용하세요. 자세한 내용은 [`docs/rest-api-guide.md`](docs/rest-api-guide.md) 참조.
 
 빠른 점검:
 

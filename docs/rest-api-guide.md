@@ -5,6 +5,28 @@
 
 ---
 
+## 인터랙티브 문서 (Swagger UI)
+
+springdoc-openapi 기반 OpenAPI 3 명세가 자동 생성되어 다음 경로로 노출된다.
+
+| 경로 | 설명 |
+|---|---|
+| `/swagger-ui.html` | Swagger UI (브라우저 인터랙티브 문서) |
+| `/v3/api-docs` | OpenAPI 3 JSON 명세 |
+
+### 'Try it out' 사용법
+
+보호된 엔드포인트는 세션 쿠키(JSESSIONID) 기반 인증을 사용한다(이 프로젝트의 `/api/**`는 JWT가 아닌 세션 인증).
+
+1. 같은 브라우저에서 `/auth/login` 으로 폼 로그인 → JSESSIONID 쿠키 발급.
+2. `/swagger-ui.html` 진입 → 보호 엔드포인트의 'Try it out' 호출이 자동으로 쿠키를 동반.
+
+OpenAPI에는 `cookieAuth`(APIKEY in cookie, name=`JSESSIONID`) SecurityScheme이 전역 적용되어 있다. 공개 엔드포인트(`/api/v1/products`, `/api/v1/search/**`, `/api/v1/users/signup`, `/api/v1/flash-sales` GET)는 인증 없이 호출 가능하다.
+
+> 컨트롤러/DTO에 `@Tag`/`@Operation`/`@Schema` 등 명시 어노테이션은 추가하지 않고 springdoc 자동 추론에 위임한다(최소 부트스트랩 정책). 추후 점진 보강 가능.
+
+---
+
 ## 공통 사항
 
 ### 기본 URL
