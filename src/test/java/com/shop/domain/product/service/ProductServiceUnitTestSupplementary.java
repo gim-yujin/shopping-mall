@@ -83,7 +83,8 @@ class ProductServiceUnitTestSupplementary {
                 new BigDecimal("10000"), new BigDecimal("12000"),
                 new BigDecimal("4.50"), 25, 100,
                 1, "전자기기",
-                java.sql.Timestamp.valueOf(LocalDateTime.now()), "/images/thumb.jpg", true
+                java.sql.Timestamp.valueOf(LocalDateTime.now()), "/images/thumb.jpg", true,
+                50
         };
     }
 

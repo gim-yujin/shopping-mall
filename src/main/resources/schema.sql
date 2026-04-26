@@ -846,7 +846,8 @@ SELECT
          LIMIT 1),
         '/images/product-placeholder.svg'
     ) AS thumbnail_url,
-    p.is_active
+    p.is_active,
+    p.stock_quantity
 FROM products p
 JOIN categories c ON c.category_id = p.category_id;
 

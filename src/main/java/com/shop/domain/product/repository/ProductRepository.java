@@ -128,7 +128,7 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
      * 기존 findBestSellers()의 JPQL JOIN FETCH를 대체한다.
      */
     @Query(value = "SELECT product_id, product_name, price, original_price, rating_avg, "
-            + "review_count, sales_count, category_id, category_name, created_at, thumbnail_url, is_active "
+            + "review_count, sales_count, category_id, category_name, created_at, thumbnail_url, is_active, stock_quantity "
             + "FROM v_product_list WHERE is_active = true ORDER BY sales_count DESC",
             countQuery = "SELECT COUNT(*) FROM products WHERE is_active = true",
             nativeQuery = true)
@@ -138,7 +138,7 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
      * [Phase 18] 신상품 목록 — 플랫 프로젝션.
      */
     @Query(value = "SELECT product_id, product_name, price, original_price, rating_avg, "
-            + "review_count, sales_count, category_id, category_name, created_at, thumbnail_url, is_active "
+            + "review_count, sales_count, category_id, category_name, created_at, thumbnail_url, is_active, stock_quantity "
             + "FROM v_product_list WHERE is_active = true ORDER BY created_at DESC",
             countQuery = "SELECT COUNT(*) FROM products WHERE is_active = true",
             nativeQuery = true)
@@ -148,7 +148,7 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
      * [Phase 18] 할인 상품 목록 — 플랫 프로젝션.
      */
     @Query(value = "SELECT product_id, product_name, price, original_price, rating_avg, "
-            + "review_count, sales_count, category_id, category_name, created_at, thumbnail_url, is_active "
+            + "review_count, sales_count, category_id, category_name, created_at, thumbnail_url, is_active, stock_quantity "
             + "FROM v_product_list WHERE is_active = true AND original_price IS NOT NULL AND original_price > price "
             + "ORDER BY (original_price - price) DESC",
             countQuery = "SELECT COUNT(*) FROM products WHERE is_active = true AND original_price IS NOT NULL AND original_price > price",
@@ -168,7 +168,7 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
      * 조건의 count는 정렬/페이지와 무관하므로 모든 조합이 한 개의 캐시 키를 공유한다.</p>
      */
     @Query(value = "SELECT product_id, product_name, price, original_price, rating_avg, "
-            + "review_count, sales_count, category_id, category_name, created_at, thumbnail_url, is_active "
+            + "review_count, sales_count, category_id, category_name, created_at, thumbnail_url, is_active, stock_quantity "
             + "FROM v_product_list WHERE is_active = true",
             nativeQuery = true)
     List<Object[]> findActiveProductsFlatContent(Pageable pageable);
@@ -179,7 +179,7 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
 
     /** [Phase 18/21] 카테고리별 상품 목록 콘텐츠 전용. */
     @Query(value = "SELECT product_id, product_name, price, original_price, rating_avg, "
-            + "review_count, sales_count, category_id, category_name, created_at, thumbnail_url, is_active "
+            + "review_count, sales_count, category_id, category_name, created_at, thumbnail_url, is_active, stock_quantity "
             + "FROM v_product_list WHERE is_active = true AND category_id IN :categoryIds",
             nativeQuery = true)
     List<Object[]> findByCategoryIdsFlatContent(@Param("categoryIds") List<Integer> categoryIds, Pageable pageable);
@@ -194,7 +194,7 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
      * 기존 searchByKeyword()를 대체하여 썸네일을 한 번에 가져온다.
      */
     @Query(value = "SELECT v.product_id, v.product_name, v.price, v.original_price, v.rating_avg, "
-            + "v.review_count, v.sales_count, v.category_id, v.category_name, v.created_at, v.thumbnail_url, v.is_active "
+            + "v.review_count, v.sales_count, v.category_id, v.category_name, v.created_at, v.thumbnail_url, v.is_active, v.stock_quantity "
             + "FROM v_product_list v "
             + "WHERE v.is_active = true AND to_tsvector('simple', v.product_name) @@ plainto_tsquery('simple', :keyword) "
             + "ORDER BY v.sales_count DESC",
@@ -206,7 +206,7 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
      * [Phase 18] 키워드 LIKE 검색 (FTS 폴백) — 플랫 프로젝션.
      */
     @Query(value = "SELECT v.product_id, v.product_name, v.price, v.original_price, v.rating_avg, "
-            + "v.review_count, v.sales_count, v.category_id, v.category_name, v.created_at, v.thumbnail_url, v.is_active "
+            + "v.review_count, v.sales_count, v.category_id, v.category_name, v.created_at, v.thumbnail_url, v.is_active, v.stock_quantity "
             + "FROM v_product_list v "
             + "WHERE v.is_active = true AND LOWER(v.product_name) LIKE LOWER(CONCAT('%', :keyword, '%'))",
             countQuery = "SELECT COUNT(*) FROM products WHERE is_active = true AND LOWER(product_name) LIKE LOWER(CONCAT('%', :keyword, '%'))",

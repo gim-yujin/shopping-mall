@@ -15,9 +15,13 @@
                  Java record의 컴포넌트 접근자 discountPercent()는 Thymeleaf에서
                  ${product.discountPercent}로 접근 가능하다 (Spring Boot 3.x).
                  기존 getDiscountPercent() 호출은 record에 존재하지 않아 SpelEvaluationException 발생. -->
-            <div th:if="${product.discountPercent > 0}"
+            <div th:if="${product.discountPercent > 0 and !product.soldOut()}"
                  class="absolute top-2 left-2 bg-red-500 text-white text-xs font-bold px-2 py-1 rounded">
                 <span th:text="${product.discountPercent + '%'}"></span>
+            </div>
+            <div th:if="${product.soldOut()}"
+                 class="absolute inset-0 bg-black/50 flex items-center justify-center">
+                <span class="bg-gray-900 text-white text-xs font-bold px-3 py-1.5 rounded">품절</span>
             </div>
         </div>
         <div class="p-3">

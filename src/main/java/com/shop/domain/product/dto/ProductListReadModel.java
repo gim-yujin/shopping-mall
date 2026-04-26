@@ -43,8 +43,13 @@ public record ProductListReadModel(
         Integer categoryId,
         String categoryName,
         LocalDateTime createdAt,
-        Boolean isActive
+        Boolean isActive,
+        Integer stockQuantity
 ) {
+    public boolean soldOut() {
+        return stockQuantity != null && stockQuantity <= 0;
+    }
+
     /**
      * 네이티브 SQL 결과(Object[])로부터 읽기 모델을 생성한다.
      *
@@ -72,13 +77,14 @@ public record ProductListReadModel(
                 : null;
         String thumbnailUrl = (String) columns[10];
         Boolean isActive = (Boolean) columns[11];
+        Integer stockQuantity = columns[12] != null ? ((Number) columns[12]).intValue() : null;
 
         int discountPercent = computeDiscountPercent(price, originalPrice);
 
         return new ProductListReadModel(
                 productId, productName, price, originalPrice, discountPercent,
                 ratingAvg, reviewCount, salesCount, thumbnailUrl,
-                categoryId, categoryName, createdAt, isActive
+                categoryId, categoryName, createdAt, isActive, stockQuantity
         );
     }
 

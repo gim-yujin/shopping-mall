@@ -67,7 +67,7 @@ class SearchApiControllerUnitTest {
                 new BigDecimal("15000"), new BigDecimal("20000"), 25,
                 new BigDecimal("4.20"), 10, 50,
                 "/images/product" + productId + ".jpg", 1, "전자기기",
-                LocalDateTime.now(), true
+                LocalDateTime.now(), true, 50
         );
     }
 

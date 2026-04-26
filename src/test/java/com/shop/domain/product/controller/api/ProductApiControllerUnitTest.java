@@ -81,7 +81,7 @@ class ProductApiControllerUnitTest {
                 new BigDecimal("10000"), new BigDecimal("12000"), 16,
                 new BigDecimal("4.50"), 25, 100,
                 "/images/thumb.jpg", 1, "전자기기",
-                LocalDateTime.now(), true
+                LocalDateTime.now(), true, 50
         );
     }
 
