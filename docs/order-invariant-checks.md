@@ -146,3 +146,77 @@ UPDATE flash_sale_items
 DELETE FROM flash_sale_purchases WHERE order_id = :orderId;
 COMMIT;
 ```
+
+## PointHistory ↔ Order 정합성 점검
+
+`point_history` 테이블은 모든 포인트 변동의 단일 진실원이다. 주문 1건의 USE/REFUND/EARN 이력 합산이
+`orders` 테이블의 대응 컬럼과 일치해야 한다. 부분 취소/반품 경로에서는 REFUND 행이 여러 건 발생할 수
+있으므로 운영 점검은 합산 비교가 핵심이다.
+
+### 점검 6 — USE 합 = `orders.used_points`
+주문 시 사용 포인트는 `OrderPostProcessor`에서 단일 USE 행으로 기록된다(usedPoints>0인 경우).
+
+```sql
+SELECT o.order_id, o.order_number, o.used_points,
+       COALESCE(s.use_sum, 0) AS history_use_sum,
+       o.used_points - COALESCE(s.use_sum, 0) AS diff
+FROM orders o
+LEFT JOIN (
+    SELECT reference_id, SUM(amount) AS use_sum
+      FROM point_history
+     WHERE change_type = 'USE' AND reference_type = 'ORDER'
+     GROUP BY reference_id
+) s ON s.reference_id = o.order_id
+WHERE o.used_points <> COALESCE(s.use_sum, 0)
+  AND o.used_points > 0;
+```
+
+0행이 정상. 1행 이상이면 주문 생성 시 USE 행 누락 또는 수동 변경.
+
+### 점검 7 — REFUND 합 = `orders.refunded_points`
+부분 취소(`PARTIAL_CANCEL`), 반품(`RETURN`), 전체 취소(`CANCEL`) 모든 경로의 REFUND 행을 합산한다.
+
+```sql
+SELECT o.order_id, o.order_number, o.refunded_points,
+       COALESCE(s.refund_sum, 0) AS history_refund_sum,
+       o.refunded_points - COALESCE(s.refund_sum, 0) AS diff
+FROM orders o
+LEFT JOIN (
+    SELECT reference_id, SUM(amount) AS refund_sum
+      FROM point_history
+     WHERE change_type = 'REFUND'
+       AND reference_type IN ('CANCEL', 'PARTIAL_CANCEL', 'RETURN')
+     GROUP BY reference_id
+) s ON s.reference_id = o.order_id
+WHERE o.refunded_points <> COALESCE(s.refund_sum, 0);
+```
+
+0행이 정상. 1행 이상이면 부분 취소/반품/전체 취소 트랜잭션이 비원자적으로 실패했거나 수동 변경.
+
+### 점검 8 — EARN 합 = effective earned (DELIVERED & settled)
+배송 완료 후 적립 포인트는 `OrderService.settleEarnedPoints`가 `(finalAmount - refundedAmount) ×
+earnRate`로 계산한 단일 EARN 행으로 기록된다. `points_settled = true`인 주문만 검증 대상.
+
+```sql
+SELECT o.order_id, o.order_number,
+       o.earned_points_snapshot, o.refunded_amount, o.final_amount,
+       COALESCE(s.earn_sum, 0) AS history_earn_sum
+FROM orders o
+LEFT JOIN (
+    SELECT reference_id, SUM(amount) AS earn_sum
+      FROM point_history
+     WHERE change_type = 'EARN' AND reference_type = 'ORDER'
+     GROUP BY reference_id
+) s ON s.reference_id = o.order_id
+WHERE o.points_settled = TRUE
+  AND COALESCE(s.earn_sum, 0) > o.earned_points_snapshot;
+```
+
+EARN 합이 `earned_points_snapshot`(부분 취소 미반영 상한)을 초과하면 정합성 위반.
+정확한 일치 검증은 부분취소 비율 계산이 필요하므로 운영 점검은 상한 초과만 확인한다.
+
+### 운영 가이드
+- 일 배치(예: 새벽 1회)로 점검 6/7 실행. 결과 0행 = OK, 1행 이상 = 알림 + 즉시 조사.
+- 점검 8은 주간 배치로 실행. 부분 취소가 빈번한 주문(`refunded_amount > 0`)은 별도 표본 정밀 검증 권장.
+- `PointHistoryRepository.sumRefundedPointsByOrderId(orderId)` / `sumUsedPointsByOrderId(orderId)`로
+  애플리케이션 단건 점검도 가능. CS 문의 대응 시 사용.
