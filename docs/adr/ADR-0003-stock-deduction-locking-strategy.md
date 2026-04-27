@@ -75,10 +75,69 @@ V3-CAS           High              30      981    100.0%      16.20      73.68  
   - 데드락 방지를 위한 잠금 순서 관리 필요 (productId 오름차순)
 - 후속 작업:
   - [x] V1/V2/V3 전략 벤치마크 구현 및 실행 (`StockDeductionBenchmarkTest`)
+  - [x] burst-extreme 시나리오로 V1 레이턴시 붕괴 곡선 실측 (`StockDeductionBurstBenchmarkTest`)
   - [ ] 주문 생성 흐름 CQRS 쓰기 모델 분리 시 V3(CAS) 전환 재검토
+
+## 한계 조건(Limits)
+
+위 채택 결정은 "정상 트래픽 + 인기 상품의 경합"이라는 전제 위에 있다. 단일 상품에 동시
+요청이 집중되는 *burst-extreme* 상황에서는 V1의 거동이 어떻게 변하는지 별도로 측정해야
+"이 결정이 어디까지 유효한가"가 명확해진다.
+
+### Burst-Extreme 벤치마크 결과
+
+`StockDeductionBurstBenchmarkTest` — 1상품 × {30, 100, 300} 스레드 × 5 ops/thread.
+HikariCP 풀 크기 20, PostgreSQL `lock_timeout = 3s`. 워밍업 1라운드 + 측정 3라운드(중앙값).
+
+```
+Strategy          Threads  Ops/sec  Success%   LockT/O   PoolT/O    P50(ms)    P95(ms)    P99(ms)
+-------------------------------------------------------------------------------------------------------------------
+V1-Pessimistic         30      339    100.0%         0         0      89.30      98.82     100.25
+V1-Pessimistic        100      670    100.0%         0         0     145.52     162.54     165.77
+V1-Pessimistic        300      794    100.0%         0         0     281.78     814.62    1216.51
+V3-CAS                 30     1240    100.0%         0         0      15.61      51.44      84.01
+V3-CAS                100     1228    100.0%         0         0      26.25     208.85     314.23
+V3-CAS                300     1243    100.0%         0         0      43.66     643.33     917.04
+```
+
+### 무엇이 먼저 깨지나
+
+- **V1은 P99 레이턴시가 먼저 무너진다.** 스레드 30→300에서 P99가 100ms → 1217ms로
+  **약 12배** 증가했다. 같은 구간에서 처리량은 339 → 794 ops/sec로 우상향하지만, 이는
+  단일 행에 직렬화된 큐가 길어지면서 *batch 효과*가 나타난 것이지 시스템이 더 잘
+  버틴다는 의미가 아니다. 측정 환경의 `lock_timeout = 3s`를 P99가 추월하는 지점에서
+  V1은 `LockT/O` 실패가 발생하기 시작하며, 그 시점부터 성공률이 100% 미만으로 떨어진다.
+  본 측정에서는 300스레드에서 P99가 1.2s로 임계치(3s)에 약 40%까지 접근했다.
+- **V3는 같은 구간에서 평탄하다.** 처리량은 1240 ops/sec 근처에서 saturate되고, P99는
+  84 → 314 → 917ms로 증가하지만 V1보다 일관되게 낮으며 lock-timeout을 본질적으로
+  유발하지 않는다(행 잠금이 없으므로). pool-timeout은 두 전략 모두 본 측정에서는 발생하지
+  않았다 — 즉 **현 부하 수준에서는 V1이 깨지는 원인은 풀 고갈이 아니라 row-lock 큐의
+  레이턴시 누적**이다.
+
+### 1억 동시 시나리오에 대한 답
+
+동일 상품에 대해 N개 트랜잭션이 동시에 비관적 락을 시도할 때, `SELECT ... FOR UPDATE`는
+(N−1)개를 직렬 큐에 세우고, 이들은 (a) DB의 `lock_timeout` 또는 (b) 애플리케이션의
+HikariCP `connection-timeout` 중 더 빨리 닿는 한계에 부딪힌다. 1억이라는 숫자는 단일 DB
+인스턴스가 처리할 수 있는 단계를 넘어선 가정이지만, 위 벤치마크가 보여주듯 그 *훨씬
+이전*(수백 스레드)에서 이미 V1의 P99는 비선형으로 폭증한다. 따라서 **burst가 일상적인
+경로**는 처음부터 별도 도메인(`com.shop.domain.flashsale`)으로 분리되어 CAS를 운영
+기본값으로 쓰며, **일반 주문 경로**는 burst가 비일상적이라는 전제 위에 비관적 락을
+유지한다. 이는 결정을 *번복*하는 것이 아니라 결정의 *적용 범위*를 명시하는 것이다.
+
+### Hot product가 일반 경로에서 발생했을 때의 처리
+
+만약 일반 상품 중 하나가 burst hot이 된다면(예: 광고/SNS 노출로 트래픽이 단일 상품에
+폭주), 그 상품은 사실상 플래시 세일 후보다. 정답은 *일반 주문의 락 전략을 동적으로
+바꾸는 것*(hybrid lock)이 아니라, **운영 시점에 해당 상품을 플래시 세일로 등록**해
+검증된 5계층 admission control(RateLimit / Status cache / Idempotency / CAS / Order)로
+태우는 것이다. 코드 경로 분기를 두 도메인 모두에 도입하는 것은 *동일한 문제*에 대해
+*두 개의 해법*을 유지하는 비용이 크다.
 
 ## 구현 메모(Implementation Notes)
 
 - 벤치마크 전략 구현: `com.shop.domain.order.service.stock.V1PessimisticLockStockDeduction`, `V2OptimisticRetryStockDeduction`, `V3CasUpdateStockDeduction`
-- 벤치마크 테스트: `StockDeductionBenchmarkTest` (Low/High 경합 × 3 전략, 워밍업 1회 + 측정 3회 중앙값)
+- 벤치마크 테스트:
+  - `StockDeductionBenchmarkTest` — Low(10t/50p) / High(30t/1p) × V1/V2/V3, 워밍업 1회 + 측정 3회 중앙값
+  - `StockDeductionBurstBenchmarkTest` — 1상품 × {30, 100, 300} 스레드, V1/V3 비교, lock-timeout/pool-timeout 분류 (한계 조건 섹션 근거)
 - 프로덕션 경로(`OrderStockProcessor`)는 변경하지 않았다. 전략 컴포넌트는 벤치마크 전용이다.
