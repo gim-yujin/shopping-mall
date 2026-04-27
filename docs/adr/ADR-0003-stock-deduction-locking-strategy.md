@@ -134,10 +134,59 @@ HikariCP `connection-timeout` 중 더 빨리 닿는 한계에 부딪힌다. 1억
 태우는 것이다. 코드 경로 분기를 두 도메인 모두에 도입하는 것은 *동일한 문제*에 대해
 *두 개의 해법*을 유지하는 비용이 크다.
 
+## v2 실험 — Redis 백엔드 (운영 미도입, 학습/측정 전용)
+
+본 결정의 적용 범위 내에서 V1 의 천장이 ~1,200 ops/sec(V3-CAS) 라는 점은 명확하다.
+"그 천장을 어디까지 끌어올릴 수 있는가" 를 직접 측정하기 위해 v2 경로(Redis Lua CAS)
+를 실험적으로 추가했다. **포트폴리오 코드는 v1 그대로**이며 v2 는 `--spring.profiles.active=redis`
+일 때만 빈이 등록되도록 격리되어 있다(@ConditionalOnProperty + @Primary 빈 치환).
+
+### V1 vs V3 vs V4 burst 비교
+
+`RedisStockDeductionBenchmarkTest` — 동일 워크로드(1상품 × {30, 100, 300} 스레드 × 5 ops).
+
+```
+Strategy          Threads   Ops/sec  Success%    P50(ms)    P95(ms)    P99(ms)
+---------------------------------------------------------------------------------------------------------
+V1-Pessimistic         30       384    100.0%      79.27      88.03      88.79
+V1-Pessimistic        100       666    100.0%     148.74     161.45     163.10
+V1-Pessimistic        300       778    100.0%     347.13     761.01    1130.02
+V3-CAS                 30      1228    100.0%      15.44      46.93      70.67
+V3-CAS                100      1252    100.0%      32.25     183.43     256.47
+V3-CAS                300      1265    100.0%      26.92     649.38     962.36
+V4-Redis               30     12771    100.0%       1.88       3.33       3.35
+V4-Redis              100     19705    100.0%       4.76       7.70       7.79
+V4-Redis              300     13627    100.0%      20.53      29.59      31.60
+```
+
+### 관찰
+
+- **처리량**: V4 가 V3 대비 100스레드에서 **약 15.7배** (19,705 vs 1,252 ops/sec).
+  Redis 단일 스레드 + 메모리 기반 Lua 의 우위가 실측으로 드러난다.
+- **레이턴시**: V4 P99 가 300스레드에서 **31.6ms** — V3 의 **962ms** 대비 약 30배 낮고,
+  V1 의 **1,130ms** 대비 약 35배 낮다. row-lock 큐 / 디스크 fsync 가 사라진 효과.
+- **300스레드에서 V4 처리량 dip**(13,627 < 19,705 @ 100): Lettuce 풀(32) 포화 + JVM 스레드
+  컨텍스트 스위칭 비용이 Redis 자체 한계보다 먼저 닿는 것으로 보인다. 본질적 한계는
+  Redis 단일 노드 ~10만 ops/sec, 그보다 한참 위.
+
+### 1억 시나리오에 대한 답 (수정 없음, 강화)
+
+위 한계 조건 섹션의 결론은 그대로다 — burst 일상 경로는 도메인 분리(현재는 `flashsale`),
+일반 주문은 비관적 락 유지. **단지, 만약 이 결정을 뒤집어야 할 만큼 burst 가 일상화
+된다면**, 그때의 후속 단계가 v2 의 Redis 백엔드 도입임을 본 데이터가 입증한다. 운영
+도입에는 (a) DB 양방향 동기 outbox, (b) Redis 장애 폴백, (c) 분산 환경에서 키 sharding
+정책이 추가로 필요하며, 이는 본 ADR 의 범위를 넘어선 별도 결정이다.
+
 ## 구현 메모(Implementation Notes)
 
 - 벤치마크 전략 구현: `com.shop.domain.order.service.stock.V1PessimisticLockStockDeduction`, `V2OptimisticRetryStockDeduction`, `V3CasUpdateStockDeduction`
 - 벤치마크 테스트:
   - `StockDeductionBenchmarkTest` — Low(10t/50p) / High(30t/1p) × V1/V2/V3, 워밍업 1회 + 측정 3회 중앙값
   - `StockDeductionBurstBenchmarkTest` — 1상품 × {30, 100, 300} 스레드, V1/V3 비교, lock-timeout/pool-timeout 분류 (한계 조건 섹션 근거)
+  - `RedisStockDeductionBenchmarkTest` — 위 워크로드에 V4-Redis 추가, Testcontainers redis:7-alpine 사용 (v2 실험 섹션 근거)
+- v2 실험 컴포넌트(Redis 백엔드, 격리 활성화):
+  - `V4RedisStockDeduction` — `StockDeductionStrategy` 의 Redis Lua CAS 구현
+  - `RedisOrderStockProcessor` + `Config` — 일반 주문 swap (`shop.backend=redis`)
+  - `RedisFlashSaleCommandService` + `Config` — 플래시 세일 swap (`flash-sale.backend=redis`)
+  - `global.redis.{RedisConfig, StockKeyResolver, StockPreloader}` — 인프라 빈 (@Profile("redis"))
 - 프로덕션 경로(`OrderStockProcessor`)는 변경하지 않았다. 전략 컴포넌트는 벤치마크 전용이다.

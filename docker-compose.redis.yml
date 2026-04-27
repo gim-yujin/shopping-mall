@@ -1,0 +1,30 @@
+# Redis v2 (실험 경로) 오버레이.
+#
+# 사용 예:
+#   docker compose -f docker-compose.yml -f docker-compose.redis.yml up -d
+#
+# 본 파일은 기존 docker-compose.yml 을 수정하지 않고 Redis 컨테이너만 추가한다.
+# v1 모드에서는 이 overlay 를 빼고 기존 명령(`docker compose up`)을 그대로 쓰면 된다.
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: shopping-mall-redis
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # 앱 컨테이너에 Redis 연결 정보 + redis 프로파일 활성화
+  app:
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: redis
+      SPRING_DATA_REDIS_HOST: redis
+      SPRING_DATA_REDIS_PORT: "6379"

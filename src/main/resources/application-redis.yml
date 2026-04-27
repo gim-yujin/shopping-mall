@@ -1,0 +1,31 @@
+# Redis v2 프로파일 — `--spring.profiles.active=redis` 일 때만 머지된다.
+#
+# 본 파일은 기존 application.yml 을 수정하지 않는다. v1 모드에서는 로딩되지 않으므로
+# Spring Boot 의 RedisAutoConfiguration 이 활성화돼도 LettuceConnectionFactory 는
+# lazy connection 이라 connect 시도조차 하지 않는다.
+
+spring:
+  data:
+    redis:
+      host: ${SPRING_DATA_REDIS_HOST:localhost}
+      port: ${SPRING_DATA_REDIS_PORT:6379}
+      timeout: 1s
+      lettuce:
+        pool:
+          enabled: true
+          max-active: 32
+          max-idle: 16
+          min-idle: 4
+
+# v2 swap 활성화 플래그
+shop:
+  backend: redis           # 일반 주문(OrderStockProcessor) → Redis 경로
+
+flash-sale:
+  # 부모 FlashSaleCommandService 의 검증을 통과시키기 위해 lock-strategy 는 기본값(cas) 유지.
+  # 별도 backend 속성으로 Redis swap 활성화 — @Primary 로 부모 빈을 대체.
+  backend: redis
+
+stock:
+  redis:
+    enabled: true          # 벤치용 V4-Redis 전략 빈 등록

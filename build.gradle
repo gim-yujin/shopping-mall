@@ -73,6 +73,16 @@ dependencies {
     testRuntimeOnly 'net.bytebuddy:byte-buddy:1.17.5'
     testRuntimeOnly 'net.bytebuddy:byte-buddy-agent:1.17.5'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+
+    // ── Redis v2 (실험 경로) ──
+    // 본 프로젝트의 v1 경로는 PostgreSQL 단독을 유지한다.
+    // 아래 의존성은 spring.profiles.active=redis 일 때만 실제로 빈을 등록·로딩한다.
+    // (@ConditionalOnProperty / @Profile("redis") 로 보호) — v1 모드 byte-equivalence 보존.
+    implementation 'org.springframework.boot:spring-boot-starter-data-redis'
+    // Lettuce 커넥션 풀 활성화에 필요 (application-redis.yml 의 lettuce.pool.enabled=true 가 의존)
+    implementation 'org.apache.commons:commons-pool2:2.12.0'
+    testImplementation 'org.testcontainers:testcontainers:1.21.3'
+    testImplementation 'org.testcontainers:junit-jupiter:1.21.3'
 }
 
 checkstyle {
@@ -181,6 +191,10 @@ tasks.named('test') {
     useJUnitPlatform()
     // Java 21 Preview: 테스트 JVM에서도 Structured Concurrency 활성화
     jvmArgs += ['--enable-preview']
+    // Testcontainers 가 docker-java 클라이언트 API 버전을 1.32로 보내 Docker 29+ 서버(min 1.40)와
+    // 충돌하므로, 더 최신 버전으로 명시. v2 Redis 벤치(RedisStockDeductionBenchmarkTest)가 의존.
+    environment 'DOCKER_API_VERSION', '1.45'
+    systemProperty 'api.version', '1.45'
     // JaCoCo 에이전트를 테스트 실행 시 자동 연결하여 커버리지 데이터를 수집한다.
     finalizedBy tasks.named('jacocoTestReport')
 }
