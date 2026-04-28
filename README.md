@@ -142,6 +142,7 @@ Phase 6 기준 최적화(캐시/인덱스/OSIV OFF/`@Async`)가 모두 적용된
 - `docs/search-log-ops-policy.md`: 검색 로그 운영 정책
 - `docs/adr/ADR-0001-tier-criteria-cumulative-total-spent.md`: 등급 산정 기준(누적 `total_spent`) 결정 배경
 - `docs/adr/ADR-0002-point-accrual-on-delivery-and-cancel-policy.md`: 포인트 적립 시점/취소·반품 정산 정책
+- `docs/adr/ADR-0003-stock-deduction-locking-strategy.md`: 재고 차감 락 전략(V1/V3) 결정 + burst-extreme 한계 조건 + v2 Redis 실험
 - `docs/load-test-benchmark.md`: 부하 테스트 최적화 Before/After 비교 (5가지 조건)
 - `docs/query-optimization.md`: N+1 해결 전략 종합 정리
 
@@ -338,5 +339,6 @@ docker compose -f monitoring/docker-compose.monitoring.yml up -d
 - `docs/adr/template.md`: ADR 작성 템플릿
 - `docs/adr/ADR-0001-tier-criteria-cumulative-total-spent.md`: 등급 산정 기준 ADR
 - `docs/adr/ADR-0002-point-accrual-on-delivery-and-cancel-policy.md`: 포인트 정산/취소 정책 ADR
+- `docs/adr/ADR-0003-stock-deduction-locking-strategy.md`: 재고 차감 락 전략 ADR (V1/V3 + v2 Redis 실험)
 - `load-test-analysis.md`, `thymeleaf-optimization-analysis.md`: 성능/최적화 분석 문서
 - `docs/archive/shopmall-phase0-report.md`: 프로젝트 0단계 회고/상세 보고서(아카이브)
