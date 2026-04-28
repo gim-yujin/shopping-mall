@@ -6,6 +6,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.DisabledIfEnvironmentVariable;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -47,10 +48,21 @@ import static org.assertj.core.api.Assertions.assertThat;
  * </ul>
  *
  * <p>결과는 {@code build/reports/benchmark-redis-vs-db.txt} 에 기록된다.</p>
+ *
+ * <h3>CI 비활성화 사유</h3>
+ * <p>{@code @ActiveProfiles("redis")} 로 인해 본 클래스는 다른 어떤 테스트와도 컨텍스트
+ * 캐시 키가 겹치지 않아 별도의 {@link com.zaxxer.hikari.HikariDataSource} 풀(11번째)을
+ * 갖는다. CI 의 PostgreSQL {@code max_connections=100} 환경에서 잔존 idle 커넥션이 누적된
+ * 다른 컨텍스트들과 경합하면 후속 컨텍스트가 schema 초기화 도중
+ * {@code CannotGetJdbcConnectionException} 으로 죽는다(2026-04 CI 사고). 본 테스트는
+ * ADR-0003 의 v2 실험 데이터 수집용이며 v2 는 운영 미도입이라 회귀 검증 가치가 낮으므로,
+ * CI 에서는 스킵하고 로컬에서만 ADR 갱신 시 수동으로 돌린다.</p>
  */
 @SpringBootTest
 @Testcontainers
 @ActiveProfiles("redis")
+@DisabledIfEnvironmentVariable(named = "CI", matches = "true",
+        disabledReason = "ADR-0003 v2 측정 전용; CI 의 PG max_connections=100 한도와 컨텍스트 캐시 경합 회피")
 @SuppressWarnings("PMD.CloseResource")
 class RedisStockDeductionBenchmarkTest {
 

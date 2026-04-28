@@ -18,7 +18,13 @@ spring:
       # minimum-idle=5로 줄이면 idle 총량이 40으로 감소하여 동시 풀 공존이 가능하고,
       # 동시성 테스트(5스레드)도 즉시 커넥션을 확보하여 진정한 경합을 발생시킬 수 있다.
       minimum-idle: 5
-      idle-timeout: 300000
+      # [Phase 24] idle-timeout 5분 → 30초로 단축.
+      # idle-timeout 이 길면 직전 테스트가 max-pool-size(17)까지 끌어올린 커넥션이 5분간
+      # idle 상태로 남아 다른 컨텍스트의 schema 초기화 시 PG max_connections(100)을 압박한다
+      # (2026-04 CI 사고: 11개 컨텍스트 × 누적 idle 17 ≈ 100 + α). 30초로 줄이면 활성
+      # in-use 커넥션은 영향이 없고(in-use 는 idle-timeout 대상이 아님) 직전 부하 완료 후
+      # 30초 내에 minimum-idle(5)로 수축한다.
+      idle-timeout: 30000
       max-lifetime: 600000
       connection-timeout: 5000
       # [Phase 11] 운영과 동일한 커넥션 누수 탐지 활성화.
