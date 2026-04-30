@@ -93,8 +93,19 @@ public class SearchLogWalManager {
      */
     private final boolean syncOnAppend;
 
-    /** 세그먼트 파일명의 고유성을 보장하는 순번 카운터. */
-    private final AtomicLong segmentCounter = new AtomicLong(0);
+    /**
+     * 세그먼트 파일명의 고유성을 보장하는 순번 카운터.
+     *
+     * <p>JVM 단위로 공유되는 static 카운터다. 동일 JVM 내에서 여러 SearchLogWalManager
+     * 인스턴스가 생성되더라도(예: 테스트에서 walManager → newManager 연속 생성) 동일 밀리초
+     * 안에 만들어지는 세그먼트의 파일명이 충돌하지 않도록 한다.</p>
+     *
+     * <p>인스턴스별 카운터로 두면 각 인스턴스가 1부터 시작하기 때문에, 두 인스턴스의
+     * 첫 세그먼트가 같은 밀리초에 만들어질 경우 {@code wal-{T}-1.log}로 동일한 파일명이
+     * 발생하고, 두 번째 인스턴스가 첫 번째의 세그먼트를 자신의 active 파일로 덮어 잡아
+     * recoverAll()에서 active 파일이라는 이유로 복구 대상에서 제외하게 된다.</p>
+     */
+    private static final AtomicLong segmentCounter = new AtomicLong(0);
 
     // ── 메트릭 ──
     private final AtomicLong walBytesWritten = new AtomicLong(0);
