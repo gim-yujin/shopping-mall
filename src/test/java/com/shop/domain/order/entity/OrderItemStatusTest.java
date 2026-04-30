@@ -470,22 +470,4 @@ class OrderItemStatusTest {
             assertThat(item.getRemainingQuantity()).isEqualTo(2);
         }
     }
-
-    @Nested
-    @DisplayName("기존 applyReturn 호환성 (Step 2에서 대체 예정)")
-    class LegacyApplyReturn {
-
-        @Test
-        @DisplayName("applyReturn은 상태를 변경하지 않는다 (기존 동작 유지)")
-        void applyReturn_doesNotChangeStatus() {
-            OrderItem item = createTestItem();
-
-            item.applyReturn(2, new BigDecimal("20000"));
-
-            // applyReturn은 상태 전이 없이 수량/금액만 갱신 (기존 호환)
-            assertThat(item.getStatus()).isEqualTo(OrderItemStatus.NORMAL);
-            assertThat(item.getReturnedQuantity()).isEqualTo(2);
-            assertThat(item.getReturnedAmount()).isEqualByComparingTo(new BigDecimal("20000"));
-        }
-    }
 }

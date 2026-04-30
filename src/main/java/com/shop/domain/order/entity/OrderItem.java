@@ -282,18 +282,6 @@ public class OrderItem {
         }
     }
 
-    /**
-     * 반품 적용 (기존 호환용 — Step 2에서 approveReturn으로 대체 예정).
-     *
-     * <p>현재 PartialCancellationService.requestReturn()이 즉시 환불 시
-     * 이 메서드를 호출한다. Step 2에서 requestReturn을 "신청만" 하도록 변경하면
-     * 이 메서드 호출은 approveReturn으로 대체된다.</p>
-     */
-    public void applyReturn(int quantity, BigDecimal refundAmount) {
-        this.returnedQuantity += quantity;
-        this.returnedAmount = this.returnedAmount.add(refundAmount);
-    }
-
     // ── 내부 헬퍼 ────────────────────────────────────────────
 
     /**

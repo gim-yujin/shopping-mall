@@ -15,7 +15,6 @@ import com.shop.domain.product.entity.Product;
 import com.shop.domain.product.repository.ProductRepository;
 import com.shop.domain.user.entity.User;
 import com.shop.domain.user.repository.UserRepository;
-import com.shop.domain.user.repository.UserTierRepository;
 import com.shop.global.exception.BusinessException;
 import com.shop.global.exception.ResourceNotFoundException;
 import jakarta.persistence.EntityManager;
@@ -65,7 +64,6 @@ class PartialCancellationServiceUnitTest {
     @Mock private ProductRepository productRepository;
     @Mock private ProductInventoryHistoryRepository inventoryHistoryRepository;
     @Mock private UserRepository userRepository;
-    @Mock private UserTierRepository userTierRepository;
     @Mock private PointHistoryRepository pointHistoryRepository;
     // [P0 FIX] 부분취소 경로 전체 CANCELLED 전이 시 쿠폰 복원을 위해 추가
     @Mock private com.shop.domain.coupon.repository.UserCouponRepository userCouponRepository;
@@ -80,7 +78,7 @@ class PartialCancellationServiceUnitTest {
     void setUp() {
         service = new PartialCancellationService(
                 orderRepository, productRepository, inventoryHistoryRepository,
-                userRepository, userTierRepository, pointHistoryRepository,
+                userRepository, pointHistoryRepository,
                 userCouponRepository,
                 entityManager, outboxEventPublisher, orderInvariantValidator,
                 applicationEventPublisher);

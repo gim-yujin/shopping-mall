@@ -15,7 +15,6 @@ import com.shop.domain.product.entity.Product;
 import com.shop.domain.product.repository.ProductRepository;
 import com.shop.domain.user.entity.User;
 import com.shop.domain.user.repository.UserRepository;
-import com.shop.domain.user.repository.UserTierRepository;
 import com.shop.global.event.FlashSaleOrderCancelledEvent;
 import com.shop.global.event.OrderCancelledEvent;
 import com.shop.global.exception.BusinessException;
@@ -47,7 +46,6 @@ public class OrderCancellationService {
     private final UserRepository userRepository;
     private final ProductInventoryHistoryRepository inventoryHistoryRepository;
     private final UserCouponRepository userCouponRepository;
-    private final UserTierRepository userTierRepository;
     private final PointHistoryRepository pointHistoryRepository;
     private final EntityManager entityManager;
     private final OutboxEventPublisher outboxEventPublisher;
@@ -59,7 +57,6 @@ public class OrderCancellationService {
                                      UserRepository userRepository,
                                      ProductInventoryHistoryRepository inventoryHistoryRepository,
                                      UserCouponRepository userCouponRepository,
-                                     UserTierRepository userTierRepository,
                                      PointHistoryRepository pointHistoryRepository,
                                      EntityManager entityManager,
                                      OutboxEventPublisher outboxEventPublisher,
@@ -70,7 +67,6 @@ public class OrderCancellationService {
         this.userRepository = userRepository;
         this.inventoryHistoryRepository = inventoryHistoryRepository;
         this.userCouponRepository = userCouponRepository;
-        this.userTierRepository = userTierRepository;
         this.pointHistoryRepository = pointHistoryRepository;
         this.entityManager = entityManager;
         this.outboxEventPublisher = outboxEventPublisher;

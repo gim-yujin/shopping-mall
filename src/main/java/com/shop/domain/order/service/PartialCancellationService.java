@@ -17,7 +17,6 @@ import com.shop.domain.product.entity.Product;
 import com.shop.domain.product.repository.ProductRepository;
 import com.shop.domain.user.entity.User;
 import com.shop.domain.user.repository.UserRepository;
-import com.shop.domain.user.repository.UserTierRepository;
 import com.shop.global.event.OrderCancelledEvent;
 import com.shop.global.exception.BusinessException;
 import com.shop.global.exception.ResourceNotFoundException;
@@ -64,7 +63,8 @@ import java.util.List;
  * usedPoints를 아이템 비중에 따라 비례 환불하고, PointHistory를 기록한다.</p>
  *
  * <p><b>P0-3 등급 재계산:</b>
- * OrderCancellationService와 동일하게 userTierRepository로 등급을 재계산한다.</p>
+ * OrderCancelledEvent를 발행하여 OrderTierRecalculationService가
+ * AFTER_COMMIT 비동기로 등급을 재계산한다.</p>
  *
  * <p>ADR 참고: docs/adr/ADR-0002-point-accrual-on-delivery-and-cancel-policy.md</p>
  *
@@ -96,7 +96,6 @@ public class PartialCancellationService {
     private final ProductRepository productRepository;
     private final ProductInventoryHistoryRepository inventoryHistoryRepository;
     private final UserRepository userRepository;
-    private final UserTierRepository userTierRepository;
     private final PointHistoryRepository pointHistoryRepository;
     private final UserCouponRepository userCouponRepository;
     private final EntityManager entityManager;
@@ -108,7 +107,6 @@ public class PartialCancellationService {
                                       ProductRepository productRepository,
                                       ProductInventoryHistoryRepository inventoryHistoryRepository,
                                       UserRepository userRepository,
-                                      UserTierRepository userTierRepository,
                                       PointHistoryRepository pointHistoryRepository,
                                       UserCouponRepository userCouponRepository,
                                       EntityManager entityManager,
@@ -119,7 +117,6 @@ public class PartialCancellationService {
         this.productRepository = productRepository;
         this.inventoryHistoryRepository = inventoryHistoryRepository;
         this.userRepository = userRepository;
-        this.userTierRepository = userTierRepository;
         this.pointHistoryRepository = pointHistoryRepository;
         this.userCouponRepository = userCouponRepository;
         this.entityManager = entityManager;
@@ -222,9 +219,7 @@ public class PartialCancellationService {
      *
      * <p><b>applyRefund와 item.approveReturn의 호출 순서:</b>
      * applyRefund를 먼저 호출하여 재고/환불/포인트를 처리한 후,
-     * item.approveReturn으로 상태를 전이한다. applyRefund 내부에서
-     * RETURN 사유일 때 item.applyReturn을 호출하지 않도록 변경하고,
-     * 대신 item.approveReturn이 returnedQuantity/returnedAmount를 갱신한다.</p>
+     * item.approveReturn으로 상태를 전이하며 returnedQuantity/returnedAmount를 갱신한다.</p>
      *
      * @param orderId     주문 ID
      * @param orderItemId 주문상품 ID
@@ -299,13 +294,9 @@ public class PartialCancellationService {
      * Order(이미 잠금) → Product → User.
      * 기존 코드는 User → Product 순서로 잠가 교차 데드락 위험이 있었다.</p>
      *
-     * <h3>Step 2 변경: RETURN 사유일 때 OrderItem 갱신 분리</h3>
-     * <p>기존에는 applyRefund 내부에서 item.applyReturn()을 호출하여
-     * returnedQuantity/returnedAmount를 갱신했다.
-     * Step 2에서는 반품 승인 시 applyRefund 호출 후 별도로 item.approveReturn()을
-     * 호출하여 상태 전이와 수량/금액 확정을 수행한다.
-     * 따라서 RETURN 사유일 때는 applyRefund에서 아이템 수량/금액 갱신과
-     * Order 환불 금액 갱신을 건너뛴다.</p>
+     * <p>RETURN 사유일 때는 호출부(approveReturn)가 item.approveReturn()으로
+     * returnedQuantity/returnedAmount/order.refundedAmount를 갱신하므로,
+     * 이 메서드는 PARTIAL_CANCEL 사유일 때만 OrderItem/Order 금액을 갱신한다.</p>
      */
     private void applyRefund(Long userId, Order order, OrderItem item,
                              int quantity, BigDecimal refundAmount, int pointRefund,

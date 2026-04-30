@@ -14,7 +14,6 @@ import com.shop.domain.product.entity.Product;
 import com.shop.domain.product.repository.ProductRepository;
 import com.shop.domain.user.entity.User;
 import com.shop.domain.user.repository.UserRepository;
-import com.shop.domain.user.repository.UserTierRepository;
 import com.shop.global.exception.ResourceNotFoundException;
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.BeforeEach;
@@ -47,7 +46,6 @@ class OrderCancellationServiceUnitTest {
     @Mock private UserRepository userRepository;
     @Mock private ProductInventoryHistoryRepository inventoryHistoryRepository;
     @Mock private UserCouponRepository userCouponRepository;
-    @Mock private UserTierRepository userTierRepository;
     @Mock private PointHistoryRepository pointHistoryRepository;
     @Mock private EntityManager entityManager;
     @Mock private OutboxEventPublisher outboxEventPublisher;
@@ -61,7 +59,7 @@ class OrderCancellationServiceUnitTest {
         cancellationService = new OrderCancellationService(
                 orderRepository, productRepository, userRepository,
                 inventoryHistoryRepository, userCouponRepository,
-                userTierRepository, pointHistoryRepository, entityManager,
+                pointHistoryRepository, entityManager,
                 outboxEventPublisher, orderInvariantValidator, applicationEventPublisher);
     }
 
@@ -132,6 +130,6 @@ class OrderCancellationServiceUnitTest {
         verify(userRepository, never()).findByIdWithLockAndTier(any());
         verify(userCouponRepository, never()).findByOrderId(any());
         verify(order, never()).cancel();
-        verifyNoInteractions(inventoryHistoryRepository, userTierRepository, pointHistoryRepository, entityManager, outboxEventPublisher, orderInvariantValidator);
+        verifyNoInteractions(inventoryHistoryRepository, pointHistoryRepository, entityManager, outboxEventPublisher, orderInvariantValidator);
     }
 }
