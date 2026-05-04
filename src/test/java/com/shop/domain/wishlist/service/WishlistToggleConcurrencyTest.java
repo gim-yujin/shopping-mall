@@ -1,14 +1,22 @@
 package com.shop.domain.wishlist.service;
 
 import com.shop.testsupport.TestDataFactory;
-import org.junit.jupiter.api.*;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.TestPropertySource;
 
-import java.util.*;
-import java.util.concurrent.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -19,7 +27,7 @@ import static org.assertj.core.api.Assertions.assertThat;
  * toggleWishlist는 exists → delete 또는 exists → insert 패턴 (TOCTOU)
  *
  * 시나리오: 같은 사용자가 같은 상품에 대해 10회 동시 토글
- * 위험: 
+ * 위험:
  *   10개 모두 "존재하지 않음" 읽기 → 10개 모두 INSERT 시도
  *   UNIQUE 제약(uk_wishlist_user_product)이 있으므로 1개만 성공하고 9개는 예외
  *   하지만 예외 처리가 없으므로 사용자에게 500 에러 노출

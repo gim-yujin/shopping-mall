@@ -8,7 +8,10 @@ import com.shop.global.dto.ApiResponse;
 import com.shop.global.dto.PageResponse;
 import com.shop.global.security.SecurityUtil;
 import org.springframework.data.domain.PageRequest;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.RequestParam;
 
 /**
  * 포인트 REST API 컨트롤러.

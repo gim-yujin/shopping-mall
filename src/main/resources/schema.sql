@@ -34,7 +34,7 @@ CREATE TABLE user_tiers (
     free_shipping_threshold DECIMAL(10, 2),
     description TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    
+
     CONSTRAINT chk_tier_level CHECK (tier_level > 0),
     CONSTRAINT chk_discount_rate CHECK (discount_rate >= 0 AND discount_rate <= 100),
     CONSTRAINT chk_point_rate CHECK (point_earn_rate >= 0)
@@ -62,8 +62,8 @@ CREATE TABLE users (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
     last_login_at TIMESTAMP,
-    
-    CONSTRAINT fk_users_tier FOREIGN KEY (tier_id) 
+
+    CONSTRAINT fk_users_tier FOREIGN KEY (tier_id)
         REFERENCES user_tiers(tier_id),
     CONSTRAINT chk_total_spent CHECK (total_spent >= 0),
     CONSTRAINT chk_point_balance CHECK (point_balance >= 0),
@@ -87,12 +87,12 @@ CREATE TABLE user_tier_history (
     to_tier_id INT NOT NULL,
     changed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
     reason VARCHAR(100),
-    
-    CONSTRAINT fk_tier_history_user FOREIGN KEY (user_id) 
+
+    CONSTRAINT fk_tier_history_user FOREIGN KEY (user_id)
         REFERENCES users(user_id) ON DELETE CASCADE,
-    CONSTRAINT fk_tier_history_from FOREIGN KEY (from_tier_id) 
+    CONSTRAINT fk_tier_history_from FOREIGN KEY (from_tier_id)
         REFERENCES user_tiers(tier_id),
-    CONSTRAINT fk_tier_history_to FOREIGN KEY (to_tier_id) 
+    CONSTRAINT fk_tier_history_to FOREIGN KEY (to_tier_id)
         REFERENCES user_tiers(tier_id)
 );
 
@@ -110,8 +110,8 @@ CREATE TABLE categories (
     display_order INT DEFAULT 0 NOT NULL,
     is_active BOOLEAN DEFAULT TRUE NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    
-    CONSTRAINT fk_category_parent FOREIGN KEY (parent_category_id) 
+
+    CONSTRAINT fk_category_parent FOREIGN KEY (parent_category_id)
         REFERENCES categories(category_id),
     CONSTRAINT chk_category_level CHECK (level BETWEEN 1 AND 3)
 );
@@ -160,8 +160,8 @@ CREATE TABLE product_images (
     image_order INT DEFAULT 0 NOT NULL,
     is_thumbnail BOOLEAN DEFAULT FALSE NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    
-    CONSTRAINT fk_image_product FOREIGN KEY (product_id) 
+
+    CONSTRAINT fk_image_product FOREIGN KEY (product_id)
         REFERENCES products(product_id) ON DELETE CASCADE
 );
 
@@ -200,13 +200,13 @@ CREATE TABLE orders (
     carrier VARCHAR(50),
     delivered_at TIMESTAMP,
     cancelled_at TIMESTAMP,
-    
-    CONSTRAINT fk_order_user FOREIGN KEY (user_id) 
+
+    CONSTRAINT fk_order_user FOREIGN KEY (user_id)
         REFERENCES users(user_id),
     CONSTRAINT chk_order_status CHECK (order_status IN
         ('PENDING', 'PAID', 'SHIPPED', 'DELIVERED', 'CANCELLED')),
     CONSTRAINT chk_order_origin CHECK (order_origin IN ('NORMAL', 'FLASH_SALE')),
-    CONSTRAINT chk_payment_method CHECK (payment_method IN 
+    CONSTRAINT chk_payment_method CHECK (payment_method IN
         ('CARD', 'BANK', 'KAKAO', 'NAVER', 'PAYCO')),
     CONSTRAINT chk_amounts CHECK (final_amount >= 0),
     CONSTRAINT chk_discount_breakdown CHECK (
@@ -250,10 +250,10 @@ CREATE TABLE order_items (
     return_requested_at TIMESTAMP,
     returned_at TIMESTAMP,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    
-    CONSTRAINT fk_order_item_order FOREIGN KEY (order_id) 
+
+    CONSTRAINT fk_order_item_order FOREIGN KEY (order_id)
         REFERENCES orders(order_id) ON DELETE CASCADE,
-    CONSTRAINT fk_order_item_product FOREIGN KEY (product_id) 
+    CONSTRAINT fk_order_item_product FOREIGN KEY (product_id)
         REFERENCES products(product_id),
     CONSTRAINT chk_quantity CHECK (quantity > 0),
     CONSTRAINT chk_unit_price CHECK (unit_price >= 0),
@@ -289,10 +289,10 @@ CREATE TABLE carts (
     quantity INT NOT NULL DEFAULT 1,
     added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    
-    CONSTRAINT fk_cart_user FOREIGN KEY (user_id) 
+
+    CONSTRAINT fk_cart_user FOREIGN KEY (user_id)
         REFERENCES users(user_id) ON DELETE CASCADE,
-    CONSTRAINT fk_cart_product FOREIGN KEY (product_id) 
+    CONSTRAINT fk_cart_product FOREIGN KEY (product_id)
         REFERENCES products(product_id),
     CONSTRAINT chk_cart_quantity CHECK (quantity > 0),
     CONSTRAINT uk_cart_user_product UNIQUE (user_id, product_id)
@@ -308,10 +308,10 @@ CREATE TABLE wishlists (
     user_id BIGINT NOT NULL,
     product_id BIGINT NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    
-    CONSTRAINT fk_wishlist_user FOREIGN KEY (user_id) 
+
+    CONSTRAINT fk_wishlist_user FOREIGN KEY (user_id)
         REFERENCES users(user_id) ON DELETE CASCADE,
-    CONSTRAINT fk_wishlist_product FOREIGN KEY (product_id) 
+    CONSTRAINT fk_wishlist_product FOREIGN KEY (product_id)
         REFERENCES products(product_id) ON DELETE CASCADE,
     CONSTRAINT uk_wishlist_user_product UNIQUE (user_id, product_id)
 );
@@ -358,12 +358,12 @@ CREATE TABLE user_coupons (
     order_id BIGINT,
     issued_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
     expires_at TIMESTAMP NOT NULL,
-    
-    CONSTRAINT fk_user_coupon_user FOREIGN KEY (user_id) 
+
+    CONSTRAINT fk_user_coupon_user FOREIGN KEY (user_id)
         REFERENCES users(user_id) ON DELETE CASCADE,
-    CONSTRAINT fk_user_coupon_coupon FOREIGN KEY (coupon_id) 
+    CONSTRAINT fk_user_coupon_coupon FOREIGN KEY (coupon_id)
         REFERENCES coupons(coupon_id),
-    CONSTRAINT fk_user_coupon_order FOREIGN KEY (order_id) 
+    CONSTRAINT fk_user_coupon_order FOREIGN KEY (order_id)
         REFERENCES orders(order_id),
     CONSTRAINT uk_user_coupon_user_coupon UNIQUE (user_id, coupon_id),
     CONSTRAINT chk_used_logic CHECK (
@@ -389,12 +389,12 @@ CREATE TABLE reviews (
     helpful_count INT DEFAULT 0 NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
-    
-    CONSTRAINT fk_review_product FOREIGN KEY (product_id) 
+
+    CONSTRAINT fk_review_product FOREIGN KEY (product_id)
         REFERENCES products(product_id),
-    CONSTRAINT fk_review_user FOREIGN KEY (user_id) 
+    CONSTRAINT fk_review_user FOREIGN KEY (user_id)
         REFERENCES users(user_id) ON DELETE CASCADE,
-    CONSTRAINT fk_review_order_item FOREIGN KEY (order_item_id) 
+    CONSTRAINT fk_review_order_item FOREIGN KEY (order_item_id)
         REFERENCES order_items(order_item_id),
     CONSTRAINT chk_rating CHECK (rating BETWEEN 1 AND 5),
     CONSTRAINT chk_helpful_count CHECK (helpful_count >= 0),
@@ -418,10 +418,10 @@ CREATE TABLE product_inventory_history (
     reference_id BIGINT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
     created_by BIGINT,
-    
-    CONSTRAINT fk_inventory_product FOREIGN KEY (product_id) 
+
+    CONSTRAINT fk_inventory_product FOREIGN KEY (product_id)
         REFERENCES products(product_id),
-    CONSTRAINT fk_inventory_created_by FOREIGN KEY (created_by) 
+    CONSTRAINT fk_inventory_created_by FOREIGN KEY (created_by)
         REFERENCES users(user_id),
     CONSTRAINT chk_change_type CHECK (change_type IN ('IN', 'OUT', 'ADJUST'))
 );
@@ -442,10 +442,10 @@ CREATE TABLE search_logs (
     searched_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL,
     ip_address INET,
     user_agent TEXT,
-    
-    CONSTRAINT fk_search_user FOREIGN KEY (user_id) 
+
+    CONSTRAINT fk_search_user FOREIGN KEY (user_id)
         REFERENCES users(user_id) ON DELETE SET NULL,
-    CONSTRAINT fk_search_product FOREIGN KEY (clicked_product_id) 
+    CONSTRAINT fk_search_product FOREIGN KEY (clicked_product_id)
         REFERENCES products(product_id) ON DELETE SET NULL,
     CONSTRAINT chk_result_count CHECK (result_count >= 0)
 );
@@ -688,8 +688,8 @@ CREATE INDEX idx_order_items_product ON order_items(product_id, created_at DESC)
 CREATE INDEX idx_order_items_created ON order_items(created_at DESC);
 
 -- 커버링 인덱스 (상품별 판매 통계용)
-CREATE INDEX idx_order_items_covering 
-    ON order_items(product_id, created_at) 
+CREATE INDEX idx_order_items_covering
+    ON order_items(product_id, created_at)
     INCLUDE (quantity, subtotal);
 
 -- V8: 관리자 반품 대기 목록 조회용 partial index

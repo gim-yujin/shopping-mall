@@ -11,7 +11,11 @@ import com.shop.global.common.PagingParams;
 import com.shop.global.dto.ApiResponse;
 import com.shop.global.dto.PageResponse;
 import org.springframework.data.domain.Page;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.RequestParam;
 
 /**
  * [P1-6] 상품 REST API 컨트롤러.

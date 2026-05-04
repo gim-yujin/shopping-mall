@@ -6,7 +6,11 @@ import com.shop.global.idempotency.IdempotencyExecutor;
 import com.shop.global.security.SecurityUtil;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
 
 /**
  * [Phase 14] 쿠폰 발급 REST API 컨트롤러 (멱등성 보장).

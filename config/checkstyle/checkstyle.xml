@@ -5,6 +5,9 @@
 <module name="Checker">
     <module name="TreeWalker">
         <module name="UnusedImports"/>
+        <module name="AvoidStarImport">
+            <property name="allowStaticMemberImports" value="true"/>
+        </module>
         <module name="NeedBraces"/>
     </module>
 </module>
