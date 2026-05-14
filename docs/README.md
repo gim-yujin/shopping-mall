@@ -52,6 +52,7 @@
 | [`docs/analysis-execution-plan-optimization.md`](./analysis-execution-plan-optimization.md) | Execution Plan 관점 최적화 검토: 6건 개선 항목 + 인덱스 정합성 보강(V21/V22, C2 drift 해소) | 2026-04-21 | SSOT |
 | [`docs/analysis-map-cache-concurrency-review-2026-04-03.md`](./analysis-map-cache-concurrency-review-2026-04-03.md) | Map/Cache 사용처와 동시성 안전성 점검 (`HashMap`, `LinkedHashMap`, `ConcurrentHashMap`, `ConcurrentMapCache`, `Hashtable`) | 2026-04-03 | SSOT |
 | [`docs/analysis-product-list-count-cache-split.md`](./analysis-product-list-count-cache-split.md) | 상품 목록 p95 병목 — COUNT 쿼리 공유 캐시 분리(Phase 21) 배경/측정/한계 | 2026-04-21 | SSOT |
+| [`docs/analysis-data-integrity-consistency-review-2026-05-14.md`](./analysis-data-integrity-consistency-review-2026-05-14.md) | 주문/재고/쿠폰/포인트/Outbox/캐시 도메인의 데이터 정합성·일관성 정적 검토 — High 3·Medium 4·Low 3건 | 2026-05-14 | Reference |
 
 ## Archive
 

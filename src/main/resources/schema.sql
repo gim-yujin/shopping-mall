@@ -715,18 +715,21 @@ CREATE INDEX idx_coupon_valid ON coupons(valid_from, valid_until, is_active);
 CREATE INDEX idx_user_coupon_user ON user_coupons(user_id, is_used, expires_at);
 CREATE INDEX idx_user_coupon_coupon ON user_coupons(coupon_id);
 
--- [Phase 8] user_coupons.order_id 부분 인덱스 (주문 취소 시 쿠폰 복원 쿼리 최적화).
+-- [Phase 8 + V27] user_coupons.order_id UNIQUE 부분 인덱스
+-- (주문 취소 시 쿠폰 복원 쿼리 최적화 + 1주문 1쿠폰 정책의 DB 강제).
 --
--- 문제: OrderCancellationService.cancelOrderInternal()과 PartialCancellationService가
+-- 조회 최적화: OrderCancellationService.cancelOrderInternal()과 PartialCancellationService가
 -- userCouponRepository.findByOrderId(orderId)를 호출하여 주문에 사용된 쿠폰을 복원한다.
--- user_coupons 테이블은 5천만 건 규모인데, order_id 컬럼에 인덱스가 없어
--- findByOrderId()가 Full Table Scan을 수행한다.
+-- user_coupons 테이블은 5천만 건 규모이므로 order_id에 인덱스가 없으면 Full Table Scan이 된다.
+-- order_id IS NOT NULL 조건의 부분 인덱스를 사용하여 미사용 쿠폰(약 70~80%)을 제외하면
+-- 인덱스 크기가 줄어들고 B-tree 탐색으로 O(log N) 조회가 가능하다.
 --
--- 해결: order_id IS NOT NULL 조건의 부분 인덱스를 생성한다.
--- 전체 user_coupons 중 쿠폰을 사용한(order_id가 있는) 행만 인덱싱하므로,
--- 미사용 쿠폰(order_id IS NULL, 약 70~80%)을 제외하여 인덱스 크기를 대폭 줄인다.
--- B-tree 탐색으로 O(log N) 조회가 가능해진다.
-CREATE INDEX idx_user_coupon_order ON user_coupons(order_id)
+-- 정합성 강제: 도메인 정책상 1개 주문에는 최대 1개 쿠폰만 사용한다. UNIQUE 제약이 없으면
+-- 데이터 마이그레이션·관리자 직접 수정 등으로 동일 order_id가 둘 이상 생길 수 있고,
+-- 그 경우 findByOrderId() → Optional<UserCoupon> 시그니처가 폭발하여 취소 자체가 막힌다.
+-- UNIQUE 부분 인덱스로 사용 중인 쿠폰에 대해서만 1주문 1쿠폰을 강제한다.
+-- (NULL 끼리는 UNIQUE에서 충돌하지 않으므로 미사용 쿠폰은 영향 없음)
+CREATE UNIQUE INDEX uk_user_coupon_order ON user_coupons(order_id)
     WHERE order_id IS NOT NULL;
 
 -- Reviews 인덱스 ⭐️

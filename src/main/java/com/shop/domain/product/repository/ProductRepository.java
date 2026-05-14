@@ -91,16 +91,6 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
     @Query("SELECT p FROM Product p WHERE p.productId IN :ids ORDER BY p.productId")
     List<Product> findAllByIdInOrderByProductId(@Param("ids") List<Long> ids);
 
-    // V3(CAS UPDATE) 벤치마크용: 단일 UPDATE로 재고 차감 + 판매량 증가를 원자적으로 수행.
-    // 반환값이 0이면 stock_quantity < quantity이므로 재고 부족을 의미한다.
-    // @Version 필드를 수동으로 증가시켜 관리자 낙관적 잠금과의 정합성을 유지한다.
-    @Modifying
-    @Query("UPDATE Product p SET p.stockQuantity = p.stockQuantity - :quantity, "
-         + "p.salesCount = p.salesCount + :quantity, "
-         + "p.version = p.version + 1 "
-         + "WHERE p.productId = :id AND p.stockQuantity >= :quantity")
-    int decreaseStockAtomic(@Param("id") Long id, @Param("quantity") int quantity);
-
     // [Phase 20] images도 함께 JOIN FETCH하여 getThumbnailUrl() 호출 시
     // Lazy 프록시 미초기화로 인한 placeholder 반환 문제를 해결한다.
     // 상품 상세는 단건 조회이므로 images JOIN FETCH의 Cartesian product 부담이 없다.

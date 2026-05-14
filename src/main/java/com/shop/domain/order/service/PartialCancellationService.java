@@ -453,6 +453,18 @@ public class PartialCancellationService {
      * 수정: 부분취소로 인한 전체 CANCELLED 전이 시에도 쿠폰을 복원한다.
      * OrderCancellationService.cancelOrderInternal()의 쿠폰 복원 로직과 동일하게
      * userCouponRepository.findByOrderId()로 사용된 쿠폰을 찾아 cancelUse()를 호출한다.
+     *
+     * [데이터 정합성 보강 2026-05-14] 부분취소 누적으로 전체 CANCELLED 전이 시
+     * publishOrderCancelled outbox 누락 수정.
+     *
+     * 기존 문제: 사용자가 N개 아이템을 1개씩 부분취소로 누적하여 결과적으로 주문 전체가
+     * 취소되면, OrderCancellationService.cancelOrderInternal()에서 호출하는
+     * outboxEventPublisher.publishOrderCancelled()가 어디서도 발행되지 않아
+     * 취소 알림이 영원히 발송되지 않았다.
+     *
+     * 수정: 전체 CANCELLED 전이 직후 OrderCancellationService와 동일한 outbox 이벤트를
+     * 발행하여 알림 경로를 보존한다. 환불 금액은 누적된 order.getRefundedAmount()를
+     * 사용한다(여러 부분취소를 모두 합산한 값).
      */
     private void transitionIfFullyCancelled(Order order) {
         boolean allZero = order.getItems().stream()
@@ -462,6 +474,8 @@ public class PartialCancellationService {
             userCouponRepository.findByOrderId(order.getOrderId())
                     .ifPresent(UserCoupon::cancelUse);
             order.cancel();
+            outboxEventPublisher.publishOrderCancelled(
+                    order.getOrderId(), order.getUserId(), order.getRefundedAmount());
         }
     }
 
