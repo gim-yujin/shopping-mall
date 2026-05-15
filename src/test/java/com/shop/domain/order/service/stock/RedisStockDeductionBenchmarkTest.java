@@ -7,6 +7,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.DisabledIfEnvironmentVariable;
+import org.junit.jupiter.api.condition.EnabledIf;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -14,6 +15,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.testcontainers.DockerClientFactory;
 import org.testcontainers.containers.GenericContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -63,8 +65,19 @@ import static org.assertj.core.api.Assertions.assertThat;
 @ActiveProfiles("redis")
 @DisabledIfEnvironmentVariable(named = "CI", matches = "true",
         disabledReason = "ADR-0003 v2 측정 전용; CI 의 PG max_connections=100 한도와 컨텍스트 캐시 경합 회피")
+@EnabledIf(value = "isDockerAvailable",
+        disabledReason = "Docker 데몬 미가용 — Testcontainers redis:7-alpine 기동 불가")
 @SuppressWarnings("PMD.CloseResource")
 class RedisStockDeductionBenchmarkTest {
+
+    /**
+     * JUnit 5 {@code @EnabledIf} 조건 메서드. {@link DockerClientFactory#isDockerAvailable()} 는
+     * 내부에서 클라이언트 초기화 실패를 잡아 false 를 반환하므로, Docker 미설치 환경에서
+     * {@code initializationError} 로 전체 빌드를 깨뜨리지 않고 본 클래스만 스킵된다.
+     */
+    static boolean isDockerAvailable() {
+        return DockerClientFactory.instance().isDockerAvailable();
+    }
 
     @Container
     static final GenericContainer<?> REDIS =
