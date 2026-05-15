@@ -106,8 +106,31 @@ class RedisStockDeductionBenchmarkTest {
 
     private static final int STOCK_PER_PRODUCT = 100_000;
     private static final int OPS_PER_THREAD = 5;
-    private static final int[] THREAD_LEVELS = {30, 100, 300};
+    /**
+     * 기본 스레드 레벨 — ADR-0003 §v2 실험의 commit 된 데이터와 정합한 워크로드.
+     *
+     * <p>확장 측정 시 시스템 프로퍼티 {@code bench.thread.levels} 로 오버라이드한다.
+     * 예: {@code ./gradlew test ... -Dbench.thread.levels=30,100,300,500,1000}
+     *
+     * <p>ADR-0003 의 미확정 가설("300 스레드 dip 은 Lettuce 풀 포화로 보인다") 을
+     * 정량 검증하려면 (a) 더 높은 스레드 레벨, (b) Lettuce 풀 변동(application-redis.yml
+     * 의 {@code spring.data.redis.lettuce.pool.max-active}) 두 축으로 측정한다.</p>
+     */
+    private static final int[] THREAD_LEVELS = parseThreadLevels(
+            System.getProperty("bench.thread.levels"));
     private static final long ROUND_TIMEOUT_SEC = 600;
+
+    private static int[] parseThreadLevels(String spec) {
+        if (spec == null || spec.isBlank()) {
+            return new int[]{30, 100, 300};
+        }
+        String[] parts = spec.split(",");
+        int[] levels = new int[parts.length];
+        for (int i = 0; i < parts.length; i++) {
+            levels[i] = Integer.parseInt(parts[i].trim());
+        }
+        return levels;
+    }
 
     @BeforeEach
     void setUp() {

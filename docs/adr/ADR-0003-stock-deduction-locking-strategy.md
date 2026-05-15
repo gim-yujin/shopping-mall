@@ -169,6 +169,22 @@ V4-Redis              300     13627    100.0%      20.53      29.59      31.60
   컨텍스트 스위칭 비용이 Redis 자체 한계보다 먼저 닿는 것으로 보인다. 본질적 한계는
   Redis 단일 노드 ~10만 ops/sec, 그보다 한참 위.
 
+### 확장 측정 — 위 dip 가설의 정량 검증 (선택)
+
+위 dip 가 "Lettuce 풀 포화" 인지 "Redis 자체 천장 근접" 인지 분리하려면 두 축으로 측정한다.
+
+1. **스레드 레벨 확장** — `RedisStockDeductionBenchmarkTest` 는 시스템 프로퍼티
+   `bench.thread.levels` 로 워크로드를 오버라이드한다(기본 `30,100,300`).
+   ```
+   ./gradlew test --tests '*RedisStockDeductionBenchmarkTest' \
+     -Dbench.thread.levels=30,100,300,500,1000
+   ```
+2. **Lettuce 풀 변동** — `application-redis.yml` 의 `spring.data.redis.lettuce.pool.max-active`
+   를 32 → 64 → 128 로 바꿔 가며 위 명령을 반복한다.
+
+dip 이 풀을 키워도 그대로면 Redis 자체 천장에 가까운 것이고, 풀을 키워 사라지면 풀 포화
+가설이 입증된다. 데이터가 모이면 본 섹션에 표로 추가한다.
+
 ### 1억 시나리오에 대한 답 (수정 없음, 강화)
 
 위 한계 조건 섹션의 결론은 그대로다 — burst 일상 경로는 도메인 분리(현재는 `flashsale`),
