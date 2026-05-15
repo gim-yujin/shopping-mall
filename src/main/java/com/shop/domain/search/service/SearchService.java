@@ -1,14 +1,17 @@
 package com.shop.domain.search.service;
 
 import com.shop.domain.search.repository.SearchLogRepository;
+import com.shop.domain.search.service.broker.SearchLogStreamProducer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 @Service
@@ -19,11 +22,14 @@ public class SearchService {
 
     private final SearchLogRepository searchLogRepository;
     private final SearchLogBatchAccumulator batchAccumulator;
+    private final Optional<SearchLogStreamProducer> streamProducer;
 
     public SearchService(SearchLogRepository searchLogRepository,
-                         SearchLogBatchAccumulator batchAccumulator) {
+                         SearchLogBatchAccumulator batchAccumulator,
+                         @Autowired(required = false) SearchLogStreamProducer streamProducer) {
         this.searchLogRepository = searchLogRepository;
         this.batchAccumulator = batchAccumulator;
+        this.streamProducer = Optional.ofNullable(streamProducer);
     }
 
     /**
@@ -53,6 +59,17 @@ public class SearchService {
         // 인기 검색어 시간대별 분석의 정확도가 유지된다.
         SearchLogEntry entry = new SearchLogEntry(
                 userId, keyword, resultCount, ipAddress, userAgent, LocalDateTime.now());
+
+        // [Phase 21] Redis Streams 브로커가 활성화돼 있으면 우선 사용. Redis 일시 장애 등으로
+        // XADD 가 실패하면 기존 인메모리 + WAL 경로로 폴백한다(검색 응답은 절대 막지 않음).
+        if (streamProducer.isPresent()) {
+            try {
+                streamProducer.get().produce(entry);
+                return;
+            } catch (RuntimeException e) {
+                log.warn("[Phase 21] 스트림 적재 실패 — 인메모리 경로로 폴백. keyword={}", keyword, e);
+            }
+        }
 
         if (!batchAccumulator.add(entry)) {
             log.warn("[Phase 19] 검색 로그 버퍼 오버플로우 — keyword={}, bufferSize={}",

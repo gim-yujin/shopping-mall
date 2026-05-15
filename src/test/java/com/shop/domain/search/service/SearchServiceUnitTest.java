@@ -32,7 +32,8 @@ class SearchServiceUnitTest {
         // [Phase 19] SearchService 생성자에 배치 누적기 추가.
         // 기존: SearchService(SearchLogRepository)
         // 변경: SearchService(SearchLogRepository, SearchLogBatchAccumulator)
-        searchService = new SearchService(searchLogRepository, batchAccumulator);
+        // [Phase 21] streamProducer 는 Optional 파라미터. 비활성(null) 시 기존 인메모리 경로 사용.
+        searchService = new SearchService(searchLogRepository, batchAccumulator, null);
     }
 
     @Test

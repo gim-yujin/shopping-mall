@@ -29,3 +29,20 @@ flash-sale:
 stock:
   redis:
     enabled: true          # 벤치용 V4-Redis 전략 빈 등록
+
+# [Phase 21] 검색 로그 Redis Streams 브로커.
+# Redis 프로파일에서 기본 활성화. 비활성화 시(false) 기존 인메모리+WAL 경로(Phase 19/20) 사용.
+app:
+  search-log:
+    broker:
+      enabled: ${APP_SEARCH_LOG_BROKER_ENABLED:true}
+      stream: search-log-stream
+      consumer-group: search-log-cg
+      # consumer-name 미지정 시 properties 의 컴팩트 기본값(host 무관 PID 기반) 사용.
+      poll-batch-size: 500
+      poll-block: 2s
+      db-batch-size: 500
+      claim-idle: 60s
+      reclaim-interval: 30s
+      max-delivery-attempts: 5
+      dlq-stream: search-log-dlq

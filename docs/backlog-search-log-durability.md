@@ -98,14 +98,72 @@ app:
   완전한 fsync는 검색 로그 대비 비용이 과도하여 적용하지 않음.
 - 기동 시 `WAL 복구 완료` 로그가 출력되면 이전 프로세스의 비정상 종료가 있었음을 의미.
 
-## 목표 (미구현 — 향후 Phase)
-`SearchService.logSearch`를 동기 비즈니스 경로에서 분리해, 메시지 큐/이벤트 로그 기반의 **내구성 있는 비동기 파이프라인**으로 전환한다.
+## Phase 21 (완료): Redis Streams 브로커 전환
 
-## 제안 아키텍처 (향후)
-1. 검색 요청 시 애플리케이션은 `SearchLogged` 이벤트를 발행
-2. 이벤트를 Kafka/RabbitMQ(또는 managed event log)에 적재
-3. 별도 consumer가 배치/스트리밍으로 `search_log` 저장
-4. DLQ 및 재처리 전략으로 실패 이벤트 복구
+### 결정 — 왜 Redis Streams 인가
+Kafka/RabbitMQ 대신 **Redis Streams** 를 선택했다. 본 프로젝트는 V4 재고 차감(`@ActiveProfiles("redis")`)
+으로 Redis 인프라를 이미 갖고 있고, Redis Streams 는 컨슈머 그룹·PEL·XACK/XAUTOCLAIM 으로
+at-least-once 와 DLQ 의미론을 네이티브 제공하기 때문에 **추가 인프라 0** 으로 "브로커 기반
+최종 일관성" 을 달성할 수 있다. Kafka 대비 운영 복잡도가 낮고, 본 도메인(검색 로그) 의 throughput·
+내구성 요구(통계 목적, 일부 중복 허용) 에 적합하다.
+
+### 활성화
+```yaml
+spring:
+  profiles:
+    active: redis
+app:
+  search-log:
+    broker:
+      enabled: true   # Redis 프로파일에서 기본 true (application-redis.yml)
+```
+
+`enabled=false` 또는 redis 프로파일 미활성 시 어떤 브로커 빈도 생성되지 않으며 기존
+Phase 19/20 경로(인메모리 + 파일 WAL) 가 그대로 동작한다.
+
+### 구현 컴포넌트
+- **`SearchLogBrokerProperties`** — `app.search-log.broker.*` 설정 record.
+- **`SearchLogStreamProducer`** — XADD 래퍼. 명시 필드 직렬화(JSON-in-field 가 아님 — Redis CLI
+  로 즉시 디버깅 가능). nullable 필드는 빈 문자열로 직렬화 후 컨슈머에서 null 복원.
+- **`SearchLogStreamConsumer`** — `StreamMessageListenerContainer` 가 폴링한 메시지를 받아
+  `SearchLogBatchWriter` 로 INSERT 후 XACK. 실패 시 XACK 하지 않아 다음 폴링에서 재전달.
+- **`SearchLogStreamReclaimer`** — `@Scheduled` 로 `XPENDING` 스캔. idle 임계 초과 메시지를
+  `XCLAIM` 으로 현재 컨슈머로 이전해 재처리. `maxDeliveryAttempts` 초과 시 `${dlqStream}`
+  으로 라우팅 후 원본 XACK.
+- **`SearchLogBrokerConfig`** — `@Profile("redis")` + `@ConditionalOnProperty` 로 위 빈들과
+  컨슈머 그룹 생성·컨테이너 lifecycle 을 묶는다.
+
+### 폴백 — Producer 측 Redis 장애
+`SearchService.logSearch` 는 `streamProducer.produce()` 가 예외를 던지면 기존 인메모리 경로
+(`SearchLogBatchAccumulator`) 로 폴백한다. 검색 응답을 절대 막지 않는다는 정책이다.
+
+### 실패 모드 매핑
+| 시나리오 | 결과 |
+|---|---|
+| Producer Redis 단절 | 인메모리+WAL 경로로 자동 폴백 |
+| Consumer DB INSERT 실패 | XACK 미실행 → 다음 폴링에서 재전달 |
+| Consumer 프로세스 크래시 (XACK 전) | PEL 잔존 → Reclaimer 가 idle 회수 |
+| Consumer 무한 실패 (poison message) | `maxDeliveryAttempts` 초과 시 DLQ 스트림 라우팅 |
+
+### 중복
+At-least-once 의미론상 일부 중복이 발생할 수 있다(원래 컨슈머가 INSERT 후 XACK 전 죽은 경우).
+검색 로그는 통계 목적이고 [기존 정책](#중복-가능성) 과 동일하게 소수 중복은 허용된다.
+
+### 검증
+- 단위: `SearchLogStreamProducerTest`, `SearchLogStreamConsumerTest`
+- 통합: `SearchLogBrokerIntegrationTest` (testcontainers redis:7-alpine, Docker 가드)
+
+### 운영
+- **DLQ 모니터링**: `XLEN search-log-dlq` 가 0 이상이면 컨슘 실패 누적. 메시지 내용은
+  `XRANGE search-log-dlq - +` 로 즉시 조회 가능.
+- **PEL 상태**: `XPENDING search-log-stream search-log-cg` 로 적체 확인.
+- **스트림 트림**: 본 phase 는 자동 트림을 적용하지 않는다. 운영 환경에서 디스크 증가가 우려되면
+  별도 cron 으로 `XTRIM MAXLEN ~ N` 적용 권장.
+
+## 향후 (선택적 Phase 22+)
+- 배치 INSERT 복원 — `StreamListener` 단건 콜백 대신 컨테이너의 batch 옵션을 활용한 배치 리스너
+- 자동 스트림 트림 — Producer 측 MAXLEN 또는 별도 트림 스케줄러
+- 컨슈머 수평 확장 시나리오 측정 — 동일 그룹의 다중 컨슈머 처리량 벤치
 
 ## 작업 항목
 - [x] 인메모리 배치 누적기 + JDBC 배치 INSERT (Phase 19)
@@ -115,16 +173,16 @@ app:
 - [x] WAL 기동 시 복구 (ApplicationRunner) (Phase 20)
 - [x] SearchLogBatchAccumulator WAL 통합 (Phase 20)
 - [x] WAL 메트릭 Prometheus 노출 (Phase 20)
-- [ ] 이벤트 스키마 정의 (`searchId`, `userId`, `keyword`, `resultCount`, `ipAddress`, `userAgent`, `occurredAt`)
-- [ ] 이벤트 발행 컴포넌트 추가 (idempotency key 포함)
-- [ ] 브로커 토픽/큐, 보존 정책, 파티션 전략 설계
-- [ ] 소비자(consumer) 서비스 및 재시도/백오프 정책 구현
-- [ ] DLQ/재처리 운영 runbook 작성
-- [ ] end-to-end 전달 성공률/지연/적체 모니터링 대시보드 구성
-- [ ] 점진 전환(dual-write 또는 shadow traffic) 계획 수립
+- [x] 이벤트 스키마 정의 — `SearchLogStreamProducer` 의 명시 필드 매핑 (Phase 21)
+- [x] 이벤트 발행 컴포넌트 — `SearchLogStreamProducer` (Phase 21)
+- [x] 브로커 토픽/큐 — Redis Streams 키 `search-log-stream` (Phase 21)
+- [x] 소비자 서비스 및 재시도 — `SearchLogStreamConsumer` + `SearchLogStreamReclaimer` (Phase 21)
+- [x] DLQ/재처리 — `XCLAIM` + `${stream}-dlq` 라우팅 (Phase 21)
+- [x] 점진 전환 — `@ConditionalOnProperty` opt-in + Producer 측 자동 폴백 (Phase 21)
+- [ ] end-to-end 전달 성공률/지연/적체 모니터링 대시보드 구성 (운영 단계 과제)
 
 ## 수용 기준 (Acceptance Criteria)
 - [x] 기존 검색 응답 p95/p99 지연 악화 없음 (Phase 19: HTTP 스레드 블로킹 제거)
 - [x] 운영자가 적체/유실/재처리 상태를 메트릭으로 즉시 확인 가능 (Phase 19: Micrometer)
 - [x] 재배포/프로세스 재시작 구간에서도 로그 유실률 SLO 충족 (Phase 20: 파일 기반 WAL)
-- [ ] 브로커/DB 장애 시에도 재처리로 최종 일관성 보장
+- [x] 브로커/DB 장애 시에도 재처리로 최종 일관성 보장 (Phase 21: Redis Streams + Reclaimer + DLQ)
