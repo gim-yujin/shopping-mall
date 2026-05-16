@@ -163,8 +163,40 @@ At-least-once 의미론상 일부 중복이 발생할 수 있다(원래 컨슈�
 - **스트림 트림**: 본 phase 는 자동 트림을 적용하지 않는다. 운영 환경에서 디스크 증가가 우려되면
   별도 cron 으로 `XTRIM MAXLEN ~ N` 적용 권장.
 
+## Phase 22-1 (완료): 배치 INSERT 복원
+
+### 문제
+Phase 21 의 `StreamListener.onMessage` 단건 콜백은 메시지마다 INSERT 1회 + XACK 1회를 호출해
+Phase 19 의 JDBC 배치 INSERT 이점을 잃었다. 초당 1,000 건 처리 시 DB 라운드트립 1,000 회 +
+XACK 1,000 회로 회귀.
+
+### 해결: 버퍼 누적 + 주기/임계 flush
+`SearchLogStreamConsumer` 가 `StreamListener` 콜백을 받으면 인메모리 버퍼에 누적만 하고,
+다음 두 조건 중 하나에서 flush 한다.
+
+1. 버퍼가 `dbBatchSize` (기본 500) 도달 — `onMessage` 내부에서 즉시 flush
+2. `batchFlushInterval` (기본 1초) 주기 스케줄러 — `@Scheduled` 호출
+
+flush 는 단일 `writer.writeBatch(entries)` + 배치 XACK(`acknowledge` varargs) 으로 N 건을
+한 번에 처리한다. `DisposableBean.destroy()` 가 graceful shutdown 시 잔여 버퍼를 flush.
+
+### 동시성
+`onMessage` 는 `StreamMessageListenerContainer` 의 내부 스레드에서 직렬 호출되고, `scheduledFlush`
+와 `destroy` 는 별도 스레드에서 호출된다. 모든 진입점이 `bufferLock` 으로 drain 까지 보호하고
+무거운 DB 작업은 락 밖에서 실행한다. 동시 flush 호출이 가능하지만 `writer.writeBatch` 의
+`REQUIRES_NEW` 가 독립 트랜잭션을 보장하므로 충돌 없다.
+
+### at-least-once 보장 (변경 없음)
+- flush 성공(INSERT + XACK) → PEL 제거
+- INSERT 실패 → XACK 미실행 → Reclaimer 가 idle 회수
+- 버퍼에만 있는 상태에서 크래시 → PEL 그대로 → Reclaimer 회수
+- INSERT 성공 후 XACK 전 크래시 → 중복 INSERT (통계 목적이라 허용)
+
+### 메트릭
+`shop.search.log.broker.flush.batches` 추가. 평균 배치 크기는 `consumed.total / flush.batches`
+로 산출.
+
 ## 향후 (선택적 Phase 22+)
-- 배치 INSERT 복원 — `StreamListener` 단건 콜백 대신 컨테이너의 batch 옵션을 활용한 배치 리스너
 - 자동 스트림 트림 — Producer 측 MAXLEN 또는 별도 트림 스케줄러
 - 컨슈머 수평 확장 시나리오 측정 — 동일 그룹의 다중 컨슈머 처리량 벤치
 

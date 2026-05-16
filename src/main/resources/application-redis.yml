@@ -42,6 +42,7 @@ app:
       poll-batch-size: 500
       poll-block: 2s
       db-batch-size: 500
+      batch-flush-interval: 1s   # [Phase 22-1] dbBatchSize 도달 전이라도 이 주기로 flush
       claim-idle: 60s
       reclaim-interval: 30s
       max-delivery-attempts: 5

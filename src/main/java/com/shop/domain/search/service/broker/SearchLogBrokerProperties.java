@@ -32,7 +32,11 @@ import java.time.Duration;
  * @param consumerName         이 인스턴스의 컨슈머 이름. 동일 그룹 내 유일해야 한다.
  * @param pollBatchSize        한 번의 XREADGROUP 으로 가져올 최대 메시지 수.
  * @param pollBlock            XREADGROUP block 시간. 메시지 없으면 이 시간 동안 대기.
- * @param dbBatchSize          Consumer 가 DB 로 한 번에 INSERT 할 배치 크기.
+ * @param dbBatchSize          Consumer 가 DB 로 한 번에 INSERT 할 배치 크기. 버퍼가 이 크기에
+ *                             도달하면 flush 가 트리거된다.
+ * @param batchFlushInterval   [Phase 22-1] dbBatchSize 도달 전이라도 주기적으로 flush 하는 간격.
+ *                             대기 시간 SLO 와 처리량 사이의 균형. 짧을수록 latency 우선, 길수록
+ *                             throughput 우선. 기본 1초.
  * @param maxStreamLength      XADD 시 {@code MAXLEN ~ N} 로 적용할 근사 트림 상한 (0 이면 미설정).
  * @param claimIdle            PEL 메시지를 회수(XAUTOCLAIM)하기 위한 idle 시간 임계값.
  * @param reclaimInterval      Reclaimer 가 PEL 을 스캔하는 주기.
@@ -48,6 +52,7 @@ public record SearchLogBrokerProperties(
         int pollBatchSize,
         Duration pollBlock,
         int dbBatchSize,
+        Duration batchFlushInterval,
         long maxStreamLength,
         Duration claimIdle,
         Duration reclaimInterval,
@@ -73,6 +78,9 @@ public record SearchLogBrokerProperties(
         }
         if (dbBatchSize <= 0) {
             dbBatchSize = 500;
+        }
+        if (batchFlushInterval == null) {
+            batchFlushInterval = Duration.ofSeconds(1);
         }
         if (claimIdle == null) {
             claimIdle = Duration.ofSeconds(60);

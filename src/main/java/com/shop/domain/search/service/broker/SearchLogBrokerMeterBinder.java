@@ -20,6 +20,7 @@ import org.springframework.data.redis.core.StringRedisTemplate;
  *   <tr><td>shop.search.log.broker.produce.failures.total</td><td>Gauge</td><td>Producer XADD 누적 실패 건수</td></tr>
  *   <tr><td>shop.search.log.broker.consumed.total</td><td>Gauge</td><td>Consumer DB INSERT + XACK 누적 성공 건수</td></tr>
  *   <tr><td>shop.search.log.broker.consume.failures.total</td><td>Gauge</td><td>Consumer 누적 실패 건수(미-ACK)</td></tr>
+ *   <tr><td>shop.search.log.broker.flush.batches</td><td>Gauge</td><td>[Phase 22-1] flush 누적 횟수 — 평균 배치 크기는 consumed/flush.batches 로 산출</td></tr>
  *   <tr><td>shop.search.log.broker.reclaimed.total</td><td>Gauge</td><td>Reclaimer 가 XCLAIM 으로 회수한 누적 건수</td></tr>
  *   <tr><td>shop.search.log.broker.dlq.routed.total</td><td>Gauge</td><td>maxDeliveryAttempts 초과로 DLQ 로 라우팅된 누적 건수</td></tr>
  *   <tr><td>shop.search.log.broker.stream.length</td><td>Gauge</td><td>현재 메인 스트림의 엔트리 수(XLEN)</td></tr>
@@ -80,6 +81,10 @@ public class SearchLogBrokerMeterBinder implements MeterBinder {
         Gauge.builder("shop.search.log.broker.consume.failures.total", consumer,
                         c -> (double) c.getTotalConsumeFailures())
                 .description("Consumer 누적 실패 건수(미-ACK)")
+                .register(registry);
+        Gauge.builder("shop.search.log.broker.flush.batches", consumer,
+                        c -> (double) c.getTotalFlushBatches())
+                .description("[Phase 22-1] flush 누적 횟수 — 평균 배치 크기 = consumed / flush.batches")
                 .register(registry);
 
         // ── Reclaimer 카운터 ──

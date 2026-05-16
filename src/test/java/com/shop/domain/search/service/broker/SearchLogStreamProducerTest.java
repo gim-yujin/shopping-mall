@@ -39,7 +39,7 @@ class SearchLogStreamProducerTest {
         doReturn(streamOps).when(redisTemplate).opsForStream();
         properties = new SearchLogBrokerProperties(
                 true, "search-log-stream", "search-log-cg", "consumer-1",
-                100, Duration.ofSeconds(1), 100, 0,
+                100, Duration.ofSeconds(1), 100, Duration.ofSeconds(1), 0,
                 Duration.ofSeconds(60), Duration.ofSeconds(30), 5, "search-log-dlq");
         producer = new SearchLogStreamProducer(redisTemplate, properties);
     }

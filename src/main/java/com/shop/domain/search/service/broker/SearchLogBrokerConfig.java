@@ -57,8 +57,8 @@ public class SearchLogBrokerConfig {
 
     @Bean
     public SearchLogStreamConsumer.RedisStreamAcker redisStreamAcker(StringRedisTemplate redisTemplate) {
-        return (stream, group, id) ->
-                redisTemplate.opsForStream().acknowledge(stream, group, id);
+        return (stream, group, ids) ->
+                redisTemplate.opsForStream().acknowledge(stream, group, ids);
     }
 
     @Bean
