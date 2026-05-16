@@ -94,6 +94,16 @@ public class SearchLogBrokerConfig {
     }
 
     @Bean
+    public SearchLogBrokerMeterBinder searchLogBrokerMeterBinder(
+            SearchLogStreamProducer producer,
+            SearchLogStreamConsumer consumer,
+            SearchLogStreamReclaimer reclaimer,
+            StringRedisTemplate redisTemplate,
+            SearchLogBrokerProperties properties) {
+        return new SearchLogBrokerMeterBinder(producer, consumer, reclaimer, redisTemplate, properties);
+    }
+
+    @Bean
     public StreamContainerLifecycle searchLogStreamContainerLifecycle(
             StringRedisTemplate redisTemplate,
             SearchLogBrokerProperties properties,

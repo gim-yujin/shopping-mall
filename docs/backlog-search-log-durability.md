@@ -132,6 +132,9 @@ Phase 19/20 경로(인메모리 + 파일 WAL) 가 그대로 동작한다.
   으로 라우팅 후 원본 XACK.
 - **`SearchLogBrokerConfig`** — `@Profile("redis")` + `@ConditionalOnProperty` 로 위 빈들과
   컨슈머 그룹 생성·컨테이너 lifecycle 을 묶는다.
+- **`SearchLogBrokerMeterBinder`** — Producer/Consumer/Reclaimer 카운터(produced/consumed/
+  reclaimed/dlq.routed) + Redis 쿼리 기반 게이지(stream.length/dlq.length/pel.size) 를
+  Micrometer 로 노출. 브로커 활성 시에만 빈 등록.
 
 ### 폴백 — Producer 측 Redis 장애
 `SearchService.logSearch` 는 `streamProducer.produce()` 가 예외를 던지면 기존 인메모리 경로
@@ -179,7 +182,7 @@ At-least-once 의미론상 일부 중복이 발생할 수 있다(원래 컨슈�
 - [x] 소비자 서비스 및 재시도 — `SearchLogStreamConsumer` + `SearchLogStreamReclaimer` (Phase 21)
 - [x] DLQ/재처리 — `XCLAIM` + `${stream}-dlq` 라우팅 (Phase 21)
 - [x] 점진 전환 — `@ConditionalOnProperty` opt-in + Producer 측 자동 폴백 (Phase 21)
-- [ ] end-to-end 전달 성공률/지연/적체 모니터링 대시보드 구성 (운영 단계 과제)
+- [~] end-to-end 전달 성공률/지연/적체 모니터링 — 메트릭 노출 완료(`SearchLogBrokerMeterBinder`, Phase 21 후속). Prometheus/Grafana 대시보드 구성은 운영 단계 과제.
 
 ## 수용 기준 (Acceptance Criteria)
 - [x] 기존 검색 응답 p95/p99 지연 악화 없음 (Phase 19: HTTP 스레드 블로킹 제거)
