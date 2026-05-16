@@ -168,22 +168,69 @@ V4-Redis              300     13627    100.0%      20.53      29.59      31.60
 - **300스레드에서 V4 처리량 dip**(13,627 < 19,705 @ 100): Lettuce 풀(32) 포화 + JVM 스레드
   컨텍스트 스위칭 비용이 Redis 자체 한계보다 먼저 닿는 것으로 보인다. 본질적 한계는
   Redis 단일 노드 ~10만 ops/sec, 그보다 한참 위.
+  → 2026-05-17 확장 측정으로 가설을 정량 검증함. 아래 §확장 측정 결과 참고.
 
-### 확장 측정 — 위 dip 가설의 정량 검증 (선택)
+### 확장 측정 결과 (2026-05-17)
 
-위 dip 가 "Lettuce 풀 포화" 인지 "Redis 자체 천장 근접" 인지 분리하려면 두 축으로 측정한다.
+`RedisStockDeductionBenchmarkTest` 를 `-Dbench.thread.levels=30,100,300,500,1000` ×
+`-Dspring.data.redis.lettuce.pool.max-active={32,64,128}` 으로 9개 조합 측정.
 
-1. **스레드 레벨 확장** — `RedisStockDeductionBenchmarkTest` 는 시스템 프로퍼티
-   `bench.thread.levels` 로 워크로드를 오버라이드한다(기본 `30,100,300`).
-   ```
-   ./gradlew test --tests '*RedisStockDeductionBenchmarkTest' \
-     -Dbench.thread.levels=30,100,300,500,1000
-   ```
-2. **Lettuce 풀 변동** — `application-redis.yml` 의 `spring.data.redis.lettuce.pool.max-active`
-   를 32 → 64 → 128 로 바꿔 가며 위 명령을 반복한다.
+#### V4-Redis 처리량(ops/sec) — pool 크기 × thread 수
 
-dip 이 풀을 키워도 그대로면 Redis 자체 천장에 가까운 것이고, 풀을 키워 사라지면 풀 포화
-가설이 입증된다. 데이터가 모이면 본 섹션에 표로 추가한다.
+| Threads | Pool 32 | Pool 64 | Pool 128 |
+|---:|---:|---:|---:|
+| 30 | 12,631 | 10,620 | 11,873 |
+| 100 | **20,584** | 19,793 | 16,955 |
+| 300 | 18,903 | 22,177 | **23,007** |
+| 500 | **23,389** | 22,752 | 22,756 |
+| 1000 | **30,570** | 27,411 | 27,999 |
+
+#### V4-Redis P99 레이턴시(ms) — pool 32 기준
+
+| Threads | P99 |
+|---:|---:|
+| 30 | 3.5 |
+| 100 | 6.1 |
+| 300 | 19.2 |
+| 500 | 29.2 |
+| 1000 | 42.3 |
+
+#### V1/V3 — pool 32 확장
+
+```
+V1-Pessimistic         30       353 ops/s   P99    102 ms
+V1-Pessimistic        100       500 ops/s   P99    382 ms
+V1-Pessimistic        300       564 ops/s   P99  1,818 ms
+V1-Pessimistic        500       770 ops/s   P99  2,596 ms
+V1-Pessimistic       1000       777 ops/s   P99  5,000 ms  (98.7% success)
+V3-CAS                 30     1,026 ops/s   P99    131 ms
+V3-CAS                100       958 ops/s   P99    409 ms
+V3-CAS                300       945 ops/s   P99  1,330 ms
+V3-CAS                500       950 ops/s   P99  2,238 ms
+V3-CAS               1000       945 ops/s   P99  4,560 ms  (99.7% success)
+```
+
+### 검증된 결론
+
+1. **"300 thread dip 은 Lettuce 풀 포화" 가설 — 부분 입증**: pool 32 → 64 로 키우면
+   300 thread 처리량이 18,903 → 22,177 (+17%) 로 복구. pool 128 에서도 23,007 로 유사.
+   즉 dip 의 일부는 풀 포화에 기인.
+2. **반전 — 풀이 항상 클수록 좋지는 않음**: 1000 thread 에서 pool 32 가 30,570 ops/sec
+   로 pool 64/128 의 27,411/27,999 보다 빠르고, 100 thread 에서도 pool 32 가 최고
+   (20,584 vs 16,955@pool128). 큰 풀의 컨텍스트 스위칭/큐 오버헤드 또는 작은 풀의
+   자연스러운 backpressure 효과로 추정.
+3. **본질적 한계는 여전히 멀다**: V4 가 1000 thread / pool 32 에서 **30,570 ops/sec**
+   를 달성하며 V3-CAS 의 30배 이상. Redis 단일 노드 천장(~10만 ops/sec) 까지 아직 여유.
+4. **V1 의 fairness 손실**: pool 32 / 1000 thread 에서 V1 success rate 가 98.7% 로
+   첫 실패 발생 — lock_timeout=5s 초과. V3 도 1000 thread 에서 99.7% (lock_timeout 동일
+   원인). V4 는 1000 thread 에서도 100% 성공.
+
+### 운영 시사점
+
+- **단일 pool 크기 권장 불가**: 워크로드 동시성 분포(저/중/고) 에 따라 최적 pool 크기가 다르다.
+  본 프로젝트의 burst 시나리오(>=500 thread) 에서는 **pool 32** 가 가장 빠른 선택.
+- **dip 은 측정 노이즈 + 풀 매칭 비최적의 결합**: pool 32 의 300 thread 영역만 두드러지는
+  국소 현상. 1000 thread 까지 가면 처리량 곡선이 다시 상승해 "fundamental ceiling" 신호는 없음.
 
 ### 1억 시나리오에 대한 답 (수정 없음, 강화)
 
