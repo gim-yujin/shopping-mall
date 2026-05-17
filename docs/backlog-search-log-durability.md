@@ -196,8 +196,27 @@ flush 는 단일 `writer.writeBatch(entries)` + 배치 XACK(`acknowledge` vararg
 `shop.search.log.broker.flush.batches` 추가. 평균 배치 크기는 `consumed.total / flush.batches`
 로 산출.
 
+## Phase 22-2 (완료): 자동 스트림 트림
+
+### 문제
+Producer 가 XADD 만 호출하고 자동 트림이 없으면 스트림 길이가 무한 증가해 Redis 메모리를
+누적 점유한다. 검색 로그는 단기 통계 목적이라 장기 보존이 불필요.
+
+### 해결: Producer 측 XADD MAXLEN ~ N
+`SearchLogStreamProducer` 가 XADD 호출 시 `XAddOptions.maxlen(N).approximateTrimming(true)`
+를 적용한다. `app.search-log.broker.max-stream-length` (기본 `100000`) 으로 상한 조정.
+`0` 이면 트림 비활성(기존 동작).
+
+### 왜 근사 트림(~)인가
+정확 트림(`MAXLEN = N`) 은 매 XADD 호출마다 정확히 N 으로 자르기 위해 radix tree 노드를
+부분 분할할 수 있어 비용이 크다. 근사 트림(`MAXLEN ~ N`) 은 노드 경계까지만 자르므로 비용이
+거의 0 이며, 실제 길이는 N 보다 약간 클 수 있다(검색 로그 통계 목적상 무방).
+
+### 별도 XTRIM 스케줄러를 선택하지 않은 이유
+주기적 트림은 트림 사이 구간에서 메모리가 누적된다. 예: 10k msg/s 환경에서 60s 주기는 600k
+엔트리가 트림 직전까지 머무름. 근사 MAXLEN 은 항상 상한을 유지해 메모리 곡선이 평탄하다.
+
 ## 향후 (선택적 Phase 22+)
-- 자동 스트림 트림 — Producer 측 MAXLEN 또는 별도 트림 스케줄러
 - 컨슈머 수평 확장 시나리오 측정 — 동일 그룹의 다중 컨슈머 처리량 벤치
 
 ## 작업 항목

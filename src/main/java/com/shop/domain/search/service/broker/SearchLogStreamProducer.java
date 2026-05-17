@@ -3,6 +3,7 @@ package com.shop.domain.search.service.broker;
 import com.shop.domain.search.service.SearchLogEntry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.data.redis.connection.RedisStreamCommands;
 import org.springframework.data.redis.connection.stream.MapRecord;
 import org.springframework.data.redis.connection.stream.RecordId;
 import org.springframework.data.redis.connection.stream.StreamRecords;
@@ -23,9 +24,10 @@ import java.util.concurrent.atomic.AtomicLong;
  *   <li><b>nullable 처리</b> — {@code userId}/{@code ipAddress}/{@code userAgent} 는
  *       null 일 수 있다. Redis Streams 의 필드 값은 String 이라 빈 문자열로 직렬화하고
  *       컨슈머에서 빈 문자열을 null 로 역직렬화한다.</li>
- *   <li><b>MAXLEN ~</b> — {@code maxStreamLength > 0} 이면 근사 트림(~) 으로 XADD
- *       호출 시점에 오래된 엔트리를 비동기 제거한다. 정확 트림(=) 보다 빠르고, 검색 로그는
- *       장기 보존이 필요 없으므로 적합하다.</li>
+ *   <li><b>[Phase 22-2] MAXLEN ~</b> — {@code maxStreamLength > 0} 이면 근사 트림(~) 으로
+ *       XADD 호출 시점에 오래된 엔트리를 제거한다. 정확 트림(=) 보다 빠르고, 검색 로그는
+ *       장기 보존이 필요 없으므로 적합하다. 근사 트림은 Redis radix tree 의 가장 가까운 노드
+ *       경계까지만 자르므로 실제 길이는 {@code N} 보다 약간 클 수 있다(대신 비용은 거의 0).</li>
  *   <li><b>Producer 측 실패</b> — Redis 가 다운되면 {@code DataAccessException} 을 던진다.
  *       호출자({@link com.shop.domain.search.service.SearchService}) 는 이를 잡고
  *       기존 인메모리 경로로 폴백한다.</li>
@@ -74,7 +76,12 @@ public class SearchLogStreamProducer {
                 .withStreamKey(properties.stream());
 
         try {
-            RecordId id = redisTemplate.opsForStream().add(record);
+            RecordId id = (properties.maxStreamLength() > 0)
+                    ? redisTemplate.opsForStream().add(record,
+                            RedisStreamCommands.XAddOptions
+                                    .maxlen(properties.maxStreamLength())
+                                    .approximateTrimming(true))
+                    : redisTemplate.opsForStream().add(record);
             totalProduced.incrementAndGet();
             return id;
         } catch (RuntimeException e) {

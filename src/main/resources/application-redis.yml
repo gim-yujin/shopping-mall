@@ -43,6 +43,7 @@ app:
       poll-block: 2s
       db-batch-size: 500
       batch-flush-interval: 1s   # [Phase 22-1] dbBatchSize 도달 전이라도 이 주기로 flush
+      max-stream-length: 100000  # [Phase 22-2] XADD MAXLEN ~ N 근사 트림 (0 이면 미적용)
       claim-idle: 60s
       reclaim-interval: 30s
       max-delivery-attempts: 5

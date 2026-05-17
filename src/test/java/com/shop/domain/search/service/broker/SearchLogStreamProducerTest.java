@@ -6,6 +6,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.dao.QueryTimeoutException;
+import org.springframework.data.redis.connection.RedisStreamCommands;
 import org.springframework.data.redis.connection.stream.MapRecord;
 import org.springframework.data.redis.connection.stream.RecordId;
 import org.springframework.data.redis.core.StreamOperations;
@@ -106,5 +107,45 @@ class SearchLogStreamProducerTest {
         verify(streamOps).add(captor.capture());
         assertThat(captor.getValue().getValue())
                 .containsEntry(SearchLogStreamProducer.FIELD_USER_ID, "");
+    }
+
+    @Test
+    @DisplayName("[Phase 22-2] maxStreamLength > 0 이면 XADD 가 MAXLEN ~ N 옵션과 함께 호출된다")
+    @SuppressWarnings("unchecked")
+    void appliesApproximateMaxLenWhenConfigured() {
+        SearchLogBrokerProperties withMaxLen = new SearchLogBrokerProperties(
+                true, "search-log-stream", "search-log-cg", "consumer-1",
+                100, java.time.Duration.ofSeconds(1), 100, java.time.Duration.ofSeconds(1),
+                100_000, java.time.Duration.ofSeconds(60), java.time.Duration.ofSeconds(30),
+                5, "search-log-dlq");
+        SearchLogStreamProducer producerWithMaxLen = new SearchLogStreamProducer(redisTemplate, withMaxLen);
+
+        when(streamOps.add(any(MapRecord.class), any(RedisStreamCommands.XAddOptions.class)))
+                .thenReturn(RecordId.of("3-0"));
+
+        SearchLogEntry entry = new SearchLogEntry(
+                1L, "k", 1, null, null, LocalDateTime.now());
+        producerWithMaxLen.produce(entry);
+
+        ArgumentCaptor<RedisStreamCommands.XAddOptions> optCaptor =
+                ArgumentCaptor.forClass(RedisStreamCommands.XAddOptions.class);
+        verify(streamOps).add(any(MapRecord.class), optCaptor.capture());
+        assertThat(optCaptor.getValue().getMaxlen()).isEqualTo(100_000L);
+        assertThat(optCaptor.getValue().isApproximateTrimming()).isTrue();
+    }
+
+    @Test
+    @DisplayName("[Phase 22-2] maxStreamLength == 0 이면 기존 단순 XADD 호출 (옵션 미적용)")
+    @SuppressWarnings("unchecked")
+    void skipsMaxLenWhenZero() {
+        // 기본 properties (maxStreamLength=0) — setUp 의 producer 그대로 사용.
+        when(streamOps.add(any(MapRecord.class))).thenReturn(RecordId.of("4-0"));
+
+        producer.produce(new SearchLogEntry(
+                1L, "k", 1, null, null, LocalDateTime.now()));
+
+        verify(streamOps).add(any(MapRecord.class));
+        verify(streamOps, org.mockito.Mockito.never())
+                .add(any(MapRecord.class), any(RedisStreamCommands.XAddOptions.class));
     }
 }
