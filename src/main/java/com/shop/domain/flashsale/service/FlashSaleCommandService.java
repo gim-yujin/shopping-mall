@@ -10,7 +10,10 @@ import com.shop.domain.flashsale.exception.FlashSaleWindowClosedException;
 import com.shop.domain.flashsale.repository.FlashSaleItemRepository;
 import com.shop.domain.flashsale.repository.FlashSalePurchaseRepository;
 import com.shop.domain.order.entity.Order;
+import com.shop.global.exception.BusinessException;
 import com.shop.global.exception.ResourceNotFoundException;
+import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
+import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.LockModeType;
 import jakarta.persistence.PersistenceContext;
@@ -75,6 +78,7 @@ public class FlashSaleCommandService {
         log.info("event=flash_sale_lock_strategy strategy={}", this.lockStrategy);
     }
 
+    @CircuitBreaker(name = "flashSalePurchase", fallbackMethod = "purchaseFallback")
     @Transactional
     public FlashSalePurchaseResponse purchase(Long flashSaleId, Long flashSaleItemId, Long userId) {
         FlashSaleItem item = itemRepository.findByItemAndSale(flashSaleItemId, flashSaleId)
@@ -135,5 +139,37 @@ public class FlashSaleCommandService {
         }
         item.decreaseRemainingForLockedReserve(FIXED_QUANTITY);
         return item;
+    }
+
+    /**
+     * 서킷 브레이커 폴백.
+     *
+     * <p>Resilience4j 의 {@code fallbackMethod} 는 ignoreExceptions 와 무관하게 항상 호출된다.
+     * 따라서 본 폴백은 다음 우선순위로 분기한다:</p>
+     * <ol>
+     *   <li>{@link CallNotPermittedException} (서킷 OPEN) → 통일된 SERVICE_UNAVAILABLE 응답</li>
+     *   <li>그 외 모든 RuntimeException → 원본 그대로 re-throw. 비즈니스 예외(소진/중복/세일종료) 가
+     *       이 분기로 흘러 GlobalExceptionHandler 의 도메인 매핑을 그대로 받게 된다. record 된
+     *       인프라 예외(DataAccessException 계열) 도 원본을 전파해 GlobalExceptionHandler 의
+     *       500 매핑을 그대로 사용 — 클라이언트 메시지 통일은 거기서 일괄 처리.</li>
+     * </ol>
+     *
+     * <p>참고: 인프라 예외도 SERVICE_UNAVAILABLE 로 덮어쓸 수 있지만, 그러면
+     * GlobalExceptionHandler 가 가진 인프라 장애 매핑(500 + 운영자용 상세 로그) 을 우회하게 되어
+     * 운영 관측성이 떨어진다. 폴백은 서킷 OPEN 신호만 변환하고, 나머지는 본래 경로를 지킨다.</p>
+     */
+    @SuppressWarnings("unused") // Resilience4j 가 리플렉션으로 호출
+    private FlashSalePurchaseResponse purchaseFallback(
+            Long flashSaleId, Long flashSaleItemId, Long userId, Throwable e) {
+        if (e instanceof CallNotPermittedException) {
+            log.warn("[CircuitBreaker] 플래시 세일 구매 서킷 OPEN — 차단. sale_id={} user_id={}",
+                    flashSaleId, userId);
+            throw new BusinessException("SERVICE_UNAVAILABLE",
+                    "플래시 세일 구매가 일시적으로 어려운 상태입니다. 잠시 후 다시 시도해주세요.");
+        }
+        if (e instanceof RuntimeException re) {
+            throw re;
+        }
+        throw new RuntimeException(e);
     }
 }

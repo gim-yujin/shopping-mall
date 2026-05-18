@@ -599,7 +599,7 @@ T+30min  FlashSaleReconciliationJob 수동 실행 (§8-3)
 
 1. **가상 대기열(Virtual Waiting Room)**: FLASH_SALE 플랜이 L1에서 값싸게 흡수하지 못하는 규모(10k VU+)가 되면 필요. 입장권 TTL·서버 수용량 기반 ramp 설계는 본 문서 범위 밖.
 2. **Redis 도입 시 재설계**: 본 설계는 단일 인스턴스 모놀리스 가정. 수평 확장 시 `remaining_quantity` CAS를 Redis INCR로 옮기고 DB는 주문 기록만 담당하는 구조가 자연스러움.
-3. **서킷 브레이커**: HikariCP 포화 시 구매 경로만 차단하고 조회 경로는 살리는 로컬 브레이커(Resilience4j)의 필요성 — Phase 23-4 벤치 결과로 판단.
+3. **서킷 브레이커** ✅ 2026-05-18 적용 (본 절 §13-5 참고): `flashSalePurchase` Resilience4j 인스턴스로 `FlashSaleCommandService.purchase` 에 `@CircuitBreaker(fallbackMethod=purchaseFallback)`. 비즈니스 예외(소진/중복/세일종료) 는 default `ignoreExceptions=BusinessException` 으로 서킷 카운트에서 제외되지만, Resilience4j 의 fallback 은 ignoreExceptions 와 무관하게 항상 호출되므로 폴백 내부에서 원본 RuntimeException 을 그대로 re-throw 하여 GlobalExceptionHandler 의 도메인 매핑을 보존. 서킷 OPEN(`CallNotPermittedException`) 시에만 `BusinessException("SERVICE_UNAVAILABLE", ...)` 으로 변환.
 4. **결제 게이트웨이 연동**: 외부 호출이 개입하면 §8-2의 "트랜잭션 경계 == 예약 경계" 전제가 무너진다. 외부 결제는 별도 TX로 분리하고 `restoreAtomic` 보상 + Outbox 이벤트로 재설계 필요.
 5. **세일 CRUD 어드민 UI**: Phase 23-5. 현재는 DB 직접 INSERT로 충분.
 6. **세일 주문 취소 정책** ✅ Phase 23-5에서 해소 (커밋 — 본 절 §13-4 참고):
@@ -637,3 +637,30 @@ T+30min  FlashSaleReconciliationJob 수동 실행 (§8-3)
 - **쿠폰 적용 허용 여부**: 세일 가격에 쿠폰 중첩을 허용하면 이익률 통제 이슈. 기본 "허용 안 함"으로 시작하되, 최종 결정은 도메인 오너 판단.
 - **포인트 사용 허용 여부**: 동시성과 무관하지만 주문 금액 계산에 영향. 기본 "허용"으로 제안.
 - **세일 재고와 일반 재고의 최종 정산 시점**: 세일 종료 직후 vs 일 1회 배치. 배치 쪽이 단순.
+
+### 13-5. 로컬 서킷 브레이커 적용 (§13-2 #3 해소)
+
+**문제** — 플래시 세일은 burst 부하에서 HikariCP(17 커넥션) 가 일시 포화되기 쉽다(§10-5 측정).
+풀이 고갈된 상태에서 새 요청이 계속 들어오면 `CannotGetJdbcConnectionException` 이 연속 발생하고
+구매·조회 양쪽 모두 5초 connection-timeout 동안 매달려 Tomcat 스레드 풀까지 잡아먹는다.
+
+**해결 — `flashSalePurchase` Resilience4j 인스턴스**
+
+| 구성요소 | 역할 |
+|---|---|
+| `application.yml` `resilience4j.circuitbreaker.instances.flashSalePurchase` | 15건 윈도우 / 50% 임계 / waitOpen 10s. burst 빠르게 판단·복구. |
+| `@CircuitBreaker(name = "flashSalePurchase", fallbackMethod = "purchaseFallback")` on `FlashSaleCommandService.purchase` | 인프라 실패 또는 서킷 OPEN 시 폴백 진입 |
+| `purchaseFallback(..., Throwable e)` | `CallNotPermittedException`(OPEN) 만 `BusinessException("SERVICE_UNAVAILABLE", ...)` 로 변환. 그 외 RuntimeException 은 원본 그대로 re-throw — GlobalExceptionHandler 의 도메인/인프라 매핑을 보존 |
+| default `ignoreExceptions` (`BusinessException`, `ResourceNotFoundException`) | 비즈니스 실패(소진/중복/세일종료) 는 서킷 카운트에서 제외 (Resilience4j 의 fallback 자체는 ignoreExceptions 와 무관하게 항상 호출되므로 폴백 내부에서 원본 re-throw 로 처리) |
+
+**왜 조회 경로는 그대로** — 본 서킷은 `FlashSaleCommandService.purchase` 만 감싼다. `FlashSaleQueryService`
+의 목록/상세 조회는 풀 포화 시에도 read replica 또는 Caffeine 캐시로 polite degrade 가능하므로
+구매가 막혀도 사용자 경험은 절반 유지된다.
+
+**검증** — `FlashSaleCommandServiceTest`:
+1. `purchaseFallback_circuitOpen_throwsServiceUnavailable`: `CallNotPermittedException` 입력 →
+   `BusinessException(code=SERVICE_UNAVAILABLE)` 변환.
+2. `purchaseFallback_infraFailure_propagatesOriginal`: `CannotAcquireLockException` 입력 →
+   원본 그대로 re-throw. GlobalExceptionHandler 매핑 보존.
+3. `purchaseFallback_businessException_propagatesOriginal`: `FlashSaleSoldOutException` 입력 →
+   원본 그대로 re-throw. 동시성 IT 가 본 분기로 정상 동작.

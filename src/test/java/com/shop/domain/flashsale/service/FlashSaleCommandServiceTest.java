@@ -13,7 +13,10 @@ import com.shop.domain.flashsale.repository.FlashSaleItemRepository;
 import com.shop.domain.flashsale.repository.FlashSalePurchaseRepository;
 import com.shop.domain.order.entity.Order;
 import com.shop.domain.product.entity.Product;
+import com.shop.global.exception.BusinessException;
 import com.shop.global.exception.ResourceNotFoundException;
+import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
+import io.github.resilience4j.circuitbreaker.CircuitBreaker;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -21,6 +24,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.CannotAcquireLockException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -187,5 +191,42 @@ class FlashSaleCommandServiceTest {
         Order order = Order.createForFlashSale(orderNumber, 7L, total, "CARD");
         ReflectionTestUtils.setField(order, "orderId", orderId);
         return order;
+    }
+
+    // ── [§13-2 #3] 서킷 브레이커 폴백 ────────────────────────────────────
+
+    @Test
+    @DisplayName("폴백 — 서킷 OPEN(CallNotPermittedException) 시 SERVICE_UNAVAILABLE 로 변환")
+    void purchaseFallback_circuitOpen_throwsServiceUnavailable() {
+        CircuitBreaker cb = CircuitBreaker.ofDefaults("flashSalePurchase");
+        CallNotPermittedException cause = CallNotPermittedException.createCallNotPermittedException(cb);
+
+        assertThatThrownBy(() -> ReflectionTestUtils.invokeMethod(
+                commandService, "purchaseFallback", 10L, 100L, 7L, cause))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("일시적으로 어려운")
+                .satisfies(t -> assertThat(((BusinessException) t).getCode())
+                        .isEqualTo("SERVICE_UNAVAILABLE"));
+    }
+
+    @Test
+    @DisplayName("폴백 — 인프라 예외(DB 락 획득 실패) 는 원본 그대로 전파 (GlobalExceptionHandler 매핑 보존)")
+    void purchaseFallback_infraFailure_propagatesOriginal() {
+        CannotAcquireLockException dbFailure =
+                new CannotAcquireLockException("lock_timeout exceeded");
+
+        assertThatThrownBy(() -> ReflectionTestUtils.invokeMethod(
+                commandService, "purchaseFallback", 10L, 100L, 7L, dbFailure))
+                .isSameAs(dbFailure);
+    }
+
+    @Test
+    @DisplayName("폴백 — 비즈니스 예외(SoldOut 등) 도 원본 그대로 전파 (ignoreExceptions 와 무관하게 fallback 진입하므로)")
+    void purchaseFallback_businessException_propagatesOriginal() {
+        FlashSaleSoldOutException soldOut = new FlashSaleSoldOutException(100L);
+
+        assertThatThrownBy(() -> ReflectionTestUtils.invokeMethod(
+                commandService, "purchaseFallback", 10L, 100L, 7L, soldOut))
+                .isSameAs(soldOut);
     }
 }

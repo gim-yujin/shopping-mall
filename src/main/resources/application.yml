@@ -225,6 +225,24 @@ resilience4j:
         slowCallDurationThreshold: 5s
         slowCallRateThreshold: 90
 
+      # ── 플래시 세일 구매 (backlog-flash-sale.md §13-2 #3) ──
+      # 플래시 세일은 burst 부하에서 HikariCP 가 일시 포화되기 쉽다(§10-5 측정).
+      # 풀 포화로 인한 CannotGetJdbcConnectionException 이 연속 발생하면 본 서킷이
+      # 구매 경로만 차단하고 조회(목록/상세) 는 계속 살린다.
+      # - 짧은 윈도우(15건) + 낮은 최소 호출(8건): burst 시 빠르게 판단
+      # - 낮은 실패율 임계값(50%): 인프라 장애 의심 시 적극 차단
+      # - 짧은 대기 시간(10s): 부하 빠르게 빠지면 빠르게 복구 시도
+      # - 비즈니스 예외(재고 부족 / 중복 구매 / 세일 종료)는 default ignoreExceptions
+      #   (BusinessException) 으로 자동 카운트 제외 → 정상적인 실패는 서킷에 영향 없음
+      flashSalePurchase:
+        baseConfig: default
+        slidingWindowSize: 15
+        minimumNumberOfCalls: 8
+        failureRateThreshold: 50
+        waitDurationInOpenState: 10s
+        slowCallDurationThreshold: 3s
+        slowCallRateThreshold: 80
+
   timelimiter:
     configs:
       # ── 기본 TimeLimiter 설정 ──
